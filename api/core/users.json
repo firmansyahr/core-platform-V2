@@ -1,0 +1,12 @@
+{
+  "admin": {
+    "hashed_password": "$2b$12$xr0yEn8vQkAU6tFD5AiaAuBUK.tCPA02Jf5VDAjBaAXwkeoctD/q.",
+    "role": "admin",
+    "name": "Administrator"
+  },
+  "viewer": {
+    "hashed_password": "$2b$12$gDoMYFZoE6fto.rd1xB6/OY.jjaRcY8mpIkX1tyfFM3lqP1cTi1Oy",
+    "role": "viewer",
+    "name": "Viewer"
+  }
+}
