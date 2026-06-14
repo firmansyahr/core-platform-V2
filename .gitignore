@@ -1,9 +1,11 @@
 venv/
 .env
-data/
 __pycache__/
 *.pyc
 .DS_Store
 *.parquet
 frontend/node_modules/
 frontend/.next/
+api/data/loyalty_members.json
+api/data/promos.json
+api/data/cad_history.json

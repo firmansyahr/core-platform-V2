@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
@@ -11,9 +13,17 @@ app = FastAPI(title="CORE Platform v2", version="2.0.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+_frontend_url = os.getenv("FRONTEND_URL", "")
+_origins = [
+    "http://localhost:3000",
+    "https://core-platform.vercel.app",
+    *([_frontend_url] if _frontend_url else []),
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
