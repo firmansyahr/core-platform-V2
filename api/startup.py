@@ -3,14 +3,16 @@ import os
 import sys
 from pathlib import Path
 
-DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
-PARQUET_PATH = DATA_DIR / "transaksi_aegis_synthetic.parquet"
-PARQUET_URL = os.getenv("PARQUET_URL", "")
+DATA_DIR         = Path(os.getenv("DATA_DIR", "data"))
+PARQUET_FILENAME = os.getenv("PARQUET_FILENAME", "transaksi_sample_deploy.parquet")
+PARQUET_PATH     = DATA_DIR / PARQUET_FILENAME
+PARQUET_URL      = os.getenv("PARQUET_URL", "")
 
 
 def ensure_data() -> None:
     if PARQUET_PATH.exists():
-        print(f"[startup] Data sudah ada: {PARQUET_PATH}", flush=True)
+        size_mb = PARQUET_PATH.stat().st_size / 1024 / 1024
+        print(f"[startup] Data sudah ada: {PARQUET_PATH} ({size_mb:.1f} MB)", flush=True)
         return
 
     if not PARQUET_URL:
@@ -26,7 +28,9 @@ def ensure_data() -> None:
 
     import urllib.request
     urllib.request.urlretrieve(PARQUET_URL, PARQUET_PATH)
-    print(f"[startup] Download selesai → {PARQUET_PATH}", flush=True)
+
+    size_mb = PARQUET_PATH.stat().st_size / 1024 / 1024
+    print(f"[startup] Download selesai → {PARQUET_PATH} ({size_mb:.1f} MB)", flush=True)
 
 
 if __name__ == "__main__":

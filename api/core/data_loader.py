@@ -4,8 +4,9 @@ from pathlib import Path
 
 import pandas as pd
 
-DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
-DATA_PATH = DATA_DIR / "transaksi_aegis_synthetic.parquet"
+DATA_DIR         = Path(os.getenv("DATA_DIR", "data"))
+PARQUET_FILENAME = os.getenv("PARQUET_FILENAME", "transaksi_sample_deploy.parquet")
+DATA_PATH        = DATA_DIR / PARQUET_FILENAME
 
 
 @functools.lru_cache(maxsize=1)
