@@ -1,0 +1,570 @@
+"use client";
+
+import Navbar from "@/components/Navbar";
+import {
+  AlertTriangle, BarChart2, Users, TrendingUp,
+  Brain, Cpu, Target, Zap, Layers, GitBranch,
+  ShieldCheck, Activity,
+  CheckCircle2, XCircle,
+  ExternalLink, Map, FileText, Award,
+} from "lucide-react";
+
+// ─── Data ─────────────────────────────────────────────────────────────────────
+
+const HERO_BADGES = [
+  "Python", "FastAPI", "Next.js 14", "TypeScript",
+  "XGBoost", "Prophet", "SHAP", "ILP/PuLP",
+  "scikit-learn", "Recharts", "PostgreSQL",
+];
+
+const MODULES = [
+  {
+    id: "aegis",
+    color: "#dc2626",
+    bgCls:   "bg-red-50 dark:bg-red-950/20",
+    borderCls: "border-red-200/60 dark:border-red-800/40",
+    iconCls: "bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400",
+    icon:    AlertTriangle,
+    label:   "Early Warning System",
+    name:    "AEGIS Market Share Defense",
+    desc:    "Deteksi anomali perilaku transaksi toko mitra 3–6 minggu sebelum berdampak pada volume. Ensemble tiga model AI: CRS + Isolation Forest + XGBoost.",
+    metric:  "ROC-AUC 0.860 · Recall 73.6%",
+    features: [
+      "Peta Choropleth wilayah",
+      "Store Detail per toko",
+      "CAD Alert History",
+      "AEGIS-PREDICT (Prophet)",
+      "AEGIS-EXPLAIN (SHAP)",
+    ],
+  },
+  {
+    id: "ilp",
+    color: "#2563eb",
+    bgCls:   "bg-blue-50 dark:bg-blue-950/20",
+    borderCls: "border-blue-200/60 dark:border-blue-800/40",
+    iconCls: "bg-blue-100 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400",
+    icon:    BarChart2,
+    label:   "Mathematical Optimizer",
+    name:    "ILP Store Selection",
+    desc:    "Integer Linear Programming untuk seleksi toko loyalty program optimal dengan multi-constraint: budget, cluster, wilayah, dan hierarki sales.",
+    metric:  "PuLP CBC Solver · Multi-criteria scoring",
+    features: [
+      "Scenario comparison",
+      "Bobot scoring dinamis",
+      "Filter SSM → ASM → TSO",
+      "Constraint distribusi cluster",
+      "Referensi Loyalty Program",
+    ],
+  },
+  {
+    id: "loyalty",
+    color: "#16a34a",
+    bgCls:   "bg-green-50 dark:bg-green-950/20",
+    borderCls: "border-green-200/60 dark:border-green-800/40",
+    iconCls: "bg-green-100 dark:bg-green-950/40 text-green-600 dark:text-green-400",
+    icon:    Users,
+    label:   "Operational System",
+    name:    "Loyalty Management",
+    desc:    "Manajemen peserta program loyalty dengan target hybrid adaptive, smart promotion berbasis kondisi AEGIS, dan pengelolaan program promo multi-jenis.",
+    metric:  "Hybrid target: 60% rolling 3M + 40% YoY",
+    features: [
+      "Smart Promotion Engine",
+      "Program Promo multi-jenis",
+      "Target & Achievement",
+      "Re-enroll & Takeout",
+      "Takeout Recommendations",
+    ],
+  },
+  {
+    id: "tracker",
+    color: "#7c3aed",
+    bgCls:   "bg-purple-50 dark:bg-purple-950/20",
+    borderCls: "border-purple-200/60 dark:border-purple-800/40",
+    iconCls: "bg-purple-100 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400",
+    icon:    TrendingUp,
+    label:   "Outcome Monitor",
+    name:    "Store Performance Tracker",
+    desc:    "Memantau outcome toko setelah intervensi program loyalty — menghubungkan AEGIS detection → ILP recommendation → Loyalty enrollment → hasil nyata di lapangan.",
+    metric:  "End-to-end loop closure",
+    features: [
+      "Journey timeline 3-tahap",
+      "Volume delta monitoring",
+      "FBSI delta tracking",
+      "Verdict otomatis per toko",
+      "Store Journey Modal",
+    ],
+  },
+];
+
+const AI_CAPS = [
+  {
+    icon: Activity,
+    title: "Isolation Forest",
+    desc: "Deteksi anomali statistik per tier cluster",
+    detail: "Contamination: SP 3% · Platinum 4% · Gold 5% · Silver 6% · Bronze 8%",
+    color: "text-red-600 dark:text-red-400",
+    bg: "bg-red-50 dark:bg-red-950/20",
+  },
+  {
+    icon: Brain,
+    title: "XGBoost Classifier",
+    desc: "Prediksi probabilitas risiko beralih",
+    detail: "SMOTE oversampling · Walk-forward validation · ROC-AUC 0.860",
+    color: "text-orange-600 dark:text-orange-400",
+    bg: "bg-orange-50 dark:bg-orange-950/20",
+  },
+  {
+    icon: Cpu,
+    title: "Integer Linear Programming",
+    desc: "Optimasi alokasi dengan multi-constraint",
+    detail: "PuLP CBC Solver · Global optimum · Tidak greedy",
+    color: "text-blue-600 dark:text-blue-400",
+    bg: "bg-blue-50 dark:bg-blue-950/20",
+  },
+  {
+    icon: TrendingUp,
+    title: "Prophet Forecasting",
+    desc: "Prediksi AEGIS Score 4 minggu ke depan",
+    detail: "Confidence interval 80% · Seasonal aware",
+    color: "text-sky-600 dark:text-sky-400",
+    bg: "bg-sky-50 dark:bg-sky-950/20",
+  },
+  {
+    icon: Layers,
+    title: "SHAP Explainability",
+    desc: "Transparansi keputusan model AI",
+    detail: "TreeExplainer · Narasi otomatis bahasa bisnis",
+    color: "text-violet-600 dark:text-violet-400",
+    bg: "bg-violet-50 dark:bg-violet-950/20",
+  },
+  {
+    icon: Target,
+    title: "Hybrid Adaptive Target",
+    desc: "Target loyalty yang fair dan seasonal-aware",
+    detail: "Base_1 (60%) × rolling 3M + Base_2 (40%) × YoY · Growth rate per AEGIS",
+    color: "text-green-600 dark:text-green-400",
+    bg: "bg-green-50 dark:bg-green-950/20",
+  },
+  {
+    icon: Zap,
+    title: "Smart Promotion Engine",
+    desc: "Rekomendasi insentif real-time per toko",
+    detail: "Emergency Boost · Retention · Loyalty Reward · Standard",
+    color: "text-amber-600 dark:text-amber-400",
+    bg: "bg-amber-50 dark:bg-amber-950/20",
+  },
+  {
+    icon: GitBranch,
+    title: "Performance Attribution",
+    desc: "Mengukur dampak nyata intervensi program",
+    detail: "Volume delta · FBSI delta · Verdict otomatis · Journey reconstruction",
+    color: "text-purple-600 dark:text-purple-400",
+    bg: "bg-purple-50 dark:bg-purple-950/20",
+  },
+];
+
+const DATA_STATS = [
+  { label: "Area",       value: "Jan 2024 – Apr 2026", sub: "SG (Semen Gresik)" },
+  { label: "Transaksi",  value: "2.148.655",            sub: "baris sintetis" },
+  { label: "Toko Unik",  value: "21.014",               sub: "36 kolom" },
+  { label: "Hierarki",   value: "14 SSM",               sub: "29 ASM · 79 TSO · 794 Sales" },
+];
+
+const WHY_ITEMS = [
+  {
+    q: "Mengapa Ensemble untuk AEGIS Score?",
+    rows: [
+      { label: "CRS (50%)",  desc: "Sinyal bisnis yang dapat diinterpretasikan langsung" },
+      { label: "IF (20%)",   desc: "Anomali statistik yang tidak terlihat oleh aturan bisnis" },
+      { label: "XGB (30%)",  desc: "Pola kompleks dari kombinasi fitur historis" },
+    ],
+    note: null,
+  },
+  {
+    q: "Mengapa Target Hybrid 60/40?",
+    rows: [
+      { label: "Rolling 3M",  desc: "Responsif terhadap kondisi terkini, tapi rentan seasonal" },
+      { label: "YoY",         desc: "Mengeliminasi seasonal, tapi sensitif kejadian luar biasa" },
+      { label: "Kombinasi 60/40", desc: "Menghasilkan target yang stabil dan fair" },
+    ],
+    note: null,
+  },
+  {
+    q: "Mengapa AEGIS adalah Warning, Bukan Diagnosis?",
+    rows: [
+      { label: "Sumber data",    desc: "Hanya transaksi internal SIG — kompetitor tidak terlihat langsung" },
+      { label: "Sinyal anomali", desc: "Terkonsentrasi = indikasi, bukan bukti aktivitas kompetitor" },
+      { label: "Keputusan akhir", desc: "Validasi lapangan TSO tetap kunci — sistem hanya trigger" },
+    ],
+    note: "AEGIS adalah sistem early warning, bukan pengganti validasi lapangan.",
+  },
+];
+
+const STEPS = [
+  { n: 1, icon: "🔑", title: "Login",                desc: "Gunakan demo account viewer / viewer123 (read-only) atau admin / admin123 (penuh)." },
+  { n: 2, icon: "🏠", title: "Home Dashboard",       desc: "Ringkasan kondisi pasar: distribusi warning level, top toko berisiko, peta sebaran." },
+  { n: 3, icon: "⚠️", title: "AEGIS Monitor",        desc: "Identifikasi toko dan wilayah berisiko, analisis pola A/B/C/D, prioritaskan kunjungan TSO." },
+  { n: 4, icon: "🔍", title: "Store Detail",          desc: "Analisis mendalam per toko: SHAP explanation faktor risiko, prediksi 4 minggu ke depan." },
+  { n: 5, icon: "🗺️", title: "Peta Wilayah",         desc: "Visualisasi geografis choropleth distribusi CAD Alert per kabupaten/kota." },
+  { n: 6, icon: "📊", title: "ILP Optimizer",         desc: "Seleksi toko untuk program loyalty dengan constraint budget, cluster, dan wilayah." },
+  { n: 7, icon: "👥", title: "Loyalty Management",    desc: "Kelola peserta aktif, smart promotion berbasis AEGIS, target & achievement monitoring." },
+  { n: 8, icon: "🎁", title: "Program Promo",         desc: "Buat, monitor, dan hentikan program promosi multi-jenis dengan tracking realisasi." },
+  { n: 9, icon: "📈", title: "Performance Tracker",   desc: "Evaluasi outcome program: volume delta, FBSI delta, dan verdict otomatis per toko." },
+];
+
+const ACCESS_MATRIX = [
+  { feature: "Home Dashboard",           admin: true,  viewer: true  },
+  { feature: "AEGIS Monitor + Detail",   admin: true,  viewer: true  },
+  { feature: "Peta Choropleth",          admin: true,  viewer: true  },
+  { feature: "AEGIS-PREDICT",            admin: true,  viewer: true  },
+  { feature: "AEGIS-EXPLAIN (SHAP)",     admin: true,  viewer: true  },
+  { feature: "CAD Alert History",        admin: true,  viewer: true  },
+  { feature: "ILP Optimizer",            admin: true,  viewer: true  },
+  { feature: "Loyalty Management",       admin: true,  viewer: true  },
+  { feature: "Program Promo",            admin: true,  viewer: true  },
+  { feature: "Performance Tracker",      admin: true,  viewer: true  },
+  { feature: "Settings (view)",          admin: true,  viewer: true  },
+  { feature: "Settings (edit)",          admin: true,  viewer: false },
+  { feature: "Reload Data",             admin: true,  viewer: true  },
+];
+
+const PATTERNS = [
+  { code: "A", label: "Toko mulai beralih ke produk murah — order masih rutin",                cls: "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400" },
+  { code: "B", label: "Toko bermasalah — tiga sinyal aktif bersamaan · Prioritas tertinggi",   cls: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400" },
+  { code: "C", label: "Pola order berubah — pre-warning, pantau sebelum memburuk",              cls: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
+  { code: "D", label: "Toko sudah kembali normal — momentum positif, perkuat hubungan",        cls: "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400" },
+];
+
+// ─── Section label helper ─────────────────────────────────────────────────────
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest text-center mb-10">
+      {children}
+    </p>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function AboutPage() {
+  return (
+    <div className="min-h-screen bg-background">
+      <Navbar />
+      <main className="pt-16">
+
+        {/* ══ 1. HERO ══════════════════════════════════════════════════════════ */}
+        <section className="py-24 px-6">
+          <div className="max-w-3xl mx-auto text-center">
+            <span className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-muted border border-border text-muted-foreground mb-6">
+              Portfolio Project · Analitik Pasar Semen Kantong
+            </span>
+            <h1 className="text-5xl font-extrabold tracking-tight mb-3">CORE Platform</h1>
+            <p className="text-xl text-muted-foreground font-medium mb-6">
+              Commercial Optimization &amp; Retention Engine
+            </p>
+            <p className="text-sm text-muted-foreground leading-relaxed mb-10 max-w-2xl mx-auto">
+              Sistem analitik prediktif berbasis AI untuk mendukung pengambilan keputusan komersial di pasar
+              semen kantong. Mengintegrasikan deteksi risiko pasar, optimasi program loyalty, manajemen
+              operasional peserta, dan pemantauan outcome dalam satu ekosistem digital yang terhubung.
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {HERO_BADGES.map((t) => (
+                <span key={t} className="px-3 py-1 rounded-full text-xs font-medium bg-muted border border-border text-foreground">
+                  {t}
+                </span>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ══ 2. EMPAT MODUL ═══════════════════════════════════════════════════ */}
+        <section className="py-16 px-6 border-t border-border">
+          <div className="max-w-6xl mx-auto">
+            <SectionLabel>Empat Modul Utama</SectionLabel>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {MODULES.map((m) => {
+                const Icon = m.icon;
+                return (
+                  <div
+                    key={m.id}
+                    className={`rounded-xl border bg-card p-6 flex flex-col gap-4 ${m.borderCls}`}
+                  >
+                    {/* Header */}
+                    <div className="flex items-start gap-3">
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${m.iconCls}`}>
+                        <Icon size={18} />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          {m.label}
+                        </span>
+                        <h3 className="font-semibold leading-tight">{m.name}</h3>
+                      </div>
+                    </div>
+
+                    {/* Desc */}
+                    <p className="text-sm text-muted-foreground leading-relaxed">{m.desc}</p>
+
+                    {/* Metric */}
+                    <div className={`rounded-lg px-3 py-2 text-xs font-semibold ${m.bgCls}`} style={{ color: m.color }}>
+                      {m.metric}
+                    </div>
+
+                    {/* Features */}
+                    <div>
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                        Fitur
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {m.features.map((f) => (
+                          <span key={f} className="text-[11px] px-2 py-0.5 rounded-md bg-muted border border-border text-muted-foreground">
+                            {f}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* AEGIS Patterns */}
+            <div className="mt-6 rounded-xl border border-border bg-muted/30 p-5">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                4 Pola Deteksi AEGIS
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {PATTERNS.map(({ code, label, cls }) => (
+                  <div key={code} className="flex items-center gap-2">
+                    <span className={`text-[10px] font-bold w-5 h-5 rounded flex items-center justify-center shrink-0 ${cls}`}>
+                      {code}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ══ 3. KAPABILITAS AI ════════════════════════════════════════════════ */}
+        <section className="py-16 px-6 border-t border-border bg-muted/30">
+          <div className="max-w-6xl mx-auto">
+            <SectionLabel>Kapabilitas AI</SectionLabel>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {AI_CAPS.map((cap) => {
+                const Icon = cap.icon;
+                return (
+                  <div key={cap.title} className="rounded-xl border border-border bg-card p-4 space-y-3">
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${cap.bg}`}>
+                      <Icon size={16} className={cap.color} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold leading-tight">{cap.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{cap.desc}</p>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed border-t border-border pt-2">
+                      {cap.detail}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        {/* ══ 4. DATA & SCOPE ══════════════════════════════════════════════════ */}
+        <section className="py-16 px-6 border-t border-border">
+          <div className="max-w-5xl mx-auto">
+            <SectionLabel>Data &amp; Scope</SectionLabel>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+              {DATA_STATS.map(({ label, value, sub }) => (
+                <div key={label} className="rounded-xl border border-border bg-card p-4 text-center">
+                  <p className="text-xs text-muted-foreground mb-1">{label}</p>
+                  <p className="text-lg font-bold tabular-nums leading-tight">{value}</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-xl border border-border bg-muted/40 p-5 text-sm text-muted-foreground leading-relaxed space-y-2.5 max-w-2xl mx-auto">
+              <p>
+                Dataset sintetis yang disamarkan dari data transaksi real distributor semen area SG.
+                Tiga brand sintetis:{" "}
+                <span className="text-foreground font-medium">Semen Elang</span> (main brand, reward Rp 5.000/ton) ·{" "}
+                <span className="text-foreground font-medium">Semen Badak Serbaguna</span> (companion, reward Rp 2.500/ton) ·{" "}
+                <span className="text-foreground font-medium">Semen Banteng</span> (fighting brand, AEGIS only).
+              </p>
+              <p>
+                36 kolom mencakup data transaksi, lokasi toko, hierarki organisasi (SSM → ASM → TSO → Salesman),
+                dan klasifikasi Pareto (Super Platinum, Platinum, Gold, Silver, Bronze).
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* ══ 5. LOGIKA BISNIS ═════════════════════════════════════════════════ */}
+        <section className="py-16 px-6 border-t border-border bg-muted/30">
+          <div className="max-w-5xl mx-auto">
+            <SectionLabel>Logika Bisnis</SectionLabel>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {WHY_ITEMS.map((item) => (
+                <div key={item.q} className="rounded-xl border border-border bg-card p-5 space-y-4">
+                  <p className="text-sm font-semibold leading-snug">{item.q}</p>
+                  <div className="space-y-2">
+                    {item.rows.map((r) => (
+                      <div key={r.label} className="flex items-start gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-foreground/30 mt-1.5 shrink-0" />
+                        <span className="text-xs text-muted-foreground">
+                          <span className="text-foreground font-medium">{r.label}</span>
+                          {" "}— {r.desc}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {item.note && (
+                    <div className="rounded-lg border border-amber-300/50 bg-amber-50 dark:border-amber-700/30 dark:bg-amber-950/20 px-3 py-2 flex items-start gap-2">
+                      <span className="text-amber-600 dark:text-amber-400 text-xs shrink-0 mt-0.5">⚠</span>
+                      <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">{item.note}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ══ 6. CARA MENGGUNAKAN ══════════════════════════════════════════════ */}
+        <section className="py-16 px-6 border-t border-border">
+          <div className="max-w-2xl mx-auto">
+            <SectionLabel>Cara Menggunakan</SectionLabel>
+            <div className="flex flex-col gap-2.5">
+              {STEPS.map(({ n, icon, title, desc }) => (
+                <div key={n} className="flex gap-4 rounded-xl border border-border bg-card p-4">
+                  <div className="w-9 h-9 rounded-full bg-primary/8 text-primary text-sm font-bold flex items-center justify-center shrink-0 border border-primary/15">
+                    {n}
+                  </div>
+                  <div className="pt-0.5 min-w-0">
+                    <p className="text-sm font-semibold mb-0.5 flex items-center gap-1.5">
+                      <span>{icon}</span>
+                      {title}
+                    </p>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ══ 7. HAK AKSES ═════════════════════════════════════════════════════ */}
+        <section className="py-16 px-6 border-t border-border bg-muted/30">
+          <div className="max-w-2xl mx-auto">
+            <SectionLabel>Hak Akses per Role</SectionLabel>
+            <div className="rounded-xl border border-border bg-card overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/40">
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground">Fitur</th>
+                    <th className="px-4 py-3 text-xs font-bold text-center text-green-600 dark:text-green-400 w-20">Admin</th>
+                    <th className="px-4 py-3 text-xs font-semibold text-center text-muted-foreground w-20">Viewer</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ACCESS_MATRIX.map(({ feature, admin, viewer }) => (
+                    <tr key={feature} className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{feature}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        {admin
+                          ? <CheckCircle2 size={14} className="mx-auto text-green-600 dark:text-green-400" />
+                          : <XCircle size={14} className="mx-auto text-muted-foreground/40" />}
+                      </td>
+                      <td className="px-4 py-2.5 text-center">
+                        {viewer
+                          ? <CheckCircle2 size={14} className="mx-auto text-green-600 dark:text-green-400" />
+                          : <XCircle size={14} className="mx-auto text-red-500 dark:text-red-400" />}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-muted-foreground text-center mt-3">
+              Demo:{" "}
+              <span className="font-mono font-semibold text-foreground">admin / admin123</span>
+              {" · "}
+              <span className="font-mono font-semibold text-foreground">viewer / viewer123</span>
+            </p>
+          </div>
+        </section>
+
+        {/* ══ 8. TECH STACK ════════════════════════════════════════════════════ */}
+        <section className="py-16 px-6 border-t border-border">
+          <div className="max-w-3xl mx-auto">
+            <SectionLabel>Tech Stack</SectionLabel>
+            <div className="flex flex-col gap-4">
+              {[
+                { category: "Backend",         items: ["Python 3.12", "FastAPI", "Uvicorn", "pandas", "PyArrow", "slowapi"] },
+                { category: "ML & Optimasi",   items: ["scikit-learn", "XGBoost", "Isolation Forest", "PuLP CBC", "Prophet", "SHAP", "SMOTE"] },
+                { category: "Frontend",        items: ["Next.js 14", "TypeScript", "Tailwind CSS", "shadcn/ui", "Recharts", "lucide-react", "HugeIcons"] },
+                { category: "Data",            items: ["Parquet", "2,15 jt baris", "36 kolom", "21.014 toko unik"] },
+              ].map(({ category, items }) => (
+                <div key={category} className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4">
+                  <span className="text-xs font-semibold text-muted-foreground sm:w-40 shrink-0 sm:pt-1 sm:text-right">
+                    {category}
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {items.map((item) => (
+                      <span key={item} className="px-2.5 py-1 rounded-md text-xs font-medium bg-muted border border-border text-foreground">
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ══ 9. FOOTER ════════════════════════════════════════════════════════ */}
+        <section className="py-16 px-6 border-t border-border pb-24">
+          <div className="max-w-sm mx-auto">
+            <div className="rounded-2xl border border-border bg-card p-7 text-center space-y-5 shadow-sm">
+              {/* Avatar */}
+              <div className="w-14 h-14 rounded-2xl bg-foreground flex items-center justify-center mx-auto">
+                <span className="text-background text-xl font-black">F</span>
+              </div>
+
+              <div>
+                <p className="font-semibold text-base">Firmansyah Romadhoni</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Data Science &amp; Analytics Engineer</p>
+                <p className="text-xs text-muted-foreground">Portfolio Project · 2026</p>
+              </div>
+
+              <div className="flex items-center justify-center gap-4">
+                <a href="#" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2">
+                  GitHub <ExternalLink size={10} />
+                </a>
+                <span className="text-border text-xs">·</span>
+                <a href="#" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2">
+                  LinkedIn <ExternalLink size={10} />
+                </a>
+              </div>
+
+              <a
+                href="/login?u=viewer&p=viewer123"
+                className="flex items-center justify-center gap-2 w-full rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background hover:bg-foreground/88 transition-all duration-150 shadow-sm"
+              >
+                Coba Demo — viewer / viewer123
+                <ExternalLink size={13} strokeWidth={2} />
+              </a>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  );
+}
