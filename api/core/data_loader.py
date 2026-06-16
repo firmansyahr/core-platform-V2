@@ -32,6 +32,15 @@ def preload_data() -> None:
             .sort_values("Tanggal Transaksi")
             .reset_index(drop=True)
         )
+        _CATEGORY_COLS = [
+            "ID Toko", "Nama Toko", "Cluster Pareto", "Tipe Customer",
+            "Provinsi Toko", "Area AP Toko", "Area Toko", "Kabupaten Toko",
+            "Brands", "Nama Produk", "Kode Produk", "UOM 1", "UOM 2",
+            "TSO", "ASM", "SSM",
+        ]
+        for col in _CATEGORY_COLS:
+            if col in _df_cache.columns:
+                _df_cache[col] = _df_cache[col].astype("category")
         mb = _df_cache.memory_usage(deep=True).sum() / 1024 / 1024
         print(f"[data_loader] Loaded: {len(_df_cache):,} baris, {mb:.1f} MB", flush=True)
     except Exception as e:

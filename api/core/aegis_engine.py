@@ -70,6 +70,7 @@ def _col(df: pd.DataFrame, name: str, fill: float = 0.0) -> pd.Series:
 
 def _fbsi_features(df: pd.DataFrame, latest: pd.Period) -> pd.DataFrame:
     """Per-store FBSI features: delta_fbsi, s_fbsi_adjusted, n_weeks_high."""
+    df = df.copy()
     months = {latest - i for i in range(FBSI_WINDOW)}
     fdf = df[df["_p"].isin(months)]
 
@@ -106,6 +107,7 @@ def _fbsi_features(df: pd.DataFrame, latest: pd.Period) -> pd.DataFrame:
 
 def _he_features(df: pd.DataFrame, latest: pd.Period) -> pd.DataFrame:
     """Per-store Harga Efektif features: delta_he_pct, s_he."""
+    df = df.copy()
     months = {latest - i for i in range(HE_WINDOW)}
     hdf = df[df["_p"].isin(months)].copy()
     hdf["revenue"] = hdf["Harga"] * hdf["Zak Quantity"].fillna(0)
@@ -139,6 +141,7 @@ def _cv_stat(s: pd.Series) -> float:
 
 def _ors_features(df: pd.DataFrame, latest: pd.Period) -> pd.DataFrame:
     """Per-store Order Regularity Score via transaction-count CV."""
+    df = df.copy()
     months = {latest - i for i in range(ORS_WINDOW)}
     trx_m = (
         df[df["_p"].isin(months)]

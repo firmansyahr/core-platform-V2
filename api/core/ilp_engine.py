@@ -43,6 +43,7 @@ def compute_ilp_features(df: pd.DataFrame) -> pd.DataFrame:
     ratio_vs_cluster, estimated_cost, brand_category,
     Nama Toko, Kabupaten Toko, Provinsi Toko, Cluster Pareto, SSM, ASM, TSO.
     """
+    df = df.copy()
     period_col = df["Tanggal Transaksi"].dt.to_period("M")
     latest = period_col.max()
     window_periods = [latest - i for i in range(ILP_MONTHS)]
