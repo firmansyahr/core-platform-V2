@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, FormEvent } from "react";
+import { useState, FormEvent, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -11,7 +11,7 @@ import { login } from "@/lib/auth";
 
 const toIcon = (i: unknown) => i as IconSvgElement;
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("from") ?? "/";
@@ -151,5 +151,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <LoginContent />
+    </Suspense>
   );
 }

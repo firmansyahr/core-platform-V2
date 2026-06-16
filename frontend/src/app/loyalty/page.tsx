@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
@@ -994,7 +994,7 @@ function KpiCard({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function LoyaltyPage() {
+function LoyaltyContent() {
   const router = useRouter();
   const [summary, setSummary]       = useState<Summary | null>(null);
   const [members, setMembers]       = useState<LoyaltyMember[]>([]);
@@ -2252,5 +2252,13 @@ export default function LoyaltyPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function LoyaltyPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <LoyaltyContent />
+    </Suspense>
   );
 }
