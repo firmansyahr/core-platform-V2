@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter
 
 from api.core.aegis_engine import _XGB_CACHE
-from api.core.data_loader import load_data
+from api.core.data_loader import _df_cache, load_data
 
 _START = time.time()
 VERSION = "2.0.0"
@@ -16,20 +16,20 @@ router = APIRouter(prefix="/api", tags=["health"])
 
 @router.get("/health")
 def get_health() -> dict[str, Any]:
-    cache_info  = load_data.cache_info()
-    data_loaded = cache_info.currsize > 0
+    from api.core.data_loader import _df_cache as df
 
+    data_loaded = df is not None
     row_count   = 0
     periode     = ""
+
     if data_loaded:
-        df        = load_data()
         row_count = len(df)
         d_min     = df["Tanggal Transaksi"].min().strftime("%Y-%m-%d")
         d_max     = df["Tanggal Transaksi"].max().strftime("%Y-%m-%d")
         periode   = f"{d_min} to {d_max}"
 
     return {
-        "status":         "ok",
+        "status":         "ok" if data_loaded else "starting",
         "data_loaded":    data_loaded,
         "row_count":      row_count,
         "model_trained":  Path(_XGB_CACHE).exists(),
