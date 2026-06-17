@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
-import { Moon, Sun, Settings, LogOut, Info, Menu, X, ChevronDown } from "lucide-react";
+import { Moon, Sun, Settings, LogOut, Info, Menu, X, ChevronDown, FileText } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
 import {
@@ -254,6 +254,12 @@ export default function Navbar() {
               Tracker
             </a>
 
+            {/* Report */}
+            <a href="/report" className={linkCls("/report")}>
+              <FileText size={15} strokeWidth={1.75} />
+              Report
+            </a>
+
             {/* Settings */}
             <a href="/settings" className={linkCls("/settings")}>
               <Settings size={15} strokeWidth={1.75} />
@@ -420,6 +426,12 @@ export default function Navbar() {
             <a href="/performance" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/performance")}>
               <HugeiconsIcon icon={toIcon(ChartUpIcon)} size={16} />
               Tracker
+            </a>
+
+            {/* Report */}
+            <a href="/report" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/report")}>
+              <FileText size={16} strokeWidth={1.75} />
+              Report
             </a>
 
             {/* Settings */}

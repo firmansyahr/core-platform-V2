@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight, Sparkles, RefreshCw } from "lucide-react";
+import { ChevronRight, Sparkles, RefreshCw, FileText } from "lucide-react";
 import AegisMap from "@/components/aegis/AegisMap";
 import type { RegionMapData } from "@/components/aegis/AegisMap";
 import { apiFetch } from "@/lib/fetch";
@@ -1214,6 +1214,25 @@ export default function HomePage() {
               ) : null}
             </div>
           )}
+
+          {/* ── AI Report Shortcut ──────────────────────────────────────── */}
+          <Card
+            className="cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => router.push("/report")}
+          >
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg shrink-0">
+                <FileText className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm">AI Report Generator</p>
+                <p className="text-xs text-muted-foreground">
+                  Generate laporan bulanan otomatis dengan analisis AI
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+            </CardContent>
+          </Card>
 
           {/* Footer */}
           <p className="text-center text-[11px] text-muted-foreground pb-4">
