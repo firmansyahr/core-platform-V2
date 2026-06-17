@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Download } from "lucide-react";
+import { Download, Sparkles, X } from "lucide-react";
 import { downloadFile } from "@/lib/download";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
@@ -400,6 +400,16 @@ export default function AegisPage() {
   const [batchPredict, setBatchPredict] = useState<Record<string, BatchPredictItem>>({});
   const [batchPredictLoading, setBatchPredictLoading] = useState(false);
 
+  interface TalkingPointsResult {
+    status: string;
+    talking_points: string | null;
+    wilayah?: string;
+    cached?: boolean;
+  }
+  const [tpKabupaten, setTpKabupaten]   = useState<string | null>(null);
+  const [tpResult,    setTpResult]      = useState<TalkingPointsResult | null>(null);
+  const [tpLoading,   setTpLoading]     = useState(false);
+
   useEffect(() => {
     fetch(`${API}/api/aegis/warnings?min_score=0&limit=6000`)
       .then((r) => r.json())
@@ -422,6 +432,17 @@ export default function AegisPage() {
       .then((r) => r.json())
       .then((r) => setCadAlerts(r.data ?? []))
       .finally(() => setCadLoading(false));
+  }, []);
+
+  const fetchTalkingPoints = useCallback((kabupaten: string) => {
+    setTpKabupaten(kabupaten);
+    setTpResult(null);
+    setTpLoading(true);
+    fetch(`${API}/api/aegis/cad-alert/talking-points?kabupaten=${encodeURIComponent(kabupaten)}`)
+      .then((r) => r.json())
+      .then((r) => setTpResult(r.data ?? null))
+      .catch(() => setTpResult({ status: "error", talking_points: null }))
+      .finally(() => setTpLoading(false));
   }, []);
 
   const applyFilter = useCallback(() => {
@@ -835,6 +856,91 @@ export default function AegisPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* ── AI Talking Points per Kabupaten ──────────────────────────── */}
+        {cadAlerts.length > 0 && (
+          <Card>
+            <CardHeader className="border-b border-border pb-3">
+              <CardTitle className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <Sparkles className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                AI Talking Points — Panduan Kunjungan TSO
+                <span className="text-xs font-normal normal-case tracking-normal text-muted-foreground ml-1">
+                  Pilih kabupaten untuk generate talking points
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-4 space-y-3">
+              {/* Kabupaten button list */}
+              <div className="flex flex-wrap gap-2">
+                {cadAlerts.slice(0, 10).map((a) => {
+                  const displayName = a.kabupaten.replace(/^KABUPATEN /, "KAB. ");
+                  const statusColor = STATUS_COLOR[a.status as keyof typeof STATUS_COLOR] ?? "#6b7280";
+                  const isSelected  = tpKabupaten === a.kabupaten;
+                  return (
+                    <button
+                      key={a.kabupaten}
+                      onClick={() => fetchTalkingPoints(a.kabupaten)}
+                      disabled={tpLoading}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                        isSelected
+                          ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300"
+                          : "border-border hover:border-foreground/40 text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: statusColor }}
+                      />
+                      {displayName}
+                      <span className="text-[10px] opacity-60">({a.jumlah_toko})</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Result panel */}
+              {tpKabupaten && (
+                <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-4">
+                  <div className="flex items-start justify-between mb-2 gap-2">
+                    <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">
+                      Talking Points — {tpKabupaten.replace(/^KABUPATEN /, "KAB. ")}
+                    </p>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {tpResult?.cached && (
+                        <span className="text-[10px] text-muted-foreground">cache</span>
+                      )}
+                      <button
+                        onClick={() => { setTpKabupaten(null); setTpResult(null); }}
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  {tpLoading ? (
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-11/12" />
+                      <Skeleton className="h-4 w-4/5" />
+                    </div>
+                  ) : tpResult?.status === "disabled" ? (
+                    <p className="text-sm text-muted-foreground">
+                      AI Insight tidak aktif. Set ANTHROPIC_API_KEY untuk mengaktifkan.
+                    </p>
+                  ) : tpResult?.status === "error" ? (
+                    <p className="text-sm text-muted-foreground">
+                      Gagal memuat talking points. Coba lagi.
+                    </p>
+                  ) : tpResult?.talking_points ? (
+                    <p className="text-sm text-foreground whitespace-pre-line leading-relaxed">
+                      {tpResult.talking_points}
+                    </p>
+                  ) : null}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── Distribusi Pola ───────────────────────────────────────────── */}
         <div>

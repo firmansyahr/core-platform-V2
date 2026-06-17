@@ -2,14 +2,14 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Sparkles, RefreshCw } from "lucide-react";
 import AegisMap from "@/components/aegis/AegisMap";
 import type { RegionMapData } from "@/components/aegis/AegisMap";
 import { apiFetch } from "@/lib/fetch";
@@ -324,6 +324,16 @@ export default function HomePage() {
   const [topWilayah,   setTopWilayah]   = useState<RegionMapData[]>([]);
   const [mapLoading,   setMapLoading]   = useState(true);
 
+  interface AiInsight {
+    status: string;
+    narasi: string | null;
+    generated_at?: string;
+    tokens_used?: number;
+    cached?: boolean;
+  }
+  const [aiInsight,      setAiInsight]      = useState<AiInsight | null>(null);
+  const [aiInsightLoad,  setAiInsightLoad]  = useState(true);
+
   useEffect(() => {
     Promise.all([
       fetch(`${API}/api/home/summary`).then((r) => r.json()),
@@ -361,6 +371,17 @@ export default function HomePage() {
       .catch(() => {})
       .finally(() => setLoyaltyLoad(false));
   }, []);
+
+  const fetchAiInsight = useCallback(() => {
+    setAiInsightLoad(true);
+    fetch(`${API}/api/home/insight`)
+      .then((r) => r.json())
+      .then((j) => setAiInsight(j.data ?? null))
+      .catch(() => {})
+      .finally(() => setAiInsightLoad(false));
+  }, []);
+
+  useEffect(() => { fetchAiInsight(); }, [fetchAiInsight]);
 
   useEffect(() => {
     apiFetch(`${API}/api/aegis/map-data?level=kabupaten`)
@@ -483,6 +504,48 @@ export default function HomePage() {
                   </>
                 )}
           </div>
+
+          {/* ── AI Insight Card ────────────────────────────────────────── */}
+          {(aiInsightLoad || (aiInsight && aiInsight.status !== "disabled")) && (
+            <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-1.5 bg-blue-100 dark:bg-blue-900/50 rounded-lg mt-0.5 shrink-0">
+                    <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1 gap-2">
+                      <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                        AI Insight
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {aiInsight?.generated_at && !aiInsightLoad && (
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(aiInsight.generated_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                            {aiInsight.cached && " · cache"}
+                          </span>
+                        )}
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={fetchAiInsight} disabled={aiInsightLoad}>
+                          <RefreshCw className={`h-3 w-3 ${aiInsightLoad ? "animate-spin" : ""}`} />
+                        </Button>
+                      </div>
+                    </div>
+                    {aiInsightLoad ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-5/6" />
+                        <Skeleton className="h-4 w-4/6" />
+                      </div>
+                    ) : aiInsight?.status === "error" ? (
+                      <p className="text-sm text-muted-foreground">Gagal memuat insight. Coba refresh.</p>
+                    ) : aiInsight?.narasi ? (
+                      <p className="text-sm text-foreground leading-relaxed">{aiInsight.narasi}</p>
+                    ) : null}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* ── Section: Insight Pasar ──────────────────────────────────── */}
           <div>

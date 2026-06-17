@@ -14,6 +14,7 @@ from api.core.aegis_engine import (
     get_store_crs,
 )
 from api.core.data_loader import load_data
+from api.core.insight_engine import generate_cad_talking_points, generate_store_insight
 from api.core.limiter import limiter
 from api.core.predict_engine import forecast_batch, forecast_store_aegis
 
@@ -499,6 +500,65 @@ def get_store_explanation(id_toko: str) -> dict:
         "cached"    : False,
         "cached_at" : None,
     }
+
+
+@router.get("/store/{id_toko}/insight")
+def get_store_insight(id_toko: str) -> dict:
+    """Generate AI narrative insight for a specific store."""
+    stores = get_store_crs()
+    row_mask = stores["ID Toko"] == id_toko
+    if not row_mask.any():
+        raise HTTPException(status_code=404, detail=f"Store '{id_toko}' not found")
+
+    row = stores[row_mask].iloc[0]
+    store_data = {
+        "id_toko":       id_toko,
+        "nama_toko":     str(row.get("Nama Toko") or ""),
+        "cluster_pareto":str(row.get("Cluster Pareto") or ""),
+        "aegis_score":   round(float(row.get("aegis_score") or 0), 2),
+        "level":         str(row.get("alert") or "Normal"),
+        "pola_kode":     str(row.get("pola_kode") or "N"),
+        "churn_prob":    round(float(row.get("churn_prob") or 0), 4),
+    }
+
+    # Try to enrich with cached SHAP data
+    now = time.time()
+    shap_data: dict | None = None
+    cached_exp = _explain_cache.get(id_toko)
+    if cached_exp and (now - _explain_cache_time.get(id_toko, 0)) < CACHE_TTL:
+        shap_data = cached_exp
+    else:
+        result = calculate_shap_values(stores, id_toko)
+        if result["status"] == "ok":
+            _explain_cache[id_toko]      = result
+            _explain_cache_time[id_toko] = now
+            shap_data = result
+
+    insight = generate_store_insight(store_data, shap_data)
+    return {"status": "ok", "data": insight, "meta": {"generated_at": datetime.now(timezone.utc).isoformat()}}
+
+
+@router.get("/cad-alert/talking-points")
+def get_cad_talking_points(kabupaten: str = Query(..., min_length=1)) -> dict:
+    """Generate TSO talking points for a CAD alert kabupaten."""
+    stores = get_store_crs()
+    kab_stores = stores[
+        (stores["Kabupaten Toko"].str.upper() == kabupaten.upper()) &
+        (stores["alert"] != "Normal")
+    ]
+
+    stores_list = [
+        {
+            "id_toko":   str(r["ID Toko"]),
+            "nama_toko": str(r.get("Nama Toko") or ""),
+            "pola_kode": str(r.get("pola_kode") or "N"),
+            "level":     str(r.get("alert") or "Normal"),
+        }
+        for _, r in kab_stores.iterrows()
+    ]
+
+    result = generate_cad_talking_points(kabupaten, stores_list)
+    return {"status": "ok", "data": result, "meta": {"generated_at": datetime.now(timezone.utc).isoformat()}}
 
 
 @router.get("/store/{id_toko}", response_model=StoreDetailResponse)

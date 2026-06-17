@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from api.core.aegis_engine import get_store_crs
 from api.core.data_loader import load_data
+from api.core.insight_engine import generate_home_insight
 
 router = APIRouter(prefix="/api/home", tags=["home"])
 
@@ -44,6 +45,15 @@ class TrendResponse(BaseModel):
     status: str
     data: list[TrendPoint]
     meta: dict[str, str]
+
+
+@router.get("/insight")
+def get_home_insight() -> dict:
+    """Generate AI narrative insight for home dashboard."""
+    summary_resp = get_home_summary()
+    summary_dict = summary_resp.data.model_dump()
+    result = generate_home_insight(summary_dict)
+    return {"status": "ok", "data": result, "meta": _META()}
 
 
 @router.get("/trend", response_model=TrendResponse)

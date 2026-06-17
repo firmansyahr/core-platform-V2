@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Sparkles, RefreshCw } from "lucide-react";
 import StoreJourneyModal from "@/components/StoreJourneyModal";
 import {
   ComposedChart,
@@ -1107,6 +1108,15 @@ export default function StoreDetailPage() {
   const [perfLoading, setPerfLoading] = useState(false);
   const [showJourney, setShowJourney] = useState(false);
 
+  interface StoreAiInsight {
+    status: string;
+    narasi: string | null;
+    generated_at?: string;
+    cached?: boolean;
+  }
+  const [storeInsight,     setStoreInsight]     = useState<StoreAiInsight | null>(null);
+  const [storeInsightLoad, setStoreInsightLoad] = useState(false);
+
   useEffect(() => {
     if (!id) return;
     fetch(`${API}/api/aegis/store/${encodeURIComponent(id)}`)
@@ -1149,6 +1159,20 @@ export default function StoreDetailPage() {
   useEffect(() => {
     if (!loading && data) fetchPrediction();
   }, [loading, data, fetchPrediction]);
+
+  const fetchStoreInsight = useCallback(() => {
+    if (!id) return;
+    setStoreInsightLoad(true);
+    fetch(`${API}/api/aegis/store/${encodeURIComponent(id)}/insight`)
+      .then((r) => r.json())
+      .then((r) => setStoreInsight(r.data ?? null))
+      .catch(() => {})
+      .finally(() => setStoreInsightLoad(false));
+  }, [id]);
+
+  useEffect(() => {
+    if (!loading && data) fetchStoreInsight();
+  }, [loading, data, fetchStoreInsight]);
 
   useEffect(() => {
     if (!id || loading) return;
@@ -1270,6 +1294,48 @@ export default function StoreDetailPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* ── AI Store Analysis ────────────────────────────────────── */}
+        {(storeInsightLoad || (storeInsight && storeInsight.status !== "disabled")) && (
+          <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="p-1.5 bg-blue-100 dark:bg-blue-900/50 rounded-lg mt-0.5 shrink-0">
+                  <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1 gap-2">
+                    <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
+                      AI Store Analysis
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {storeInsight?.generated_at && !storeInsightLoad && (
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(storeInsight.generated_at).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                          {storeInsight.cached && " · cache"}
+                        </span>
+                      )}
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={fetchStoreInsight} disabled={storeInsightLoad}>
+                        <RefreshCw className={`h-3 w-3 ${storeInsightLoad ? "animate-spin" : ""}`} />
+                      </Button>
+                    </div>
+                  </div>
+                  {storeInsightLoad ? (
+                    <div className="space-y-2">
+                      <Skeleton className="h-4 w-full" />
+                      <Skeleton className="h-4 w-5/6" />
+                      <Skeleton className="h-4 w-3/5" />
+                    </div>
+                  ) : storeInsight?.status === "error" ? (
+                    <p className="text-sm text-muted-foreground">Gagal memuat analisis. Coba refresh.</p>
+                  ) : storeInsight?.narasi ? (
+                    <p className="text-sm text-foreground leading-relaxed">{storeInsight.narasi}</p>
+                  ) : null}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── Metric risk cards ────────────────────────────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
