@@ -558,9 +558,16 @@ export default function AegisPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">AEGIS Monitor</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Pantau toko yang mulai bermasalah · Bantu tim sales tentukan prioritas kunjungan
-            </p>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="text-xs font-semibold px-2 py-0.5 rounded-full
+                               bg-blue-100 text-blue-700 dark:bg-blue-900/30
+                               dark:text-blue-400 border border-blue-200">
+                AI-Powered Early Warning System
+              </span>
+              <span className="text-sm text-muted-foreground">
+                Pantau toko yang mulai bermasalah · Bantu tim sales tentukan prioritas kunjungan
+              </span>
+            </div>
           </div>
           <Button
             variant="outline"
@@ -748,6 +755,9 @@ export default function AegisPage() {
           </div>
         )}
 
+        {/* ── Peta Choropleth ──────────────────────────────────────────────── */}
+        <MiniMapSection />
+
         {/* ── CAD Alert bar chart ───────────────────────────────────────── */}
         <Card>
           <CardHeader className="border-b border-border pb-3">
@@ -825,9 +835,6 @@ export default function AegisPage() {
             )}
           </CardContent>
         </Card>
-
-        {/* ── Mini Heatmap ──────────────────────────────────────────────── */}
-        <MiniMapSection />
 
         {/* ── Distribusi Pola ───────────────────────────────────────────── */}
         <div>

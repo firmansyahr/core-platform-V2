@@ -634,10 +634,10 @@ export default function PromoDetailPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-3 w-full max-w-sm">
-            <TabsTrigger value="detail">Detail</TabsTrigger>
-            <TabsTrigger value="monitoring" disabled={!hasMon}>Monitoring</TabsTrigger>
-            <TabsTrigger value="analisis" disabled={!isSelesai}>Analisis</TabsTrigger>
+          <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent mb-6">
+            <TabsTrigger value="detail">Detail Promo</TabsTrigger>
+            <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
+            <TabsTrigger value="analisis">Analisis</TabsTrigger>
           </TabsList>
 
           {/* ── Tab: Detail ── */}
@@ -740,7 +740,11 @@ export default function PromoDetailPage() {
 
           {/* ── Tab: Monitoring ── */}
           <TabsContent value="monitoring" className="space-y-5 mt-4">
-            {monLoading && !monitoring ? (
+            {!hasMon ? (
+              <div className="text-center py-12 text-muted-foreground">
+                Monitoring tersedia setelah program diaktifkan
+              </div>
+            ) : monLoading && !monitoring ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                   {Array.from({length: 5}).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
@@ -911,7 +915,11 @@ export default function PromoDetailPage() {
 
           {/* ── Tab: Analisis ── */}
           <TabsContent value="analisis" className="space-y-5 mt-4">
-            {!monitoring && monLoading ? (
+            {!isSelesai ? (
+              <div className="text-center py-12 text-muted-foreground">
+                Analisis tersedia setelah program selesai
+              </div>
+            ) : !monitoring && monLoading ? (
               <Skeleton className="h-64 rounded-xl" />
             ) : monitoring ? (
               <>

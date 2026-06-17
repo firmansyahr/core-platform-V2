@@ -28,48 +28,52 @@ import {
 const toIcon = (i: unknown) => i as IconSvgElement;
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-const NAV = [
-  { href: "/",            label: "Home",    icon: HomeIcon },
-  { href: "/aegis",       label: "AEGIS",   icon: AlertCircleIcon },
-  { href: "/ilp",         label: "ILP",     icon: BarChartIcon },
-  { href: "/performance", label: "Tracker", icon: ChartUpIcon },
-] as const;
-
 const ROLE_LABEL: Record<string, string> = {
   admin: "Admin",
   viewer: "Viewer",
 };
+
+// ─── AEGIS dropdown items ─────────────────────────────────────────────────────
+
+const AEGIS_ITEMS = [
+  { label: "⚠️ AEGIS Monitor",    href: "/aegis" },
+  { label: "🗺️ Peta Wilayah",     href: "/aegis/map" },
+  { label: "📋 CAD Alert History", href: "/aegis/cad-history" },
+];
+
+// ─── Loyalty dropdown items ───────────────────────────────────────────────────
 
 type LoyaltyItem = { label: string; href: string };
 type LoyaltyGroup = { label: string; items: LoyaltyItem[] };
 
 const LOYALTY_ITEMS: LoyaltyGroup[] = [
   {
-    label: "Manajemen Peserta",
+    label: "Manajemen",
     items: [
-      { label: "👥 Peserta Aktif",    href: "/loyalty" },
-      { label: "📤 Toko Takeout",     href: "/loyalty?tab=takeout" },
+      { label: "🏠 Overview",              href: "/loyalty" },
+      { label: "👥 Peserta Aktif",         href: "/loyalty?tab=peserta" },
+      { label: "📤 Toko Takeout",          href: "/loyalty?tab=takeout" },
     ],
   },
   {
     label: "Analisis & Rekomendasi",
     items: [
-      { label: "⚡ Rekomendasi Take Out", href: "/loyalty?tab=rekomendasi" },
-      { label: "🎯 Target & Achievement", href: "/loyalty?tab=target" },
-      { label: "🎁 Smart Promotion",      href: "/loyalty?tab=promo" },
+      { label: "⚡ Rekomendasi Take Out",  href: "/loyalty?tab=rekomendasi" },
+      { label: "🎯 Target & Achievement",  href: "/loyalty?tab=target" },
+      { label: "🎁 Smart Promotion",       href: "/loyalty?tab=promo" },
     ],
   },
   {
     label: "Tools",
     items: [
-      { label: "📊 Referensi ILP",  href: "/loyalty?tab=ilp" },
-      { label: "📋 Program Promo",  href: "/loyalty/promo" },
+      { label: "📊 Referensi ILP",         href: "/loyalty?tab=ilp" },
+      { label: "📋 Program Promo",         href: "/loyalty/promo" },
     ],
   },
   {
     label: "Lainnya",
     items: [
-      { label: "🕐 History", href: "/loyalty?tab=history" },
+      { label: "🕐 History",               href: "/loyalty?tab=history" },
     ],
   },
 ];
@@ -82,6 +86,7 @@ export default function Navbar() {
   const [user,         setUser]         = useState<AuthUser | null>(null);
   const [menuOpen,     setMenuOpen]     = useState(false);
   const [loyaltyOpen,  setLoyaltyOpen]  = useState(false);
+  const [aegisOpen,    setAegisOpen]    = useState(false);
   const [openCount,    setOpenCount]    = useState(0);
 
   useEffect(() => {
@@ -92,6 +97,7 @@ export default function Navbar() {
   useEffect(() => {
     setMenuOpen(false);
     setLoyaltyOpen(false);
+    setAegisOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -107,6 +113,7 @@ export default function Navbar() {
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
 
+  const isAegisActive   = pathname === "/aegis" || pathname.startsWith("/aegis/");
   const isLoyaltyActive = pathname === "/loyalty" || pathname.startsWith("/loyalty/");
 
   const linkCls = (href: string) =>
@@ -123,6 +130,13 @@ export default function Navbar() {
         : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
     }`;
 
+  const dropdownBtnCls = (active: boolean) =>
+    `flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150 ${
+      active
+        ? "bg-foreground/8 text-foreground dark:bg-white/10"
+        : "text-muted-foreground hover:text-foreground hover:bg-foreground/5 dark:hover:bg-white/6"
+    }`;
+
   const dropItemCls = (href: string) => {
     const currentTab = href.includes("?tab=") ? href.split("?tab=")[1] : null;
     const urlTab = typeof window !== "undefined"
@@ -134,7 +148,17 @@ export default function Navbar() {
     return active ? "font-semibold text-foreground" : "";
   };
 
-  const nav = (href: string) => { router.push(href); setMenuOpen(false); setLoyaltyOpen(false); };
+  const aegisDropItemCls = (href: string) => {
+    const active = pathname === href || (href !== "/aegis" && pathname.startsWith(href));
+    return active ? "font-semibold text-foreground" : "";
+  };
+
+  const nav = (href: string) => {
+    router.push(href);
+    setMenuOpen(false);
+    setLoyaltyOpen(false);
+    setAegisOpen(false);
+  };
 
   return (
     <>
@@ -151,31 +175,47 @@ export default function Navbar() {
             </span>
           </div>
 
-          {/* Desktop nav */}
+          {/* Desktop nav: Home | AEGIS▾ | Loyalty▾ | ILP | Tracker | Settings | About */}
           <nav className="hidden md:flex items-center gap-0.5">
-            {NAV.map(({ href, label, icon }) => (
-              <a key={href} href={href} className={linkCls(href)}>
-                <HugeiconsIcon icon={toIcon(icon)} size={15} />
-                {label}
-                {href === "/aegis" && openCount > 0 && (
-                  <span className="ml-0.5 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
-                    bg-red-500 text-white flex items-center justify-center leading-none">
-                    {openCount > 99 ? "99+" : openCount}
-                  </span>
-                )}
-              </a>
-            ))}
+
+            {/* Home */}
+            <a href="/" className={linkCls("/")}>
+              <HugeiconsIcon icon={toIcon(HomeIcon)} size={15} />
+              Home
+            </a>
+
+            {/* AEGIS dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className={dropdownBtnCls(isAegisActive)}>
+                  <HugeiconsIcon icon={toIcon(AlertCircleIcon)} size={15} />
+                  AEGIS
+                  {openCount > 0 && (
+                    <span className="ml-0.5 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
+                      bg-red-500 text-white flex items-center justify-center leading-none">
+                      {openCount > 99 ? "99+" : openCount}
+                    </span>
+                  )}
+                  <ChevronDown size={12} className="ml-0.5 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-52">
+                {AEGIS_ITEMS.map((item) => (
+                  <DropdownMenuItem
+                    key={item.href}
+                    onClick={() => nav(item.href)}
+                    className={`text-sm cursor-pointer ${aegisDropItemCls(item.href)}`}
+                  >
+                    {item.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {/* Loyalty dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150 ${
-                    isLoyaltyActive
-                      ? "bg-foreground/8 text-foreground dark:bg-white/10"
-                      : "text-muted-foreground hover:text-foreground hover:bg-foreground/5 dark:hover:bg-white/6"
-                  }`}
-                >
+                <button className={dropdownBtnCls(isLoyaltyActive)}>
                   <HugeiconsIcon icon={toIcon(AwardIcon)} size={15} />
                   Loyalty
                   <ChevronDown size={12} className="ml-0.5 opacity-50" />
@@ -202,10 +242,25 @@ export default function Navbar() {
               </DropdownMenuContent>
             </DropdownMenu>
 
+            {/* ILP */}
+            <a href="/ilp" className={linkCls("/ilp")}>
+              <HugeiconsIcon icon={toIcon(BarChartIcon)} size={15} />
+              ILP
+            </a>
+
+            {/* Tracker */}
+            <a href="/performance" className={linkCls("/performance")}>
+              <HugeiconsIcon icon={toIcon(ChartUpIcon)} size={15} />
+              Tracker
+            </a>
+
+            {/* Settings */}
             <a href="/settings" className={linkCls("/settings")}>
               <Settings size={15} strokeWidth={1.75} />
               Settings
             </a>
+
+            {/* About */}
             <a href="/about" className={linkCls("/about")}>
               <Info size={15} strokeWidth={1.75} />
               About
@@ -280,18 +335,49 @@ export default function Navbar() {
       {menuOpen && (
         <div className="md:hidden fixed inset-x-0 top-16 z-40 border-b border-border/60 bg-background/96 backdrop-blur-md shadow-lg max-h-[80vh] overflow-y-auto">
           <nav className="flex flex-col px-4 py-3 gap-0.5 max-w-7xl mx-auto">
-            {NAV.map(({ href, label, icon }) => (
-              <a key={href} href={href} onClick={() => setMenuOpen(false)} className={mobileLinkCls(href)}>
-                <HugeiconsIcon icon={toIcon(icon)} size={16} />
-                {label}
-                {href === "/aegis" && openCount > 0 && (
-                  <span className="ml-1 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
-                    bg-red-500 text-white flex items-center justify-center leading-none">
-                    {openCount > 99 ? "99+" : openCount}
-                  </span>
-                )}
-              </a>
-            ))}
+
+            {/* Home */}
+            <a href="/" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/")}>
+              <HugeiconsIcon icon={toIcon(HomeIcon)} size={16} />
+              Home
+            </a>
+
+            {/* AEGIS mobile */}
+            <div>
+              <button
+                onClick={() => setAegisOpen((p) => !p)}
+                className={`w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150 ${
+                  isAegisActive
+                    ? "bg-foreground/8 text-foreground dark:bg-white/10"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <HugeiconsIcon icon={toIcon(AlertCircleIcon)} size={16} />
+                  AEGIS
+                  {openCount > 0 && (
+                    <span className="ml-1 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
+                      bg-red-500 text-white flex items-center justify-center leading-none">
+                      {openCount > 99 ? "99+" : openCount}
+                    </span>
+                  )}
+                </span>
+                <ChevronDown size={14} className={`transition-transform duration-200 ${aegisOpen ? "rotate-180" : ""}`} />
+              </button>
+              {aegisOpen && (
+                <div className="ml-6 mt-1 flex flex-col gap-0.5 border-l border-border pl-3">
+                  {AEGIS_ITEMS.map((item) => (
+                    <button
+                      key={item.href}
+                      onClick={() => nav(item.href)}
+                      className="text-left px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-100"
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Loyalty mobile */}
             <div>
@@ -324,10 +410,25 @@ export default function Navbar() {
               )}
             </div>
 
+            {/* ILP */}
+            <a href="/ilp" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/ilp")}>
+              <HugeiconsIcon icon={toIcon(BarChartIcon)} size={16} />
+              ILP
+            </a>
+
+            {/* Tracker */}
+            <a href="/performance" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/performance")}>
+              <HugeiconsIcon icon={toIcon(ChartUpIcon)} size={16} />
+              Tracker
+            </a>
+
+            {/* Settings */}
             <a href="/settings" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/settings")}>
               <Settings size={16} strokeWidth={1.75} />
               Settings
             </a>
+
+            {/* About */}
             <a href="/about" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/about")}>
               <Info size={16} strokeWidth={1.75} />
               About

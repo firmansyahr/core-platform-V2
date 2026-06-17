@@ -163,13 +163,6 @@ const AI_CAPS = [
   },
 ];
 
-const DATA_STATS = [
-  { label: "Area",       value: "Jan 2024 – Apr 2026", sub: "SG (Semen Gresik)" },
-  { label: "Transaksi",  value: "2.148.655",            sub: "baris sintetis" },
-  { label: "Toko Unik",  value: "21.014",               sub: "36 kolom" },
-  { label: "Hierarki",   value: "14 SSM",               sub: "29 ASM · 79 TSO · 794 Sales" },
-];
-
 const WHY_ITEMS = [
   {
     q: "Mengapa Ensemble untuk AEGIS Score?",
@@ -374,38 +367,7 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* ══ 4. DATA & SCOPE ══════════════════════════════════════════════════ */}
-        <section className="py-16 px-6 border-t border-border">
-          <div className="max-w-5xl mx-auto">
-            <SectionLabel>Data &amp; Scope</SectionLabel>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-              {DATA_STATS.map(({ label, value, sub }) => (
-                <div key={label} className="rounded-xl border border-border bg-card p-4 text-center">
-                  <p className="text-xs text-muted-foreground mb-1">{label}</p>
-                  <p className="text-lg font-bold tabular-nums leading-tight">{value}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="rounded-xl border border-border bg-muted/40 p-5 text-sm text-muted-foreground leading-relaxed space-y-2.5 max-w-2xl mx-auto">
-              <p>
-                Dataset sintetis yang disamarkan dari data transaksi real distributor semen area SG.
-                Tiga brand sintetis:{" "}
-                <span className="text-foreground font-medium">Semen Elang</span> (main brand, reward Rp 5.000/ton) ·{" "}
-                <span className="text-foreground font-medium">Semen Badak Serbaguna</span> (companion, reward Rp 2.500/ton) ·{" "}
-                <span className="text-foreground font-medium">Semen Banteng</span> (fighting brand, AEGIS only).
-              </p>
-              <p>
-                36 kolom mencakup data transaksi, lokasi toko, hierarki organisasi (SSM → ASM → TSO → Salesman),
-                dan klasifikasi Pareto (Super Platinum, Platinum, Gold, Silver, Bronze).
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* ══ 5. LOGIKA BISNIS ═════════════════════════════════════════════════ */}
+        {/* ══ 4. LOGIKA BISNIS ═════════════════════════════════════════════════ */}
         <section className="py-16 px-6 border-t border-border bg-muted/30">
           <div className="max-w-5xl mx-auto">
             <SectionLabel>Logika Bisnis</SectionLabel>
