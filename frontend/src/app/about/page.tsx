@@ -185,7 +185,7 @@ const WHY_ITEMS = [
   {
     q: "Mengapa AEGIS adalah Warning, Bukan Diagnosis?",
     rows: [
-      { label: "Sumber data",    desc: "Hanya transaksi internal SIG — kompetitor tidak terlihat langsung" },
+      { label: "Sumber data",    desc: "Hanya transaksi internal — kompetitor tidak terlihat langsung" },
       { label: "Sinyal anomali", desc: "Terkonsentrasi = indikasi, bukan bukti aktivitas kompetitor" },
       { label: "Keputusan akhir", desc: "Validasi lapangan TSO tetap kunci — sistem hanya trigger" },
     ],
