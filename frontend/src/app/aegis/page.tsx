@@ -562,7 +562,7 @@ export default function AegisPage() {
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full
                                bg-blue-100 text-blue-700 dark:bg-blue-900/30
                                dark:text-blue-400 border border-blue-200">
-                AI-Powered Early Warning System
+                AI-Powered Early Guard & Intellegence System
               </span>
               <span className="text-sm text-muted-foreground">
                 Pantau toko yang mulai bermasalah · Bantu tim sales tentukan prioritas kunjungan
