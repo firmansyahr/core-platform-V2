@@ -239,6 +239,13 @@ def _compute_crs(stores: pd.DataFrame) -> pd.DataFrame:
     Dynamic weights: full (0.35/0.30/0.35) when ORS valid, else (0.55/0.45).
     IF boost: anomaly stores += if_score_norm * 0.15, capped at +10.
     """
+    stores = stores.copy()
+
+    # Prevent TypeError if any of these were stored as category dtype
+    for col in ["crs_raw", "priority_bonus", "if_boost", "aegis_score", "churn_prob"]:
+        if col in stores.columns and hasattr(stores[col], "cat"):
+            stores[col] = stores[col].astype(float)
+
     W_FBSI_FULL, W_HE_FULL, W_ORS_FULL = 0.35, 0.30, 0.35
     W_FBSI_LOW,  W_HE_LOW               = 0.55, 0.45
 
@@ -250,7 +257,6 @@ def _compute_crs(stores: pd.DataFrame) -> pd.DataFrame:
     crs_full = s_fbsi * W_FBSI_FULL + s_he * W_HE_FULL + s_ors * W_ORS_FULL
     crs_low  = s_fbsi * W_FBSI_LOW  + s_he * W_HE_LOW
 
-    stores = stores.copy()
     stores["crs_raw"]        = np.where(low_freq | (s_ors == 0), crs_low, crs_full)
     stores["priority_bonus"] = stores["Cluster Pareto"].map(PRIORITY_BONUS).fillna(0)
     stores["if_boost"] = np.where(
@@ -482,6 +488,24 @@ def _warning_vectorized(stores: pd.DataFrame) -> pd.Series:
 def compute_store_crs(df: pd.DataFrame) -> pd.DataFrame:
     """Full AEGIS ensemble pipeline → one row per store."""
     df = df.copy()
+
+    # Ensure category columns are native types so string ops and arithmetic work
+    _STR_COLS = [
+        "ID Toko", "Nama Toko", "Cluster Pareto", "Tipe Customer",
+        "Provinsi Toko", "Area AP Toko", "Area Toko", "Kabupaten Toko",
+        "Brands", "Nama Produk", "Kode Produk", "UOM 1", "UOM 2",
+        "TSO", "ASM", "SSM",
+    ]
+    for col in _STR_COLS:
+        if col in df.columns and hasattr(df[col], "cat"):
+            df[col] = df[col].astype(str)
+
+    for col in ["TON Quantity", "Zak Quantity"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    if "Harga" in df.columns:
+        df["Harga"] = pd.to_numeric(df["Harga"], errors="coerce").fillna(0)
+
     df["_p"] = df["Tanggal Transaksi"].dt.to_period("M")
     latest = df["_p"].max()
 

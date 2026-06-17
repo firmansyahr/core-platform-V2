@@ -23,6 +23,18 @@ def preload_data() -> None:
             return
         print(f"[data_loader] Loading {DATA_PATH}...", flush=True)
         _df_cache = pd.read_parquet(DATA_PATH)
+
+        # Convert any category columns to native types so engine arithmetic works
+        for col in _df_cache.columns:
+            if hasattr(_df_cache[col], "cat"):
+                _df_cache[col] = _df_cache[col].astype(str)
+
+        for col in ["TON Quantity", "Zak Quantity"]:
+            if col in _df_cache.columns:
+                _df_cache[col] = pd.to_numeric(_df_cache[col], errors="coerce").fillna(0)
+        if "Harga" in _df_cache.columns:
+            _df_cache["Harga"] = pd.to_numeric(_df_cache["Harga"], errors="coerce").fillna(0)
+
         _df_cache["Tanggal Transaksi"] = pd.to_datetime(
             _df_cache["Tanggal Transaksi"], errors="coerce"
         )
@@ -32,15 +44,6 @@ def preload_data() -> None:
             .sort_values("Tanggal Transaksi")
             .reset_index(drop=True)
         )
-        _CATEGORY_COLS = [
-            "ID Toko", "Nama Toko", "Cluster Pareto", "Tipe Customer",
-            "Provinsi Toko", "Area AP Toko", "Area Toko", "Kabupaten Toko",
-            "Brands", "Nama Produk", "Kode Produk", "UOM 1", "UOM 2",
-            "TSO", "ASM", "SSM",
-        ]
-        for col in _CATEGORY_COLS:
-            if col in _df_cache.columns:
-                _df_cache[col] = _df_cache[col].astype("category")
         mb = _df_cache.memory_usage(deep=True).sum() / 1024 / 1024
         print(f"[data_loader] Loaded: {len(_df_cache):,} baris, {mb:.1f} MB", flush=True)
     except Exception as e:
