@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import threading
 import uuid
 from datetime import date, datetime, timezone
@@ -34,10 +35,24 @@ from api.core.loyalty_engine import (
 
 router = APIRouter(prefix="/api/loyalty", tags=["loyalty"])
 
-_MEMBERS_PATH = Path(__file__).parent.parent / "data" / "loyalty_members.json"
-_HISTORY_PATH = Path(__file__).parent.parent / "data" / "loyalty_history.json"
-_CONFIG_PATH  = Path(__file__).parent.parent / "data" / "loyalty_config.json"
 _LOCK = threading.Lock()
+
+
+def _get_data_dir() -> Path:
+    vol = Path("/mnt/data")
+    if vol.exists() and os.access(vol, os.W_OK):
+        d = vol / "app_data"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+    d = Path(__file__).parent.parent / "data"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+_DATA_DIR     = _get_data_dir()
+_MEMBERS_PATH = _DATA_DIR / "loyalty_members.json"
+_HISTORY_PATH = _DATA_DIR / "loyalty_history.json"
+_CONFIG_PATH  = _DATA_DIR / "loyalty_config.json"
 
 VALID_REWARD_TYPES = set(REWARD_RATES.keys())
 VALID_CLUSTERS = {"Super Platinum", "Platinum", "Gold", "Silver", "Bronze"}
@@ -46,13 +61,17 @@ VALID_STATUS   = {"Aktif", "Nonaktif"}
 
 # ── File helpers ──────────────────────────────────────────────────────────────
 
-def _rj(path: Path) -> list[dict]:
+def _rj(path: Path, default: Any = None) -> Any:
     if not path.exists():
-        return []
-    return json.loads(path.read_text(encoding="utf-8"))
+        return default if default is not None else []
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return default if default is not None else []
 
 
-def _wj(path: Path, data: list[dict]) -> None:
+def _wj(path: Path, data: Any) -> None:
+    _DATA_DIR.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -943,7 +962,7 @@ def update_targets_config(body: TargetConfigBody) -> dict:
             raise HTTPException(400, detail=f"{field} harus antara 0 dan 1")
 
     new_cfg = body.model_dump()
-    _CONFIG_PATH.write_text(json.dumps(new_cfg, indent=2), encoding="utf-8")
+    _wj(_CONFIG_PATH, new_cfg)
     return {"status": "ok", "data": new_cfg, "meta": _meta()}
 
 

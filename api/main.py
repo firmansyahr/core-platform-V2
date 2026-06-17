@@ -12,6 +12,8 @@ from api.routers import aegis, auth, cad_history, export, health, home, ilp, loy
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from api.startup import ensure_data_files
+    ensure_data_files()
     print("[startup] Pre-loading data ke memory...", flush=True)
     from api.core.data_loader import preload_data
     preload_data()

@@ -1,16 +1,28 @@
 """
 Local JSON storage for CAD Alert History.
 Thread-safe read/write via _lock.
-File path: api/data/cad_history.json
 """
 import json
 import logging
+import os
 import threading
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-_DATA_DIR  = Path(__file__).parent.parent / "data"
+
+def _get_data_dir() -> Path:
+    vol = Path("/mnt/data")
+    if vol.exists() and os.access(vol, os.W_OK):
+        d = vol / "app_data"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+    d = Path(__file__).parent.parent / "data"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+_DATA_DIR  = _get_data_dir()
 _HIST_FILE = _DATA_DIR / "cad_history.json"
 _lock      = threading.Lock()
 _log       = logging.getLogger(__name__)

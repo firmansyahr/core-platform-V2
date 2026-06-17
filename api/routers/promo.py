@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import threading
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -28,9 +29,23 @@ from api.core.promo_engine import (
 
 router = APIRouter(prefix="/api/promo", tags=["promo"])
 
-_PROMOS_PATH  = Path(__file__).parent.parent / "data" / "promos.json"
-_MEMBERS_PATH = Path(__file__).parent.parent / "data" / "loyalty_members.json"
 _LOCK = threading.Lock()
+
+
+def _get_data_dir() -> Path:
+    vol = Path("/mnt/data")
+    if vol.exists() and os.access(vol, os.W_OK):
+        d = vol / "app_data"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+    d = Path(__file__).parent.parent / "data"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+_DATA_DIR     = _get_data_dir()
+_PROMOS_PATH  = _DATA_DIR / "promos.json"
+_MEMBERS_PATH = _DATA_DIR / "loyalty_members.json"
 
 
 # ── File I/O ──────────────────────────────────────────────────────────────────
@@ -38,10 +53,14 @@ _LOCK = threading.Lock()
 def _rp(path: Path) -> Any:
     if not path.exists():
         return []
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
 
 
 def _wp(path: Path, data: Any) -> None:
+    _DATA_DIR.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
