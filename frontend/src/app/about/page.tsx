@@ -4,7 +4,7 @@ import Navbar from "@/components/Navbar";
 import {
   AlertTriangle, BarChart2, Users, TrendingUp,
   Brain, Cpu, Target, Zap, Layers, GitBranch,
-  ShieldCheck, Activity,
+  ShieldCheck, Activity, Swords, Bot, Sparkles,
   CheckCircle2, XCircle,
   ExternalLink, Map, FileText, Award,
 } from "lucide-react";
@@ -14,7 +14,7 @@ import {
 const HERO_BADGES = [
   "Python", "FastAPI", "Next.js 14", "TypeScript",
   "XGBoost", "Prophet", "SHAP", "ILP/PuLP",
-  "scikit-learn", "Recharts", "PostgreSQL",
+  "scikit-learn", "Recharts", "Claude API",
 ];
 
 const MODULES = [
@@ -94,6 +94,25 @@ const MODULES = [
       "Store Journey Modal",
     ],
   },
+  {
+    id: "competitor",
+    color: "#ea580c",
+    bgCls:   "bg-orange-50 dark:bg-orange-950/20",
+    borderCls: "border-orange-200/60 dark:border-orange-800/40",
+    iconCls: "bg-orange-100 dark:bg-orange-950/40 text-orange-600 dark:text-orange-400",
+    icon:    Swords,
+    label:   "External Signal Layer",
+    name:    "Competitor Intelligence",
+    desc:    "Triangulasi sinyal internal AEGIS dengan data ASPERSSI untuk mengkonfirmasi apakah anomali transaksi disebabkan tekanan kompetitor eksternal atau faktor internal dan seasonal.",
+    metric:  "Prophet + LinReg + Delta Projection · 5 Verdict",
+    features: [
+      "Triangulasi per Provinsi",
+      "5 Verdict Level",
+      "Ranking Dual-Source (ASPERSSI + CAD)",
+      "Prediksi Market Share",
+      "AI Insight Competitor",
+    ],
+  },
 ];
 
 const AI_CAPS = [
@@ -163,6 +182,25 @@ const AI_CAPS = [
   },
 ];
 
+const GEN_AI_CAPS = [
+  {
+    icon: Bot,
+    title: "Conversational Analytics",
+    desc: "Chat bahasa natural tentang kondisi pasar dan program loyalty",
+    detail: "Multi-turn context · Tersedia di semua halaman (ikon melayang pojok kanan bawah) · Claude API",
+    color: "text-cyan-600 dark:text-cyan-400",
+    bg: "bg-cyan-50 dark:bg-cyan-950/20",
+  },
+  {
+    icon: Sparkles,
+    title: "AI Report Generator",
+    desc: "Laporan bulanan lengkap otomatis dalam satu klik",
+    detail: "Ringkasan eksekutif · Analisis AEGIS · Evaluasi Loyalty · Rekomendasi tindakan · Download PDF",
+    color: "text-pink-600 dark:text-pink-400",
+    bg: "bg-pink-50 dark:bg-pink-950/20",
+  },
+];
+
 const WHY_ITEMS = [
   {
     q: "Mengapa Ensemble untuk AEGIS Score?",
@@ -202,7 +240,9 @@ const STEPS = [
   { n: 6, icon: "📊", title: "ILP Optimizer",         desc: "Seleksi toko untuk program loyalty dengan constraint budget, cluster, dan wilayah." },
   { n: 7, icon: "👥", title: "Loyalty Management",    desc: "Kelola peserta aktif, smart promotion berbasis AEGIS, target & achievement monitoring." },
   { n: 8, icon: "🎁", title: "Program Promo",         desc: "Buat, monitor, dan hentikan program promosi multi-jenis dengan tracking realisasi." },
-  { n: 9, icon: "📈", title: "Performance Tracker",   desc: "Evaluasi outcome program: volume delta, FBSI delta, dan verdict otomatis per toko." },
+  { n: 9, icon: "📈", title: "Performance Tracker",       desc: "Evaluasi outcome program: volume delta, FBSI delta, dan verdict otomatis per toko." },
+  { n: 10, icon: "🤝", title: "Competitor Intelligence", desc: "Triangulasi AEGIS + ASPERSSI per provinsi: konfirmasi ancaman kompetitor, ranking brand dari dua sumber, dan prediksi market share dengan label keandalan." },
+  { n: 11, icon: "📄", title: "AI Report Generator",    desc: "Generate laporan bulanan otomatis — ringkasan eksekutif, analisis AEGIS, evaluasi loyalty, dan rekomendasi tindakan dalam satu klik. Tinjau di browser sebelum unduh PDF." },
 ];
 
 const ACCESS_MATRIX = [
@@ -216,6 +256,9 @@ const ACCESS_MATRIX = [
   { feature: "Loyalty Management",       admin: true,  viewer: true  },
   { feature: "Program Promo",            admin: true,  viewer: true  },
   { feature: "Performance Tracker",      admin: true,  viewer: true  },
+  { feature: "Competitor Intelligence",  admin: true,  viewer: true  },
+  { feature: "AI Report Generator",      admin: true,  viewer: true  },
+  { feature: "Conversational Analytics", admin: true,  viewer: true  },
   { feature: "Settings (view)",          admin: true,  viewer: true  },
   { feature: "Settings (edit)",          admin: true,  viewer: false },
   { feature: "Reload Data",             admin: true,  viewer: true  },
@@ -226,6 +269,50 @@ const PATTERNS = [
   { code: "B", label: "Toko bermasalah — tiga sinyal aktif bersamaan · Prioritas tertinggi",   cls: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400" },
   { code: "C", label: "Pola order berubah — pre-warning, pantau sebelum memburuk",              cls: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
   { code: "D", label: "Toko sudah kembali normal — momentum positif, perkuat hubungan",        cls: "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400" },
+];
+
+const CI_VERDICTS = [
+  { verdict: "Terkonfirmasi",    label: "Warning AEGIS tinggi DAN market share kompetitor naik di provinsi yang sama", cls: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400" },
+  { verdict: "Waspada Awal",     label: "Market share kompetitor naik meski warning AEGIS masih rendah — sinyal dini", cls: "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400" },
+  { verdict: "Bukan Kompetitor", label: "Warning AEGIS tinggi tapi market share stabil — indikasi masalah internal/seasonal", cls: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400" },
+  { verdict: "Data Kurang",      label: "Warning AEGIS tinggi tapi data ASPERSSI tidak tersedia untuk provinsi ini", cls: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
+  { verdict: "Normal",           label: "Tidak ada indikasi tekanan kompetitor maupun anomali internal", cls: "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400" },
+];
+
+const PROMO_TYPES = [
+  {
+    id:    "flat_multiplier",
+    label: "Tipe 1",
+    name:  "Flat Multiplier",
+    tag:   "Efek Instan",
+    color: "#2563eb",
+    bgCls: "bg-blue-50 dark:bg-blue-950/20",
+    borderCls: "border-blue-200/60 dark:border-blue-800/40",
+    desc:  "Setiap transaksi langsung mendapat poin berlipat tanpa perlu mencapai target apapun. Cocok untuk dorongan jangka pendek yang ingin langsung terasa.",
+    example: "\"Semua transaksi Elang bulan ini 2× Poin\"",
+  },
+  {
+    id:    "multi_tier",
+    label: "Tipe 2",
+    name:  "Multi-Tier Target",
+    tag:   "Target-Driven",
+    color: "#16a34a",
+    bgCls: "bg-green-50 dark:bg-green-950/20",
+    borderCls: "border-green-200/60 dark:border-green-800/40",
+    desc:  "Reward bertingkat berdasarkan persentase pencapaian target individual toko. Threshold dan multiplier setiap tier dikonfigurasi bebas saat membuat program.",
+    example: "100% target → 2× Poin · 120% target → 3× Poin · >120% → 1× Poin (reguler)",
+  },
+  {
+    id:    "leaderboard",
+    label: "Tipe 3",
+    name:  "Gamifikasi / Leaderboard",
+    tag:   "Kompetitif",
+    color: "#ea580c",
+    bgCls: "bg-orange-50 dark:bg-orange-950/20",
+    borderCls: "border-orange-200/60 dark:border-orange-800/40",
+    desc:  "Toko-toko bersaing membentuk papan peringkat berdasarkan volume total atau growth persentase, dengan scope per cluster atau global. Reward berbeda per posisi — poin maupun Rupiah tetap.",
+    example: "Ranking Posisi 1 → Rp 5 jt · Posisi 2 → Rp 3 jt · Posisi 3 → Rp 1 jt",
+  },
 ];
 
 // ─── Section label helper ─────────────────────────────────────────────────────
@@ -274,14 +361,15 @@ export default function AboutPage() {
         {/* ══ 2. EMPAT MODUL ═══════════════════════════════════════════════════ */}
         <section className="py-16 px-6 border-t border-border">
           <div className="max-w-6xl mx-auto">
-            <SectionLabel>Empat Modul Utama</SectionLabel>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {MODULES.map((m) => {
+            <SectionLabel>Lima Modul Utama</SectionLabel>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {MODULES.map((m, idx) => {
                 const Icon = m.icon;
+                const isLastAlone = idx === MODULES.length - 1 && MODULES.length % 2 !== 0;
                 return (
                   <div
                     key={m.id}
-                    className={`rounded-xl border bg-card p-6 flex flex-col gap-4 ${m.borderCls}`}
+                    className={`rounded-xl border bg-card p-6 flex flex-col gap-4 ${m.borderCls}${isLastAlone ? " md:col-span-2 lg:col-span-1" : ""}`}
                   >
                     {/* Header */}
                     <div className="flex items-start gap-3">
@@ -338,6 +426,66 @@ export default function AboutPage() {
                 ))}
               </div>
             </div>
+
+            {/* CI Verdicts */}
+            <div className="mt-4 rounded-xl border border-border bg-muted/30 p-5">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                5 Verdict Competitor Intelligence
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {CI_VERDICTS.map(({ verdict, label, cls }) => (
+                  <div key={verdict} className="flex items-start gap-2">
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 leading-tight mt-0.5 ${cls}`}>
+                      {verdict}
+                    </span>
+                    <span className="text-xs text-muted-foreground leading-snug">{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ══ 2.5. TIGA TIPE PROGRAM PROMO ════════════════════════════════════ */}
+        <section className="py-16 px-6 border-t border-border">
+          <div className="max-w-6xl mx-auto">
+            <SectionLabel>Tiga Tipe Program Promo</SectionLabel>
+            <p className="text-sm text-muted-foreground text-center mb-8 max-w-2xl mx-auto">
+              Program Promo mendukung tiga tipe konfigurasi yang masing-masing cocok untuk strategi
+              insentif berbeda. Semua tipe menggunakan satuan Poin yang dikonversi ke Rupiah
+              berdasarkan nilai per brand yang dikonfigurasi terpusat di Settings.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {PROMO_TYPES.map((t) => (
+                <div key={t.id} className={`rounded-xl border bg-card p-6 flex flex-col gap-4 ${t.borderCls}`}>
+                  <div>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t.label}</span>
+                    <h3 className="font-semibold leading-tight">{t.name}</h3>
+                  </div>
+                  <span
+                    className={`self-start px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${t.bgCls}`}
+                    style={{ color: t.color }}
+                  >
+                    {t.tag}
+                  </span>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{t.desc}</p>
+                  <div
+                    className={`rounded-lg px-3 py-2 text-xs font-medium ${t.bgCls}`}
+                    style={{ color: t.color }}
+                  >
+                    {t.example}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 rounded-xl border border-border bg-muted/30 p-5">
+              <p className="text-xs font-semibold text-foreground mb-1.5">Konversi Poin ke Rupiah</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Ketiga tipe program menggunakan satuan <strong>Poin</strong> yang dikonversi ke Rupiah berdasarkan nilai per brand
+                yang dikonfigurasi terpusat di Settings — memungkinkan strategi insentif berbeda per brand tanpa mengubah
+                struktur program satu per satu.
+              </p>
+            </div>
           </div>
         </section>
 
@@ -363,6 +511,32 @@ export default function AboutPage() {
                   </div>
                 );
               })}
+            </div>
+
+            {/* Generative AI */}
+            <div className="mt-8 pt-8 border-t border-border/50">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest text-center mb-6">
+                Generative AI (Claude API)
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
+                {GEN_AI_CAPS.map((cap) => {
+                  const Icon = cap.icon;
+                  return (
+                    <div key={cap.title} className="rounded-xl border border-border bg-card p-4 space-y-3">
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${cap.bg}`}>
+                        <Icon size={16} className={cap.color} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold leading-tight">{cap.title}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{cap.desc}</p>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground leading-relaxed border-t border-border pt-2">
+                        {cap.detail}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </section>
