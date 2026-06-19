@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import {
   Plus, Search, X, Calendar, Users, Zap, TrendingUp, AlertCircle,
-  ChevronRight, BarChart2, ExternalLink,
+  ChevronRight, BarChart2, ExternalLink, Trophy,
 } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -47,16 +47,12 @@ interface Promo {
   nama_promo: string;
   deskripsi: string;
   jenis_promo: string;
+  tipe_program?: string;
   status: string;
   periode_mulai: string;
   periode_selesai: string;
   created_by: string;
   created_at: string;
-  konfigurasi_promo: {
-    reward_rate:  { enabled: boolean; mode: string; flat_rate: number; per_cluster_rates: Record<string, number> };
-    target_bonus: { enabled: boolean; threshold_pct: number; bonus_rate: number };
-    cashback:     { enabled: boolean; cashback_pct: number };
-  };
   summary_peserta: SummaryPeserta;
   final_summary?: FinalSummary;
 }
@@ -80,18 +76,24 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-const JENIS_META: Record<string, { label: string; bg: string; text: string }> = {
-  reward_rate:      { label: "Reward Rate",    bg: "bg-purple-100", text: "text-purple-700" },
-  target_bonus:     { label: "Target Bonus",   bg: "bg-amber-100",  text: "text-amber-700"  },
-  cashback:         { label: "Cashback",       bg: "bg-sky-100",    text: "text-sky-700"    },
-  kombinasi:        { label: "Kombinasi",      bg: "bg-pink-100",   text: "text-pink-700"   },
-  multi_tier_points:{ label: "Multi-Tier",     bg: "bg-indigo-100", text: "text-indigo-700" },
+const TIPE_META: Record<string, { label: string; bg: string; text: string; icon: React.ElementType }> = {
+  flat_multiplier:   { label: "Flat Multiplier", bg: "bg-blue-100",   text: "text-blue-700",   icon: Zap      },
+  multi_tier:        { label: "Multi-Tier",       bg: "bg-indigo-100", text: "text-indigo-700", icon: TrendingUp },
+  multi_tier_points: { label: "Multi-Tier",       bg: "bg-indigo-100", text: "text-indigo-700", icon: TrendingUp },
+  leaderboard:       { label: "Leaderboard",      bg: "bg-amber-100",  text: "text-amber-700",  icon: Trophy   },
+  reward_rate:       { label: "Reward Rate",       bg: "bg-purple-100", text: "text-purple-700", icon: TrendingUp },
+  target_bonus:      { label: "Target Bonus",      bg: "bg-green-100",  text: "text-green-700",  icon: TrendingUp },
+  cashback:          { label: "Cashback",          bg: "bg-sky-100",    text: "text-sky-700",    icon: Zap      },
+  kombinasi:         { label: "Kombinasi",         bg: "bg-pink-100",   text: "text-pink-700",   icon: BarChart2 },
 };
 
-function JenisBadge({ jenis }: { jenis: string }) {
-  const m = JENIS_META[jenis] ?? { label: jenis, bg: "bg-gray-100", text: "text-gray-700" };
+function TipeBadge({ tipe, jenis }: { tipe?: string; jenis: string }) {
+  const key = tipe || jenis;
+  const m = TIPE_META[key] ?? { label: key, bg: "bg-gray-100", text: "text-gray-700", icon: BarChart2 };
+  const Icon = m.icon;
   return (
-    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${m.bg} ${m.text}`}>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${m.bg} ${m.text}`}>
+      <Icon size={10} />
       {m.label}
     </span>
   );
@@ -111,7 +113,7 @@ function Modal({ open, onClose, children }: { open: boolean; onClose: () => void
   );
 }
 
-// ── CreatePromoModal ──────────────────────────────────────────────────────────
+// ── CreatePromoModal — 4 steps, 3 tipe ───────────────────────────────────────
 
 interface TierRow {
   tier_id: number;
@@ -129,6 +131,16 @@ interface SimResult {
   breakdown: { segmen: string; volume_ton: number; multiplier: number; poin: number; keterangan: string }[];
 }
 
+interface RankRewardRow {
+  id: number;
+  isRange: boolean;
+  rank: number;
+  rankFrom: number;
+  rankTo: number;
+  label: string;
+  reward_value: number;
+}
+
 const BRANDS = ["Semen Elang", "Semen Badak"];
 
 const DEFAULT_FORM = {
@@ -142,22 +154,44 @@ const DEFAULT_TIERS: TierRow[] = [
   { tier_id: 1, label: "Tier 1 — Silver", threshold_pct: 100, multiplier: 1.5, keterangan: "" },
 ];
 
+type TipeProgram = "flat_multiplier" | "multi_tier" | "leaderboard";
+
 function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [step, setStep]             = useState(1);
-  const [form, setForm]             = useState(DEFAULT_FORM);
-  const [tiers, setTiers]           = useState<TierRow[]>(DEFAULT_TIERS);
-  const [simTarget, setSimTarget]   = useState(100);
-  const [simRealisasi, setSimReal]  = useState(110);
-  const [simBrand, setSimBrand]     = useState("Semen Elang");
-  const [simResult, setSimResult]   = useState<SimResult | null>(null);
-  const [simLoading, setSimLoading] = useState(false);
-  const [saving, setSaving]         = useState(false);
-  const [err, setErr]               = useState("");
+  const [step, setStep]               = useState(1);
+  const [selectedType, setSelectedType] = useState<TipeProgram | null>(null);
+  const [form, setForm]               = useState(DEFAULT_FORM);
+
+  // flat_multiplier state
+  const [flatMult, setFlatMult]           = useState(2);
+  const [flatBrands, setFlatBrands]       = useState<string[]>(["Semen Elang"]);
+
+  // multi_tier state
+  const [tiers, setTiers]                 = useState<TierRow[]>(DEFAULT_TIERS);
+  const [simTarget, setSimTarget]         = useState(100);
+  const [simRealisasi, setSimReal]        = useState(110);
+  const [simBrand, setSimBrand]           = useState("Semen Elang");
+  const [simResult, setSimResult]         = useState<SimResult | null>(null);
+  const [simLoading, setSimLoading]       = useState(false);
+
+  // leaderboard state
+  const [lbBasis, setLbBasis]             = useState<"volume" | "growth_pct">("volume");
+  const [lbScope, setLbScope]             = useState<"global" | "per_cluster">("global");
+  const [lbBentuk, setLbBentuk]           = useState<"poin" | "rupiah_flat">("poin");
+  const [lbMinTrx, setLbMinTrx]           = useState(1);
+  const [lbRewards, setLbRewards]         = useState<RankRewardRow[]>([
+    { id: 1, isRange: false, rank: 1, rankFrom: 1, rankTo: 1, label: "Juara 1", reward_value: 10000 },
+    { id: 2, isRange: false, rank: 2, rankFrom: 2, rankTo: 2, label: "Juara 2", reward_value: 7500  },
+    { id: 3, isRange: false, rank: 3, rankFrom: 3, rankTo: 3, label: "Juara 3", reward_value: 5000  },
+  ]);
+
+  const [saving, setSaving]               = useState(false);
+  const [err, setErr]                     = useState("");
 
   function setF<K extends keyof typeof DEFAULT_FORM>(k: K, v: typeof DEFAULT_FORM[K]) {
     setForm(prev => ({ ...prev, [k]: v }));
   }
 
+  // ── Multi-tier helpers ──
   const sortedTiers      = [...tiers].sort((a, b) => a.threshold_pct - b.threshold_pct);
   const highestThreshold = sortedTiers.length > 0 ? sortedTiers[sortedTiers.length - 1].threshold_pct : 100;
   const tier1Threshold   = sortedTiers.length > 0 ? sortedTiers[0].threshold_pct : 100;
@@ -168,14 +202,11 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
     const nextMul = tiers.length > 0 ? +(Math.max(...tiers.map(t => t.multiplier)) + 0.5).toFixed(1) : 2.0;
     setTiers(prev => [...prev, { tier_id: nextId, label: `Tier ${nextId}`, threshold_pct: nextThr, multiplier: nextMul, keterangan: "" }]);
   }
-
   function removeTier(id: number) { setTiers(prev => prev.filter(t => t.tier_id !== id)); }
-
   function updateTier(id: number, key: keyof TierRow, val: string | number) {
     setTiers(prev => prev.map(t => t.tier_id === id ? { ...t, [key]: val } : t));
   }
 
-  // Tier validation
   const tierErrors: string[] = [];
   if (tiers.length === 0) tierErrors.push("Minimal satu tier harus ditambahkan");
   const thresholds = sortedTiers.map(t => t.threshold_pct);
@@ -184,7 +215,6 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
     if (t.multiplier <= 1) tierErrors.push(`${t.label}: multiplier harus > 1`);
     if (t.threshold_pct <= 0) tierErrors.push(`${t.label}: threshold harus > 0%`);
   });
-  const step2Valid = tierErrors.length === 0;
 
   async function runSimulation() {
     setSimLoading(true); setSimResult(null);
@@ -193,12 +223,9 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          volume_realisasi:    simRealisasi,
-          volume_target:       simTarget,
-          brand:               simBrand,
-          tiers:               sortedTiers,
-          reguler_multiplier:  1.0,
-          overflow_multiplier: 1.0,
+          volume_realisasi: simRealisasi, volume_target: simTarget,
+          brand: simBrand, tiers: sortedTiers,
+          reguler_multiplier: 1.0, overflow_multiplier: 1.0,
         }),
       });
       const j = await r.json();
@@ -206,44 +233,64 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
     } catch { /* ignore */ } finally { setSimLoading(false); }
   }
 
+  // ── Leaderboard helpers ──
+  function addRankReward() {
+    const newId = lbRewards.length > 0 ? Math.max(...lbRewards.map(r => r.id)) + 1 : 1;
+    setLbRewards(prev => [...prev, { id: newId, isRange: false, rank: prev.length + 1, rankFrom: prev.length + 1, rankTo: prev.length + 3, label: `Rank ${newId}`, reward_value: 1000 }]);
+  }
+  function removeRankReward(id: number) { setLbRewards(prev => prev.filter(r => r.id !== id)); }
+  function updateRR(id: number, key: keyof RankRewardRow, val: string | number | boolean) {
+    setLbRewards(prev => prev.map(r => r.id === id ? { ...r, [key]: val } : r));
+  }
+
+  // ── Validation ──
+  const step1Valid = selectedType !== null;
+  const step2Valid = form.nama_promo.trim().length > 0 && form.periode_mulai && form.periode_selesai
+    && form.periode_selesai >= form.periode_mulai;
+  const step3Valid = (
+    selectedType === "flat_multiplier" ? flatMult > 1 :
+    selectedType === "multi_tier" ? tierErrors.length === 0 :
+    selectedType === "leaderboard" ? lbRewards.length > 0 :
+    false
+  );
+
+  // ── Build payload ──
   function buildPayload() {
-    return {
-      nama_promo:      form.nama_promo,
-      deskripsi:       form.deskripsi,
-      periode_mulai:   form.periode_mulai,
-      periode_selesai: form.periode_selesai,
-      reward_config: {
-        type:                "multi_tier_points",
-        tiers:               sortedTiers,
-        reguler_multiplier:  1.0,
-        overflow_multiplier: 1.0,
-      },
+    const base = {
+      nama_promo: form.nama_promo, deskripsi: form.deskripsi,
+      periode_mulai: form.periode_mulai, periode_selesai: form.periode_selesai,
+      tipe_program: selectedType,
     };
+    if (selectedType === "flat_multiplier") {
+      return { ...base, reward_config: { type: "flat_multiplier", multiplier: flatMult, brand_filter: flatBrands } };
+    }
+    if (selectedType === "multi_tier") {
+      return { ...base, reward_config: { type: "multi_tier_points", tiers: sortedTiers, reguler_multiplier: 1.0, overflow_multiplier: 1.0 } };
+    }
+    if (selectedType === "leaderboard") {
+      const rank_rewards = lbRewards.map(r => r.isRange
+        ? { rank_range: [r.rankFrom, r.rankTo], label: r.label, reward_value: r.reward_value }
+        : { rank: r.rank, label: r.label, reward_value: r.reward_value }
+      );
+      return { ...base, reward_config: { type: "leaderboard", basis_ranking: lbBasis, scope: lbScope, bentuk_reward: lbBentuk, minimum_transaksi: lbMinTrx, rank_rewards } };
+    }
+    return base;
   }
 
   async function handleSave() {
     setSaving(true); setErr("");
     try {
-      const r = await fetch(`${API}/api/promo/create-v2`, {
+      const r = await fetch(`${API}/api/promo/create-v3`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildPayload()),
       });
-      if (!r.ok) {
-        const j = await r.json();
-        setErr(j.detail || "Gagal membuat promo");
-        return;
-      }
+      if (!r.ok) { const j = await r.json(); setErr(j.detail || "Gagal membuat promo"); return; }
       onCreated();
-    } catch {
-      setErr("Koneksi gagal");
-    } finally {
-      setSaving(false);
-    }
+    } catch { setErr("Koneksi gagal"); } finally { setSaving(false); }
   }
 
-  const step1Valid = form.nama_promo.trim().length > 0 && form.periode_mulai && form.periode_selesai
-    && form.periode_selesai >= form.periode_mulai;
+  const totalSteps = 4;
 
   return (
     <Modal open onClose={onClose}>
@@ -251,11 +298,11 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
       <div className="flex items-center justify-between px-6 py-4 border-b">
         <div>
           <h2 className="font-semibold text-base">Buat Program Promo Baru</h2>
-          <p className="text-xs text-muted-foreground">Langkah {step} dari 3</p>
+          <p className="text-xs text-muted-foreground">Langkah {step} dari {totalSteps}</p>
         </div>
         <div className="flex items-center gap-2">
-          {[1,2,3].map(s => (
-            <div key={s} className={`w-8 h-1.5 rounded-full transition-colors ${s === step ? "bg-purple-600" : s < step ? "bg-purple-300" : "bg-gray-200"}`} />
+          {Array.from({ length: totalSteps }).map((_, i) => (
+            <div key={i} className={`w-8 h-1.5 rounded-full transition-colors ${i + 1 === step ? "bg-purple-600" : i + 1 < step ? "bg-purple-300" : "bg-gray-200"}`} />
           ))}
         </div>
       </div>
@@ -263,8 +310,60 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
 
-        {/* Step 1: Info Dasar */}
+        {/* Step 1: Pilih Tipe Program */}
         {step === 1 && (
+          <div className="space-y-4">
+            <p className="text-sm font-medium text-muted-foreground">Pilih jenis reward yang akan digunakan dalam program ini</p>
+            <div className="space-y-3">
+              {([
+                { key: "flat_multiplier", icon: Zap, color: "blue",
+                  title: "Flat Multiplier",
+                  sub: "Setiap transaksi mendapat poin berlipat tetap. Tidak ada target per toko.",
+                  detail: "Contoh: semua toko Semen Elang mendapat 2× poin selama periode promo." },
+                { key: "multi_tier", icon: TrendingUp, color: "indigo",
+                  title: "Multi-Tier Target",
+                  sub: "Poin berlipat makin besar sesuai pencapaian % target per toko.",
+                  detail: "Contoh: capai 100% target → 1.5×, capai 120% target → 2×, dst." },
+                { key: "leaderboard", icon: Trophy, color: "amber",
+                  title: "Gamifikasi / Leaderboard",
+                  sub: "Toko bersaing dalam ranking. Pemenang mendapat reward berdasarkan posisi.",
+                  detail: "Contoh: Juara 1 mendapat 10.000 poin, Juara 2 mendapat 7.500 poin, dst." },
+              ] as const).map(({ key, icon: Icon, color, title, sub, detail }) => {
+                const isSelected = selectedType === key;
+                const colors: Record<string, string> = {
+                  blue: isSelected ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200" : "border-gray-200 hover:border-blue-300 hover:bg-blue-50/30",
+                  indigo: isSelected ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200" : "border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30",
+                  amber: isSelected ? "border-amber-500 bg-amber-50 ring-2 ring-amber-200" : "border-gray-200 hover:border-amber-300 hover:bg-amber-50/30",
+                };
+                const iconColors: Record<string, string> = { blue: "text-blue-600", indigo: "text-indigo-600", amber: "text-amber-600" };
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setSelectedType(key)}
+                    className={`w-full text-left border-2 rounded-xl p-4 transition-all ${colors[color]}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-0.5 ${iconColors[color]}`}>
+                        <Icon size={22} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-sm">{title}</span>
+                          {isSelected && <span className="text-xs font-medium text-white bg-purple-600 px-2 py-0.5 rounded-full">Dipilih</span>}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>
+                        <p className="text-xs text-gray-400 mt-1 italic">{detail}</p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: Info Dasar */}
+        {step === 2 && (
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium mb-1">Nama Program <span className="text-red-500">*</span></label>
@@ -288,22 +387,13 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium mb-1">Periode Mulai <span className="text-red-500">*</span></label>
-                <input
-                  type="date"
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  value={form.periode_mulai}
-                  onChange={e => setF("periode_mulai", e.target.value)}
-                />
+                <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  value={form.periode_mulai} onChange={e => setF("periode_mulai", e.target.value)} />
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1">Periode Selesai <span className="text-red-500">*</span></label>
-                <input
-                  type="date"
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  value={form.periode_selesai}
-                  min={form.periode_mulai}
-                  onChange={e => setF("periode_selesai", e.target.value)}
-                />
+                <input type="date" className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  value={form.periode_selesai} min={form.periode_mulai} onChange={e => setF("periode_selesai", e.target.value)} />
               </div>
             </div>
             {form.periode_mulai && form.periode_selesai && (
@@ -315,18 +405,67 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
           </div>
         )}
 
-        {/* Step 2: Struktur Multi-Tier Target */}
-        {step === 2 && (
+        {/* Step 3: Konfigurasi — Flat Multiplier */}
+        {step === 3 && selectedType === "flat_multiplier" && (
           <div className="space-y-4">
-            {/* Info box */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-xs text-blue-900 space-y-1">
+              <p className="font-semibold">Flat Multiplier</p>
+              <p>Setiap toko yang memenuhi filter brand mendapat poin berlipat tetap untuk semua volume transaksi.</p>
+              <p>Tidak ada target pencapaian — semua volume dihitung otomatis dari transaksi nyata.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-1">Multiplier Poin <span className="text-red-500">*</span></label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" min={1.1} step={0.1}
+                  className="w-28 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={flatMult}
+                  onChange={e => setFlatMult(+e.target.value)}
+                />
+                <span className="text-sm text-muted-foreground">× poin (harus &gt; 1)</span>
+              </div>
+              {flatMult <= 1 && <p className="text-xs text-red-600 mt-1">Multiplier harus lebih dari 1</p>}
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-2">Brand Filter</label>
+              <p className="text-xs text-muted-foreground mb-2">Hanya toko dengan brand utama berikut yang mendapat multiplier. Kosongkan untuk semua brand.</p>
+              <div className="flex gap-3">
+                {BRANDS.map(b => (
+                  <label key={b} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="rounded"
+                      checked={flatBrands.includes(b)}
+                      onChange={e => setFlatBrands(prev => e.target.checked ? [...prev, b] : prev.filter(x => x !== b))}
+                    />
+                    {b}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {flatMult > 1 && (
+              <div className="bg-gray-50 border rounded-xl p-4 text-xs text-gray-600 space-y-1">
+                <p className="font-medium text-sm">Estimasi cepat</p>
+                <p>Volume 100 ton × {flatMult}× = <span className="font-semibold text-blue-700">{fmtNum(100 * flatMult)} poin</span></p>
+                <p>= <span className="font-semibold text-blue-700">{fmtRp(100 * flatMult * 5000)}</span> (nilai poin Rp 5.000/poin)</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 3: Konfigurasi — Multi-Tier */}
+        {step === 3 && selectedType === "multi_tier" && (
+          <div className="space-y-4">
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-1.5 text-xs text-blue-900">
               <p className="font-semibold text-blue-800">Sistem Multi-Tier Target</p>
               <p>• <span className="font-medium">Reguler</span>: 0% hingga threshold Tier 1 — semua volume mendapat 1X poin</p>
               <p>• <span className="font-medium">Tier</span>: saat threshold dicapai, SELURUH volume dalam program mendapat multiplier tier tersebut</p>
-              <p>• <span className="font-medium">Overflow</span>: volume di atas tier tertinggi program ini kembali ke 1X (relatif terhadap tier tertinggi program, bukan angka tetap)</p>
+              <p>• <span className="font-medium">Overflow</span>: volume di atas tier tertinggi program ini kembali ke 1X</p>
             </div>
 
-            {/* Tier table */}
             <div className="border rounded-xl overflow-hidden">
               <table className="w-full text-xs">
                 <thead className="bg-gray-50 border-b">
@@ -339,7 +478,6 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Fixed Reguler row */}
                   <tr className="border-t bg-gray-50/60">
                     <td className="px-3 py-2 font-medium text-gray-500">Reguler</td>
                     <td className="px-3 py-2 text-gray-500">0% → {tier1Threshold}%</td>
@@ -347,49 +485,29 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
                     <td className="px-3 py-2 text-gray-400 italic">Baseline — tidak dapat diedit</td>
                     <td className="px-3 py-2" />
                   </tr>
-
-                  {/* Dynamic tier rows */}
                   {sortedTiers.map(t => (
                     <tr key={t.tier_id} className="border-t hover:bg-gray-50/50">
                       <td className="px-3 py-2">
-                        <input
-                          className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                          value={t.label}
-                          onChange={e => updateTier(t.tier_id, "label", e.target.value)}
-                        />
+                        <input className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
+                          value={t.label} onChange={e => updateTier(t.tier_id, "label", e.target.value)} />
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            min={1}
-                            className="w-20 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                            value={t.threshold_pct}
-                            onChange={e => updateTier(t.tier_id, "threshold_pct", +e.target.value)}
-                          />
+                          <input type="number" min={1} className="w-20 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
+                            value={t.threshold_pct} onChange={e => updateTier(t.tier_id, "threshold_pct", +e.target.value)} />
                           <span className="text-gray-400">%</span>
                         </div>
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            min={1.1}
-                            step={0.1}
-                            className="w-16 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                            value={t.multiplier}
-                            onChange={e => updateTier(t.tier_id, "multiplier", +e.target.value)}
-                          />
+                          <input type="number" min={1.1} step={0.1} className="w-16 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
+                            value={t.multiplier} onChange={e => updateTier(t.tier_id, "multiplier", +e.target.value)} />
                           <span className="text-gray-400">X</span>
                         </div>
                       </td>
                       <td className="px-3 py-2">
-                        <input
-                          className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
-                          placeholder="opsional"
-                          value={t.keterangan}
-                          onChange={e => updateTier(t.tier_id, "keterangan", e.target.value)}
-                        />
+                        <input className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-purple-400"
+                          placeholder="opsional" value={t.keterangan} onChange={e => updateTier(t.tier_id, "keterangan", e.target.value)} />
                       </td>
                       <td className="px-3 py-2">
                         <button onClick={() => removeTier(t.tier_id)} className="text-red-400 hover:text-red-600 transition-colors">
@@ -398,8 +516,6 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
                       </td>
                     </tr>
                   ))}
-
-                  {/* Fixed Overflow row */}
                   <tr className="border-t bg-purple-50/50">
                     <td className="px-3 py-2 font-medium text-purple-700">Overflow</td>
                     <td className="px-3 py-2 text-purple-600">&gt; {highestThreshold}%</td>
@@ -411,15 +527,10 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
               </table>
             </div>
 
-            {/* Add tier button */}
-            <button
-              onClick={addTier}
-              className="flex items-center gap-1.5 text-xs text-purple-600 hover:text-purple-700 font-medium transition-colors"
-            >
+            <button onClick={addTier} className="flex items-center gap-1.5 text-xs text-purple-600 hover:text-purple-700 font-medium transition-colors">
               <Plus size={14} /> Tambah Tier
             </button>
 
-            {/* Validation errors */}
             {tierErrors.length > 0 && (
               <div className="space-y-1">
                 {tierErrors.map((e, i) => (
@@ -430,87 +541,46 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
               </div>
             )}
 
-            {/* Simulation */}
             <div className="border rounded-xl p-4 space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Simulasi Kalkulasi</p>
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium mb-1">Target (ton)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    value={simTarget}
-                    onChange={e => setSimTarget(+e.target.value)}
-                  />
+                  <input type="number" min={1} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    value={simTarget} onChange={e => setSimTarget(+e.target.value)} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1">Realisasi (ton)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    value={simRealisasi}
-                    onChange={e => setSimReal(+e.target.value)}
-                  />
+                  <input type="number" min={0} className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    value={simRealisasi} onChange={e => setSimReal(+e.target.value)} />
                 </div>
                 <div>
                   <label className="block text-xs font-medium mb-1">Brand</label>
-                  <select
-                    className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                    value={simBrand}
-                    onChange={e => setSimBrand(e.target.value)}
-                  >
+                  <select className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    value={simBrand} onChange={e => setSimBrand(e.target.value)}>
                     {BRANDS.map(b => <option key={b}>{b}</option>)}
                   </select>
                 </div>
               </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-purple-300 text-purple-700 hover:bg-purple-50"
-                disabled={simLoading || !step2Valid}
-                onClick={runSimulation}
-              >
+              <Button size="sm" variant="outline" className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                disabled={simLoading || tierErrors.length > 0} onClick={runSimulation}>
                 {simLoading ? "Menghitung..." : "Hitung Estimasi"}
               </Button>
-
               {simResult && (
-                <div className="bg-gray-50 rounded-xl p-3 space-y-3">
+                <div className="bg-gray-50 rounded-xl p-3 space-y-2">
                   <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div>
-                      <p className="text-muted-foreground">Achievement</p>
-                      <p className="font-bold text-lg">{simResult.achievement_pct}%</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Tier Berlaku</p>
-                      <p className="font-semibold">{simResult.tier_berlaku}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Total Poin</p>
-                      <p className="font-bold">{fmtNum(simResult.total_poin)}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Estimasi Reward</p>
-                      <p className="font-bold text-purple-700">{fmtRp(simResult.total_rupiah)}</p>
-                    </div>
+                    <div><p className="text-muted-foreground">Achievement</p><p className="font-bold text-lg">{simResult.achievement_pct}%</p></div>
+                    <div><p className="text-muted-foreground">Tier Berlaku</p><p className="font-semibold">{simResult.tier_berlaku}</p></div>
+                    <div><p className="text-muted-foreground">Total Poin</p><p className="font-bold">{fmtNum(simResult.total_poin)}</p></div>
+                    <div><p className="text-muted-foreground">Estimasi Reward</p><p className="font-bold text-purple-700">{fmtRp(simResult.total_rupiah)}</p></div>
                   </div>
-                  <div>
-                    <p className="text-xs font-medium mb-1.5">Rincian Breakdown</p>
-                    <div className="space-y-1">
-                      {simResult.breakdown.map((b, i) => (
-                        <div key={i} className="flex items-start justify-between text-xs py-1.5 border-t first:border-t-0">
-                          <div>
-                            <p className="font-medium">{b.segmen}</p>
-                            <p className="text-muted-foreground">{b.keterangan}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-medium">{fmtNum(b.volume_ton)} ton &times; {b.multiplier}X</p>
-                            <p className="text-purple-600">{fmtNum(b.poin)} poin</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                  <div className="space-y-1">
+                    {simResult.breakdown.map((b, i) => (
+                      <div key={i} className="flex items-start justify-between text-xs py-1.5 border-t first:border-t-0">
+                        <div><p className="font-medium">{b.segmen}</p><p className="text-muted-foreground">{b.keterangan}</p></div>
+                        <div className="text-right"><p className="font-medium">{fmtNum(b.volume_ton)} ton × {b.multiplier}X</p><p className="text-purple-600">{fmtNum(b.poin)} poin</p></div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -518,17 +588,136 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
           </div>
         )}
 
-        {/* Step 3: Review */}
-        {step === 3 && (
+        {/* Step 3: Konfigurasi — Leaderboard */}
+        {step === 3 && selectedType === "leaderboard" && (
+          <div className="space-y-4">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-900 space-y-1">
+              <p className="font-semibold">Gamifikasi Leaderboard</p>
+              <p>Toko bersaing berdasarkan volume atau pertumbuhan. Reward diberikan sesuai posisi akhir.</p>
+            </div>
+
+            {/* Basis Ranking */}
+            <div>
+              <label className="block text-xs font-medium mb-2">Basis Ranking</label>
+              <div className="flex gap-3">
+                {[["volume", "Volume (TON)", "Siapa paling banyak beli"], ["growth_pct", "Pertumbuhan (%)", "Kenaikan vs periode sebelumnya"]] .map(([val, label, desc]) => (
+                  <label key={val} className={`flex-1 border-2 rounded-xl p-3 cursor-pointer transition-all ${lbBasis === val ? "border-amber-500 bg-amber-50" : "border-gray-200 hover:border-amber-300"}`}>
+                    <input type="radio" className="sr-only" name="lbBasis" value={val} checked={lbBasis === val} onChange={() => setLbBasis(val as typeof lbBasis)} />
+                    <p className="text-xs font-semibold">{label}</p>
+                    <p className="text-xs text-muted-foreground">{desc}</p>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Scope */}
+            <div>
+              <label className="block text-xs font-medium mb-2">Scope Kompetisi</label>
+              <div className="flex gap-3">
+                {[["global", "Global", "Semua toko dalam 1 ranking"], ["per_cluster", "Per Cluster", "Ranking terpisah per cluster"]] .map(([val, label, desc]) => (
+                  <label key={val} className={`flex-1 border-2 rounded-xl p-3 cursor-pointer transition-all ${lbScope === val ? "border-amber-500 bg-amber-50" : "border-gray-200 hover:border-amber-300"}`}>
+                    <input type="radio" className="sr-only" name="lbScope" value={val} checked={lbScope === val} onChange={() => setLbScope(val as typeof lbScope)} />
+                    <p className="text-xs font-semibold">{label}</p>
+                    <p className="text-xs text-muted-foreground">{desc}</p>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Bentuk Reward */}
+            <div>
+              <label className="block text-xs font-medium mb-2">Bentuk Reward</label>
+              <div className="flex gap-3">
+                {[["poin", "Poin Loyalty", "Dikonversi ke Rupiah pakai nilai poin brand"], ["rupiah_flat", "Rupiah (Flat)", "Nominal Rupiah langsung"]] .map(([val, label, desc]) => (
+                  <label key={val} className={`flex-1 border-2 rounded-xl p-3 cursor-pointer transition-all ${lbBentuk === val ? "border-amber-500 bg-amber-50" : "border-gray-200 hover:border-amber-300"}`}>
+                    <input type="radio" className="sr-only" name="lbBentuk" value={val} checked={lbBentuk === val} onChange={() => setLbBentuk(val as typeof lbBentuk)} />
+                    <p className="text-xs font-semibold">{label}</p>
+                    <p className="text-xs text-muted-foreground">{desc}</p>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Min Transaksi */}
+            <div>
+              <label className="block text-xs font-medium mb-1">Minimum Transaksi (Syarat Eligible)</label>
+              <div className="flex items-center gap-2">
+                <input type="number" min={1}
+                  className="w-24 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  value={lbMinTrx} onChange={e => setLbMinTrx(+e.target.value)} />
+                <span className="text-xs text-muted-foreground">transaksi selama periode</span>
+              </div>
+            </div>
+
+            {/* Rank Rewards */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-medium">Reward per Peringkat</label>
+                <button onClick={addRankReward} className="text-xs text-amber-600 hover:text-amber-700 font-medium flex items-center gap-1">
+                  <Plus size={12} /> Tambah
+                </button>
+              </div>
+              <div className="space-y-2">
+                {lbRewards.map(rr => (
+                  <div key={rr.id} className="border rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center gap-2 text-xs">
+                        <input type="checkbox" className="rounded" checked={rr.isRange}
+                          onChange={e => updateRR(rr.id, "isRange", e.target.checked)} />
+                        Gunakan rentang rank
+                      </label>
+                      <button onClick={() => removeRankReward(rr.id)} className="text-red-400 hover:text-red-600"><X size={13} /></button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {rr.isRange ? (
+                        <>
+                          <div className="col-span-1 flex items-center gap-1">
+                            <input type="number" min={1} placeholder="Dari" className="w-16 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                              value={rr.rankFrom} onChange={e => updateRR(rr.id, "rankFrom", +e.target.value)} />
+                            <span className="text-xs text-muted-foreground">–</span>
+                            <input type="number" min={1} placeholder="Ke" className="w-16 border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                              value={rr.rankTo} onChange={e => updateRR(rr.id, "rankTo", +e.target.value)} />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="col-span-1">
+                          <input type="number" min={1} placeholder="Rank" className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                            value={rr.rank} onChange={e => updateRR(rr.id, "rank", +e.target.value)} />
+                        </div>
+                      )}
+                      <div>
+                        <input placeholder="Label (mis. Juara 1)" className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                          value={rr.label} onChange={e => updateRR(rr.id, "label", e.target.value)} />
+                      </div>
+                      <div>
+                        <input type="number" min={0} placeholder={lbBentuk === "poin" ? "Nilai poin" : "Rupiah"}
+                          className="w-full border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                          value={rr.reward_value} onChange={e => updateRR(rr.id, "reward_value", +e.target.value)} />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {lbRewards.length === 0 && <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle size={12} />Minimal 1 rank reward</p>}
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Review */}
+        {step === 4 && (
           <div className="space-y-4">
             <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Tipe Program</span>
+                <TipeBadge tipe={selectedType ?? undefined} jenis={selectedType ?? ""} />
+              </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Nama Program</span>
                 <span className="font-medium">{form.nama_promo}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Periode</span>
-                <span className="font-medium">{fmtDate(form.periode_mulai)} &ndash; {fmtDate(form.periode_selesai)}</span>
+                <span className="font-medium">{fmtDate(form.periode_mulai)} – {fmtDate(form.periode_selesai)}</span>
               </div>
               {form.deskripsi && (
                 <div className="flex justify-between">
@@ -538,46 +727,62 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
               )}
             </div>
 
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Struktur Tier</p>
-
-              <div className="flex items-center justify-between border rounded-lg p-3 bg-gray-50">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-gray-400" />
-                  <span className="text-sm font-medium">Reguler</span>
-                  <span className="text-xs text-muted-foreground">0% &rarr; {tier1Threshold}% target</span>
+            {selectedType === "flat_multiplier" && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Konfigurasi Flat Multiplier</p>
+                <div className="border rounded-xl p-3 space-y-1 text-sm">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Multiplier</span><span className="font-semibold text-blue-700">{flatMult}×</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Brand Filter</span><span className="font-medium">{flatBrands.length > 0 ? flatBrands.join(", ") : "Semua brand"}</span></div>
                 </div>
-                <span className="text-xs font-semibold text-gray-600">1X</span>
               </div>
+            )}
 
-              {sortedTiers.map((t, i) => {
-                const colors = ["bg-blue-500","bg-green-500","bg-amber-500","bg-orange-500","bg-red-500"];
-                return (
-                  <div key={t.tier_id} className="flex items-center justify-between border rounded-lg p-3">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${colors[i % colors.length]}`} />
-                      <span className="text-sm font-medium">{t.label}</span>
-                      <span className="text-xs text-muted-foreground">&ge; {t.threshold_pct}% target</span>
+            {selectedType === "multi_tier" && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Struktur Tier</p>
+                <div className="flex items-center justify-between border rounded-lg p-3 bg-gray-50">
+                  <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-gray-400" /><span className="text-sm font-medium">Reguler</span><span className="text-xs text-muted-foreground">0% → {tier1Threshold}% target</span></div>
+                  <span className="text-xs font-semibold text-gray-600">1X</span>
+                </div>
+                {sortedTiers.map((t, i) => {
+                  const colors = ["bg-blue-500","bg-green-500","bg-amber-500","bg-orange-500","bg-red-500"];
+                  return (
+                    <div key={t.tier_id} className="flex items-center justify-between border rounded-lg p-3">
+                      <div className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${colors[i % colors.length]}`} /><span className="text-sm font-medium">{t.label}</span><span className="text-xs text-muted-foreground">≥ {t.threshold_pct}% target</span></div>
+                      <span className="text-xs font-semibold text-purple-700">{t.multiplier}X</span>
                     </div>
-                    <span className="text-xs font-semibold text-purple-700">{t.multiplier}X</span>
-                  </div>
-                );
-              })}
-
-              <div className="flex items-center justify-between border rounded-lg p-3 bg-purple-50">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-purple-600" />
-                  <span className="text-sm font-medium">Overflow</span>
-                  <span className="text-xs text-muted-foreground">&gt; {highestThreshold}% target</span>
+                  );
+                })}
+                <div className="flex items-center justify-between border rounded-lg p-3 bg-purple-50">
+                  <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-purple-600" /><span className="text-sm font-medium">Overflow</span><span className="text-xs text-muted-foreground">&gt; {highestThreshold}% target</span></div>
+                  <span className="text-xs font-semibold text-purple-600">1X</span>
                 </div>
-                <span className="text-xs font-semibold text-purple-600">1X</span>
               </div>
-            </div>
+            )}
+
+            {selectedType === "leaderboard" && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Konfigurasi Leaderboard</p>
+                <div className="border rounded-xl p-3 space-y-1 text-sm">
+                  <div className="flex justify-between"><span className="text-muted-foreground">Basis</span><span className="font-medium">{lbBasis === "volume" ? "Volume (TON)" : "Pertumbuhan (%)"}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Scope</span><span className="font-medium">{lbScope === "global" ? "Global" : "Per Cluster"}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Bentuk Reward</span><span className="font-medium">{lbBentuk === "poin" ? "Poin Loyalty" : "Rupiah Flat"}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Min. Transaksi</span><span className="font-medium">{lbMinTrx}x</span></div>
+                </div>
+                <div className="space-y-1">
+                  {lbRewards.map(rr => (
+                    <div key={rr.id} className="flex items-center justify-between border rounded-lg p-2.5 text-xs">
+                      <span className="font-medium">{rr.isRange ? `Rank ${rr.rankFrom}–${rr.rankTo}` : `Rank ${rr.rank}`} — {rr.label}</span>
+                      <span className="font-semibold text-amber-700">{lbBentuk === "poin" ? `${fmtNum(rr.reward_value)} poin` : fmtRp(rr.reward_value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {err && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{err}</p>}
           </div>
         )}
-
       </div>
 
       {/* Footer */}
@@ -586,23 +791,15 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
           {step === 1 ? "Batal" : "← Kembali"}
         </Button>
         <div className="flex gap-2">
-          {step < 3 && (
-            <Button
-              size="sm"
-              className="bg-purple-600 hover:bg-purple-700"
-              disabled={(step === 1 && !step1Valid) || (step === 2 && !step2Valid)}
-              onClick={() => setStep(s => s + 1)}
-            >
-              Lanjut &rarr;
+          {step < totalSteps && (
+            <Button size="sm" className="bg-purple-600 hover:bg-purple-700"
+              disabled={(step === 1 && !step1Valid) || (step === 2 && !step2Valid) || (step === 3 && !step3Valid)}
+              onClick={() => setStep(s => s + 1)}>
+              Lanjut →
             </Button>
           )}
-          {step === 3 && (
-            <Button
-              size="sm"
-              className="bg-purple-600 hover:bg-purple-700"
-              disabled={saving}
-              onClick={handleSave}
-            >
+          {step === totalSteps && (
+            <Button size="sm" className="bg-purple-600 hover:bg-purple-700" disabled={saving} onClick={handleSave}>
               {saving ? "Menyimpan..." : "Simpan sebagai Draft"}
             </Button>
           )}
@@ -636,8 +833,7 @@ function Confirm({
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 
 function KpiCard({ label, value, sub, color, icon: Icon }: {
-  label: string; value: string; sub: string; color: string;
-  icon: React.ElementType;
+  label: string; value: string; sub: string; color: string; icon: React.ElementType;
 }) {
   return (
     <Card className="shadow-sm" style={{ borderBottom: `3px solid ${color}` }}>
@@ -675,7 +871,6 @@ export default function PromoListPage() {
 
   useEffect(() => { fetchPromos(); }, [fetchPromos]);
 
-  // Derived KPIs
   const aktif     = promos.filter(p => p.status === "Aktif");
   const selesai   = promos.filter(p => p.status === "Selesai");
   const totalPesertaAktif = aktif.reduce((s, p) => s + (p.summary_peserta?.total_toko ?? 0), 0);
@@ -719,7 +914,6 @@ export default function PromoListPage() {
     }, "Selesaikan promo ini? Achievement final akan dihitung dari data transaksi.");
   }
 
-  // suppress unused import warning for router
   void router;
 
   return (
@@ -729,23 +923,16 @@ export default function PromoListPage() {
         <CreatePromoModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); fetchPromos(); }} />
       )}
       {confirm && (
-        <Confirm
-          message={confirm.msg}
-          onConfirm={execConfirm}
-          onCancel={() => setConfirm(null)}
-          loading={confirmLoading}
-        />
+        <Confirm message={confirm.msg} onConfirm={execConfirm} onCancel={() => setConfirm(null)} loading={confirmLoading} />
       )}
 
       <main className="pt-16 max-w-7xl mx-auto px-6 py-8 space-y-6">
-        {/* Breadcrumb */}
         <nav className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Link href="/loyalty" className="hover:text-foreground">Loyalty</Link>
           <ChevronRight size={12} />
           <span className="text-foreground font-medium">Pengelolaan Promo</span>
         </nav>
 
-        {/* Header */}
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Pengelolaan Promo</h1>
@@ -756,45 +943,30 @@ export default function PromoListPage() {
           </Button>
         </div>
 
-        {/* KPI Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {loading ? (
             Array.from({length: 4}).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)
           ) : (
             <>
-              <KpiCard label="Promo Aktif"        value={fmtNum(aktif.length)}             sub="sedang berjalan"            color="#16a34a" icon={Zap} />
-              <KpiCard label="Total Peserta Aktif" value={fmtNum(totalPesertaAktif)}        sub="toko dalam promo aktif"     color="#3b82f6" icon={Users} />
-              <KpiCard label="Budget Berjalan"     value={fmtRp(totalBudgetAktif)}          sub="estimasi promo aktif"       color="#7c3aed" icon={TrendingUp} />
-              <KpiCard
-                label="Avg Achievement"
-                value={avgAch !== null ? `${avgAch.toFixed(1)}%` : "–"}
-                sub={`dari ${selesai.length} promo selesai`}
-                color="#D97706"
-                icon={BarChart2}
-              />
+              <KpiCard label="Promo Aktif"         value={fmtNum(aktif.length)}             sub="sedang berjalan"            color="#16a34a" icon={Zap} />
+              <KpiCard label="Total Peserta Aktif"  value={fmtNum(totalPesertaAktif)}        sub="toko dalam promo aktif"     color="#3b82f6" icon={Users} />
+              <KpiCard label="Budget Berjalan"      value={fmtRp(totalBudgetAktif)}          sub="estimasi promo aktif"       color="#7c3aed" icon={TrendingUp} />
+              <KpiCard label="Avg Achievement"      value={avgAch !== null ? `${avgAch.toFixed(1)}%` : "–"} sub={`dari ${selesai.length} promo selesai`} color="#D97706" icon={BarChart2} />
             </>
           )}
         </div>
 
-        {/* Filter */}
         <div className="flex items-center gap-3">
           <div className="relative flex-1 max-w-xs">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              className="w-full border rounded-lg pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
-              placeholder="Cari nama promo atau ID..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
+            <input className="w-full border rounded-lg pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+              placeholder="Cari nama promo atau ID..." value={search} onChange={e => setSearch(e.target.value)} />
             {search && <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2"><X size={14} className="text-muted-foreground" /></button>}
           </div>
           <div className="flex gap-1.5">
             {["", "Draft", "Aktif", "Selesai", "Dibatalkan"].map(s => (
-              <button
-                key={s}
-                onClick={() => setFilterStatus(s)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${filterStatus === s ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
-              >
+              <button key={s} onClick={() => setFilterStatus(s)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${filterStatus === s ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
                 {s || "Semua"}
               </button>
             ))}
@@ -802,14 +974,13 @@ export default function PromoListPage() {
           <span className="text-xs text-muted-foreground ml-auto">{filtered.length} program</span>
         </div>
 
-        {/* Table */}
         <Card className="shadow-sm">
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-xs">Program</TableHead>
-                  <TableHead className="text-xs">Jenis</TableHead>
+                  <TableHead className="text-xs">Tipe</TableHead>
                   <TableHead className="text-xs">Periode</TableHead>
                   <TableHead className="text-xs">Status</TableHead>
                   <TableHead className="text-xs text-right">Peserta</TableHead>
@@ -821,11 +992,7 @@ export default function PromoListPage() {
               <TableBody>
                 {loading ? (
                   Array.from({length: 4}).map((_, i) => (
-                    <TableRow key={i}>
-                      {Array.from({length: 8}).map((_, j) => (
-                        <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
-                      ))}
-                    </TableRow>
+                    <TableRow key={i}>{Array.from({length: 8}).map((_, j) => (<TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>))}</TableRow>
                   ))
                 ) : filtered.length === 0 ? (
                   <TableRow>
@@ -841,9 +1008,9 @@ export default function PromoListPage() {
                       </Link>
                       <p className="text-[10px] text-muted-foreground">{p.id}</p>
                     </TableCell>
-                    <TableCell><JenisBadge jenis={p.jenis_promo} /></TableCell>
+                    <TableCell><TipeBadge tipe={p.tipe_program} jenis={p.jenis_promo} /></TableCell>
                     <TableCell className="text-xs whitespace-nowrap">
-                      {fmtDate(p.periode_mulai)} &ndash;<br />{fmtDate(p.periode_selesai)}
+                      {fmtDate(p.periode_mulai)} –<br />{fmtDate(p.periode_selesai)}
                     </TableCell>
                     <TableCell><StatusBadge status={p.status} /></TableCell>
                     <TableCell className="text-right text-sm font-medium">
@@ -857,7 +1024,7 @@ export default function PromoListPage() {
                       ) : p.status === "Aktif" ? (
                         <span className="text-xs text-green-600 font-medium">Live</span>
                       ) : (
-                        <span className="text-muted-foreground text-xs">&ndash;</span>
+                        <span className="text-muted-foreground text-xs">–</span>
                       )}
                     </TableCell>
                     <TableCell className="text-right text-sm">
@@ -872,22 +1039,10 @@ export default function PromoListPage() {
                           </Button>
                         </Link>
                         {p.status === "Draft" && (
-                          <Button
-                            size="sm"
-                            className="h-7 px-2 text-xs bg-green-600 hover:bg-green-700"
-                            onClick={() => handleActivate(p.id)}
-                          >
-                            Aktifkan
-                          </Button>
+                          <Button size="sm" className="h-7 px-2 text-xs bg-green-600 hover:bg-green-700" onClick={() => handleActivate(p.id)}>Aktifkan</Button>
                         )}
                         {p.status === "Aktif" && (
-                          <Button
-                            size="sm"
-                            className="h-7 px-2 text-xs bg-blue-600 hover:bg-blue-700"
-                            onClick={() => handleComplete(p.id)}
-                          >
-                            Selesaikan
-                          </Button>
+                          <Button size="sm" className="h-7 px-2 text-xs bg-blue-600 hover:bg-blue-700" onClick={() => handleComplete(p.id)}>Selesaikan</Button>
                         )}
                       </div>
                     </TableCell>

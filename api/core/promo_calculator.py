@@ -215,6 +215,7 @@ def calculate_program_reward_summary(
         tier_distribution[tier] = tier_distribution.get(tier, 0) + 1
 
     return {
+        "tipe_program":       "multi_tier",
         "program_id":         promo["id"],
         "program_nama":       promo.get("nama_promo", promo.get("nama", "")),
         "total_peserta":      len(results),
@@ -223,3 +224,211 @@ def calculate_program_reward_summary(
         "tier_distribution":  tier_distribution,
         "peserta_detail":     results,
     }
+
+
+def calculate_flat_multiplier_program(
+    promo: dict,
+    peserta_data: list[dict],
+    transaksi_df: pd.DataFrame,
+    loyalty_config: dict,
+) -> dict[str, Any]:
+    """Tipe 1 — Flat Multiplier: setiap transaksi × multiplier tetap, tanpa target."""
+    reward_config      = promo.get("reward_config", {})
+    multiplier         = float(reward_config.get("multiplier", 1))
+    brand_filter: list = reward_config.get("brand_filter", [])
+    brand_point_values = loyalty_config.get("brand_point_values", get_brand_point_values())
+
+    mulai   = pd.Timestamp(promo["periode_mulai"]).normalize()
+    selesai = pd.Timestamp(promo["periode_selesai"]).normalize()
+
+    df = transaksi_df.copy()
+    df["_dt"] = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
+
+    fighting  = "SEMEN BANTENG"
+    brand_col = next((c for c in df.columns if "brand" in c.lower()), None)
+    if brand_col:
+        df = df[~df[brand_col].str.upper().eq(fighting)]
+
+    df_period = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
+    agg_ton   = df_period.groupby("ID Toko")["TON Quantity"].sum().to_dict()
+
+    results: list[dict] = []
+    for peserta in peserta_data:
+        id_toko  = str(peserta["id_toko"])
+        volume   = float(agg_ton.get(id_toko, 0.0))
+        brand    = peserta.get("brand_utama", "Semen Elang")
+
+        if brand_filter and brand not in brand_filter:
+            mult_efektif = 1.0
+            keterangan   = f"Brand {brand} tidak dalam filter → multiplier 1X"
+        else:
+            mult_efektif = multiplier
+            keterangan   = f"{multiplier}X flat multiplier"
+
+        pv           = brand_point_values.get(brand, brand_point_values.get("Semen Elang", 5000))
+        total_poin   = round(volume * mult_efektif, 2)
+        total_rupiah = round(total_poin * pv, 0)
+
+        results.append({
+            "id_toko":            id_toko,
+            "nama_toko":          peserta.get("nama_toko", ""),
+            "cluster":            peserta.get("cluster_pareto", peserta.get("cluster", "")),
+            "brand_utama":        brand,
+            "volume_ton":         round(volume, 2),
+            "multiplier_berlaku": mult_efektif,
+            "total_poin":         total_poin,
+            "total_rupiah":       total_rupiah,
+            "keterangan":         keterangan,
+        })
+
+    total_poin_prog   = sum(r["total_poin"]   for r in results)
+    total_rupiah_prog = sum(r["total_rupiah"] for r in results)
+
+    return {
+        "tipe_program":   "flat_multiplier",
+        "program_id":     promo["id"],
+        "program_nama":   promo.get("nama_promo", ""),
+        "multiplier":     multiplier,
+        "brand_filter":   brand_filter,
+        "total_peserta":  len(results),
+        "total_poin":     round(total_poin_prog, 0),
+        "total_rupiah":   round(total_rupiah_prog, 0),
+        "peserta_detail": results,
+    }
+
+
+def calculate_leaderboard_standings(
+    promo: dict,
+    peserta_data: list[dict],
+    transaksi_df: pd.DataFrame,
+    loyalty_config: dict,
+) -> dict[str, Any]:
+    """Tipe 3 — Leaderboard: ranking volume atau growth%, reward per peringkat."""
+    reward_config      = promo.get("reward_config", {})
+    basis              = reward_config.get("basis_ranking", "volume")
+    scope              = reward_config.get("scope", "global")
+    bentuk_reward      = reward_config.get("bentuk_reward", "poin")
+    rank_rewards: list = reward_config.get("rank_rewards", [])
+    min_trx            = int(reward_config.get("minimum_transaksi", 1))
+    brand_point_values = loyalty_config.get("brand_point_values", get_brand_point_values())
+
+    mulai   = pd.Timestamp(promo["periode_mulai"]).normalize()
+    selesai = pd.Timestamp(promo["periode_selesai"]).normalize()
+
+    df = transaksi_df.copy()
+    df["_dt"] = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
+
+    fighting  = "SEMEN BANTENG"
+    brand_col = next((c for c in df.columns if "brand" in c.lower()), None)
+    if brand_col:
+        df = df[~df[brand_col].str.upper().eq(fighting)]
+
+    df_period   = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
+    agg_ton     = df_period.groupby("ID Toko")["TON Quantity"].sum().to_dict()
+    agg_trx_cnt = df_period.groupby("ID Toko").size().to_dict()
+
+    if basis == "growth_pct":
+        durasi     = (selesai - mulai).days + 1
+        prev_end   = mulai - pd.Timedelta(days=1)
+        prev_start = prev_end - pd.Timedelta(days=durasi - 1)
+        df_prev    = df[(df["_dt"] >= prev_start) & (df["_dt"] <= prev_end)]
+        agg_prev   = df_prev.groupby("ID Toko")["TON Quantity"].sum().to_dict()
+    else:
+        agg_prev = {}
+
+    eligible:       list[dict] = []
+    tidak_eligible: int        = 0
+
+    for peserta in peserta_data:
+        id_toko    = str(peserta["id_toko"])
+        jumlah_trx = int(agg_trx_cnt.get(id_toko, 0))
+
+        if jumlah_trx < min_trx:
+            tidak_eligible += 1
+            continue
+
+        volume     = float(agg_ton.get(id_toko, 0.0))
+        vol_lalu   = float(agg_prev.get(id_toko, 0.0)) if basis == "growth_pct" else 0.0
+        score      = ((volume - vol_lalu) / vol_lalu * 100) if basis == "growth_pct" and vol_lalu > 0 else volume
+
+        eligible.append({
+            "id_toko":          id_toko,
+            "nama_toko":        peserta.get("nama_toko", ""),
+            "cluster":          peserta.get("cluster_pareto", peserta.get("cluster", "")),
+            "brand_utama":      peserta.get("brand_utama", "Semen Elang"),
+            "volume_periode":   round(volume, 2),
+            "jumlah_transaksi": jumlah_trx,
+            "score":            round(score, 2),
+        })
+
+    def _assign_rewards(items: list[dict]) -> list[dict]:
+        items_sorted = sorted(items, key=lambda x: x["score"], reverse=True)
+        out: list[dict] = []
+        for i, item in enumerate(items_sorted):
+            rank = i + 1
+            rv, rl = 0, "Tidak dapat reward"
+            for rr in rank_rewards:
+                if "rank" in rr and rr.get("rank") == rank:
+                    rv, rl = rr["reward_value"], rr.get("label", f"Rank {rank}")
+                    break
+                if "rank_range" in rr:
+                    lo, hi = rr["rank_range"][0], rr["rank_range"][1]
+                    if lo <= rank <= hi:
+                        rv, rl = rr["reward_value"], rr.get("label", f"Rank {lo}–{hi}")
+                        break
+            pv       = brand_point_values.get(item["brand_utama"], 5000)
+            r_poin   = float(rv) if bentuk_reward == "poin" else None
+            r_rupiah = round(float(rv) * pv if bentuk_reward == "poin" else float(rv), 0)
+            out.append({**item, "rank": rank, "reward_label": rl,
+                        "reward_poin": r_poin, "reward_rupiah": r_rupiah})
+        return out
+
+    if scope == "global":
+        standings      = _assign_rewards(eligible)
+        grouped: dict | None = None
+    else:
+        clusters  = sorted({s["cluster"] for s in eligible})
+        grouped   = {}
+        standings = []
+        for cl in clusters:
+            cl_ranked = _assign_rewards([s for s in eligible if s["cluster"] == cl])
+            for item in cl_ranked:
+                item["cluster_scope"] = cl
+            grouped[cl] = cl_ranked
+            standings.extend(cl_ranked)
+
+    total_rupiah = round(sum(s["reward_rupiah"] for s in standings), 0)
+
+    return {
+        "tipe_program":           "leaderboard",
+        "program_id":             promo["id"],
+        "program_nama":           promo.get("nama_promo", ""),
+        "basis_ranking":          basis,
+        "scope":                  scope,
+        "bentuk_reward":          bentuk_reward,
+        "minimum_transaksi":      min_trx,
+        "total_peserta_eligible": len(eligible),
+        "tidak_eligible":         tidak_eligible,
+        "total_reward_rupiah":    total_rupiah,
+        "standings":              standings,
+        "grouped_standings":      grouped,
+    }
+
+
+def calculate_program_reward(
+    promo: dict,
+    peserta_data: list[dict],
+    transaksi_df: pd.DataFrame,
+    loyalty_config: dict,
+) -> dict[str, Any]:
+    """Router: panggil kalkulasi sesuai tipe_program."""
+    tipe = promo.get("tipe_program") or (
+        "multi_tier" if promo.get("reward_config") else "legacy"
+    )
+    if tipe == "flat_multiplier":
+        return calculate_flat_multiplier_program(promo, peserta_data, transaksi_df, loyalty_config)
+    if tipe == "multi_tier":
+        return calculate_program_reward_summary(promo, peserta_data, transaksi_df, loyalty_config)
+    if tipe == "leaderboard":
+        return calculate_leaderboard_standings(promo, peserta_data, transaksi_df, loyalty_config)
+    return {}

@@ -204,6 +204,25 @@ class PreviewCalcBody(BaseModel):
     overflow_multiplier: float = 1.0
 
 
+# ── Unified (v3) models — 3 tipe program ─────────────────────────────────────
+
+class LeaderboardRankReward(BaseModel):
+    rank:         int | None       = None
+    rank_range:   list[int] | None = None  # [lo, hi] inclusive
+    label:        str
+    reward_value: float
+
+
+class CreatePromoV3Body(BaseModel):
+    nama_promo:       str
+    deskripsi:        str            = ""
+    periode_mulai:    str
+    periode_selesai:  str
+    tipe_program:     str            # "flat_multiplier" | "multi_tier" | "leaderboard"
+    reward_config:    dict[str, Any]
+    created_by:       str            = "admin"
+
+
 # ── POST /api/promo/preview-calc ─────────────────────────────────────────────
 # Static routes — must be registered before /{promo_id}
 
@@ -265,6 +284,70 @@ def create_promo_v2(body: CreatePromoBodyV2) -> dict:
             "created_at":     _now(),
             "reward_config":  rc_dict,
             "peserta":        [],
+            "summary_peserta": {"total_toko": 0, "per_cluster": {}, "estimasi_budget_total": 0},
+        }
+        promos.append(promo)
+        _wp(_PROMOS_PATH, promos)
+
+    return {"status": "ok", "data": promo}
+
+
+# ── POST /api/promo/create-v3 (unified 3-type) ───────────────────────────────
+
+@router.post("/create-v3", status_code=201)
+def create_promo_v3(body: CreatePromoV3Body) -> dict:
+    """Buat program promo tipe 1 (flat_multiplier), 2 (multi_tier), atau 3 (leaderboard)."""
+    VALID_TYPES = ("flat_multiplier", "multi_tier", "leaderboard")
+    if body.tipe_program not in VALID_TYPES:
+        raise HTTPException(400, f"tipe_program harus salah satu dari: {VALID_TYPES}")
+
+    rc = body.reward_config
+
+    if body.tipe_program == "flat_multiplier":
+        mult = rc.get("multiplier", 0)
+        if not isinstance(mult, (int, float)) or mult <= 1:
+            raise HTTPException(400, "multiplier harus lebih dari 1")
+
+    elif body.tipe_program == "multi_tier":
+        tiers = rc.get("tiers", [])
+        if not tiers:
+            raise HTTPException(400, "Minimal 1 tier harus didefinisikan")
+        thresholds  = [t["threshold_pct"] for t in tiers]
+        multipliers = [t["multiplier"]    for t in tiers]
+        if len(set(thresholds)) != len(thresholds):
+            raise HTTPException(400, "threshold_pct harus unik")
+        if any(m <= 1 for m in multipliers):
+            raise HTTPException(400, "multiplier setiap tier harus lebih dari 1")
+
+    elif body.tipe_program == "leaderboard":
+        rr = rc.get("rank_rewards", [])
+        if not rr:
+            raise HTTPException(400, "Minimal 1 rank reward harus didefinisikan")
+        if rc.get("basis_ranking") not in ("volume", "growth_pct"):
+            raise HTTPException(400, "basis_ranking harus 'volume' atau 'growth_pct'")
+
+    jenis_map = {
+        "flat_multiplier": "flat_multiplier",
+        "multi_tier":      "multi_tier_points",
+        "leaderboard":     "leaderboard",
+    }
+
+    with _LOCK:
+        promos = _rp(_PROMOS_PATH)
+        new_id = _generate_id(promos)
+        promo: dict = {
+            "id":              new_id,
+            "nama_promo":      body.nama_promo,
+            "deskripsi":       body.deskripsi,
+            "jenis_promo":     jenis_map[body.tipe_program],
+            "tipe_program":    body.tipe_program,
+            "status":          "Draft",
+            "periode_mulai":   body.periode_mulai,
+            "periode_selesai": body.periode_selesai,
+            "created_by":      body.created_by,
+            "created_at":      _now(),
+            "reward_config":   rc,
+            "peserta":         [],
             "summary_peserta": {"total_toko": 0, "per_cluster": {}, "estimasi_budget_total": 0},
         }
         promos.append(promo)
@@ -517,7 +600,7 @@ def add_peserta(promo_id: str, body: AddPesertaBody) -> dict:
             "catatan":       body.catatan,
         })
         promos[idx]["summary_peserta"] = _rebuild_summary(
-            promos[idx]["peserta"], promos[idx]["konfigurasi_promo"]
+            promos[idx]["peserta"], promos[idx].get("konfigurasi_promo", {})
         )
         _wp(_PROMOS_PATH, promos)
         updated_peserta = promos[idx]["peserta"]
@@ -623,7 +706,7 @@ def upload_peserta(promo_id: str, file: UploadFile = File(...)) -> dict:
         if new_peserta:
             promos[idx]["peserta"].extend(new_peserta)
             promos[idx]["summary_peserta"] = _rebuild_summary(
-                promos[idx]["peserta"], promos[idx]["konfigurasi_promo"]
+                promos[idx]["peserta"], promos[idx].get("konfigurasi_promo", {})
             )
             _wp(_PROMOS_PATH, promos)
 
@@ -708,38 +791,29 @@ def get_monitoring(
 
     df_trx = load_data()
 
-    # Multi-tier program → use promo_calculator
-    is_multi_tier = bool(promo.get("reward_config"))
+    # Detect tipe_program
+    tipe = promo.get("tipe_program") or (
+        "multi_tier" if promo.get("reward_config") else "legacy"
+    )
 
-    if is_multi_tier:
+    if tipe in ("flat_multiplier", "multi_tier", "leaderboard"):
         loyalty_cfg = pc.load_loyalty_config()
-        mt_result   = pc.calculate_program_reward_summary(
+        result = pc.calculate_program_reward(
             promo         = promo,
             peserta_data  = promo.get("peserta", []),
             transaksi_df  = df_trx,
             loyalty_config = loyalty_cfg,
         )
-        return {
-            "status": "ok",
-            "data": {
-                "is_multi_tier":    True,
-                "program_id":       promo["id"],
-                "program_nama":     promo.get("nama_promo", ""),
-                "total_peserta":    mt_result["total_peserta"],
-                "total_poin":       mt_result["total_poin"],
-                "total_rupiah":     mt_result["total_rupiah"],
-                "tier_distribution": mt_result["tier_distribution"],
-                "peserta_detail":   mt_result["peserta_detail"],
-            },
-            "meta": _meta(),
-        }
+        # backward-compat flag for multi_tier
+        result["is_multi_tier"] = (tipe == "multi_tier")
+        return {"status": "ok", "data": result, "meta": _meta()}
+
+    # Legacy konfigurasi_promo flow
+    if promo["status"] == "Selesai" and "final_achievements" in promo:
+        ach_df = pd.DataFrame(promo["final_achievements"])
     else:
-        # Legacy konfigurasi_promo flow
-        if promo["status"] == "Selesai" and "final_achievements" in promo:
-            ach_df = pd.DataFrame(promo["final_achievements"])
-        else:
-            ach_df = calculate_promo_achievement(promo, df_trx)
-        summary = get_promo_summary(promo, ach_df)
+        ach_df = calculate_promo_achievement(promo, df_trx)
+    summary = get_promo_summary(promo, ach_df)
 
     daily_trend = get_daily_trend(promo, df_trx)
     cluster_cmp = get_cluster_comparison(promo, df_trx) if promo["status"] == "Selesai" else []
@@ -785,6 +859,7 @@ def get_monitoring(
     return {
         "status": "ok",
         "data": {
+            "tipe_program":       "legacy",
             "is_multi_tier":      False,
             "achievements":       ach_df.where(pd.notna(ach_df), None).to_dict("records") if not ach_df.empty else [],
             "summary":            summary,
@@ -795,6 +870,32 @@ def get_monitoring(
         },
         "meta": _meta(),
     }
+
+
+# ── GET /api/promo/{promo_id}/standings ──────────────────────────────────────
+
+@router.get("/{promo_id}/standings")
+def get_standings(promo_id: str) -> dict:
+    """Real-time leaderboard standings — khusus tipe_program leaderboard."""
+    with _LOCK:
+        promos = _rp(_PROMOS_PATH)
+    promo = next((p for p in promos if p["id"] == promo_id), None)
+    if not promo:
+        raise HTTPException(404, detail="Promo tidak ditemukan")
+    if promo.get("tipe_program") != "leaderboard":
+        raise HTTPException(400, detail="Endpoint ini hanya untuk program tipe leaderboard")
+    if promo["status"] not in ("Aktif", "Selesai"):
+        raise HTTPException(400, detail="Standings hanya tersedia saat Aktif atau Selesai")
+
+    df_trx      = load_data()
+    loyalty_cfg = pc.load_loyalty_config()
+    result      = pc.calculate_leaderboard_standings(
+        promo         = promo,
+        peserta_data  = promo.get("peserta", []),
+        transaksi_df  = df_trx,
+        loyalty_config = loyalty_cfg,
+    )
+    return {"status": "ok", "data": result, "meta": _meta()}
 
 
 # ── GET /api/promo/{promo_id}/monitoring/export ──────────────────────────────

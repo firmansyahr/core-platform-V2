@@ -21,7 +21,7 @@ import {
 } from "recharts";
 import {
   ChevronRight, Plus, Upload, Download, Trash2, Users, Zap, TrendingUp,
-  AlertCircle, Check, X, Search, BarChart2, FileDown,
+  AlertCircle, Check, X, Search, BarChart2, FileDown, Trophy, RefreshCw,
 } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -57,6 +57,7 @@ interface PromoDetail {
   nama_promo:       string;
   deskripsi:        string;
   jenis_promo:      string;
+  tipe_program?:    string;
   status:           string;
   periode_mulai:    string;
   periode_selesai:  string;
@@ -66,7 +67,8 @@ interface PromoDetail {
   completed_at?:    string;
   cancelled_at?:    string;
   alasan_batal?:    string;
-  konfigurasi_promo: KonfigurasiPromo;
+  konfigurasi_promo?: KonfigurasiPromo;
+  reward_config?:   Record<string, unknown>;
   peserta:          Peserta[];
   summary_peserta:  { total_toko: number; per_cluster: Record<string, number>; estimasi_budget_total: number };
   final_summary?:   { overall_achievement_pct: number; total_reward_earned: number; total_peserta: number; peserta_aktif_transaksi: number };
@@ -87,6 +89,8 @@ interface AchievementRow {
 }
 
 interface MonitoringData {
+  tipe_program:       "legacy";
+  is_multi_tier?:     false;
   achievements:       AchievementRow[];
   summary:            {
     total_peserta: number; peserta_aktif_transaksi: number;
@@ -100,7 +104,6 @@ interface MonitoringData {
   distribution:       { label: string; count: number; color: string }[];
   cluster_comparison: { cluster: string; vol_promo: number; vol_before: number; delta: number; delta_pct: number }[];
   recommendations:    string[];
-  is_multi_tier?:     false;
 }
 
 interface MultiTierBreakdown {
@@ -122,6 +125,7 @@ interface MultiTierPesertaRow {
 }
 
 interface MultiTierMonData {
+  tipe_program:      "multi_tier";
   is_multi_tier:     true;
   program_id:        string;
   program_nama:      string;
@@ -132,7 +136,61 @@ interface MultiTierMonData {
   peserta_detail:    MultiTierPesertaRow[];
 }
 
-type AnyMonData = MonitoringData | MultiTierMonData;
+interface FlatMultiplierPesertaRow {
+  id_toko:            string;
+  nama_toko:          string;
+  cluster:            string;
+  brand_utama:        string;
+  volume_ton:         number;
+  multiplier_berlaku: number;
+  total_poin:         number;
+  total_rupiah:       number;
+  keterangan:         string;
+}
+
+interface FlatMultiplierMonData {
+  tipe_program:    "flat_multiplier";
+  program_id:      string;
+  program_nama:    string;
+  multiplier:      number;
+  brand_filter:    string[];
+  total_peserta:   number;
+  total_poin:      number;
+  total_rupiah:    number;
+  peserta_detail:  FlatMultiplierPesertaRow[];
+}
+
+interface LeaderboardStandingRow {
+  id_toko:          string;
+  nama_toko:        string;
+  cluster:          string;
+  brand_utama:      string;
+  volume_periode:   number;
+  jumlah_transaksi: number;
+  score:            number;
+  rank:             number;
+  reward_label:     string;
+  reward_poin:      number | null;
+  reward_rupiah:    number;
+  cluster_scope?:   string;
+}
+
+interface LeaderboardMonData {
+  tipe_program:            "leaderboard";
+  program_id:              string;
+  program_nama:            string;
+  basis_ranking:           string;
+  scope:                   string;
+  bentuk_reward:           string;
+  minimum_transaksi:       number;
+  total_peserta_eligible:  number;
+  tidak_eligible:          number;
+  total_reward_rupiah:     number;
+  standings:               LeaderboardStandingRow[];
+  grouped_standings:       Record<string, LeaderboardStandingRow[]> | null;
+}
+
+type AnyMonData = MonitoringData | MultiTierMonData | FlatMultiplierMonData | LeaderboardMonData;
 
 // ── Badge components ──────────────────────────────────────────────────────────
 
@@ -757,6 +815,261 @@ function LegacyMonitoringView({
   );
 }
 
+// ── Flat Multiplier Monitoring View ──────────────────────────────────────────
+
+function FlatMultiplierMonitoringView({ data }: { data: FlatMultiplierMonData }) {
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          { label: "Total Peserta",      value: fmtNum(data.total_peserta), sub: "terdaftar",        color: "#3b82f6" },
+          { label: "Multiplier",         value: `${data.multiplier}×`,      sub: "flat reward",      color: "#2563eb" },
+          { label: "Total Poin",         value: fmtNum(data.total_poin),    sub: "akumulasi poin",   color: "#16a34a" },
+          { label: "Estimasi Reward",    value: fmtRp(data.total_rupiah),   sub: "total reward",     color: "#7c3aed" },
+        ].map(c => (
+          <Card key={c.label} className="shadow-sm" style={{ borderBottom: `3px solid ${c.color}` }}>
+            <CardContent className="p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">{c.label}</p>
+              <p className="text-base font-bold tabular-nums truncate" style={{ color: c.color }}>{c.value}</p>
+              <p className="text-[10px] text-muted-foreground">{c.sub}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {data.brand_filter.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-xs text-blue-900">
+          <span className="font-semibold">Brand filter: </span>
+          {data.brand_filter.join(", ")} — toko dengan brand lain mendapat 1× (tidak berlipat)
+        </div>
+      )}
+
+      <Card className="shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Volume & Reward per Toko</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Toko</TableHead>
+                  <TableHead className="text-xs">Cluster</TableHead>
+                  <TableHead className="text-xs">Brand</TableHead>
+                  <TableHead className="text-xs text-right">Volume (ton)</TableHead>
+                  <TableHead className="text-xs text-right">Multiplier</TableHead>
+                  <TableHead className="text-xs text-right">Total Poin</TableHead>
+                  <TableHead className="text-xs text-right">Estimasi Rp</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {[...data.peserta_detail].sort((a, b) => b.total_poin - a.total_poin).slice(0, 50).map(p => (
+                  <TableRow key={p.id_toko}>
+                    <TableCell>
+                      <p className="text-sm font-medium">{p.nama_toko}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">{p.id_toko}</p>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{p.cluster}</TableCell>
+                    <TableCell className="text-xs">{p.brand_utama}</TableCell>
+                    <TableCell className="text-right text-sm">{fmtNum(p.volume_ton)}</TableCell>
+                    <TableCell className="text-right">
+                      <span className={`text-sm font-semibold ${p.multiplier_berlaku > 1 ? "text-blue-600" : "text-gray-500"}`}>{p.multiplier_berlaku}×</span>
+                    </TableCell>
+                    <TableCell className="text-right text-sm font-medium">{fmtNum(p.total_poin)}</TableCell>
+                    <TableCell className="text-right text-sm font-medium text-purple-700">{fmtRp(p.total_rupiah)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {data.peserta_detail.length > 50 && (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                Menampilkan 50 dari {data.peserta_detail.length} toko.
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Leaderboard View ─────────────────────────────────────────────────────────
+
+function LeaderboardView({ data, onRefresh }: { data: LeaderboardMonData; onRefresh: () => void }) {
+  const [activeCluster, setActiveCluster] = useState<string>("all");
+
+  const clusters = data.grouped_standings ? Object.keys(data.grouped_standings) : [];
+  const displayStandings = (
+    data.scope === "per_cluster" && data.grouped_standings && activeCluster !== "all"
+      ? data.grouped_standings[activeCluster] ?? []
+      : data.standings
+  ).slice(0, 100);
+
+  const top3 = displayStandings.slice(0, 3);
+
+  const podiumColors = [
+    { bg: "bg-amber-50 border-amber-300", text: "text-amber-700", badge: "bg-amber-400", icon: "🥇" },
+    { bg: "bg-gray-100 border-gray-300",  text: "text-gray-600",  badge: "bg-gray-400",  icon: "🥈" },
+    { bg: "bg-orange-50 border-orange-300", text: "text-orange-700", badge: "bg-orange-400", icon: "🥉" },
+  ];
+
+  const scoreLabel = data.basis_ranking === "volume" ? "ton" : "%";
+
+  return (
+    <div className="space-y-5">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          { label: "Peserta Eligible",   value: fmtNum(data.total_peserta_eligible), sub: `min. ${data.minimum_transaksi}x transaksi`, color: "#16a34a" },
+          { label: "Tidak Eligible",     value: fmtNum(data.tidak_eligible),          sub: "kurang transaksi",                          color: "#DC2626" },
+          { label: "Total Reward",       value: fmtRp(data.total_reward_rupiah),      sub: "estimasi hadiah",                           color: "#7c3aed" },
+          { label: "Basis Ranking",      value: data.basis_ranking === "volume" ? "Volume" : "Growth %", sub: data.scope === "global" ? "kompetisi global" : "per cluster", color: "#D97706" },
+        ].map(c => (
+          <Card key={c.label} className="shadow-sm" style={{ borderBottom: `3px solid ${c.color}` }}>
+            <CardContent className="p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">{c.label}</p>
+              <p className="text-base font-bold tabular-nums truncate" style={{ color: c.color }}>{c.value}</p>
+              <p className="text-[10px] text-muted-foreground">{c.sub}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Cluster tabs (if per_cluster) */}
+      {data.scope === "per_cluster" && clusters.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setActiveCluster("all")}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${activeCluster === "all" ? "bg-amber-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+          >
+            Semua Cluster
+          </button>
+          {clusters.map(cl => (
+            <button key={cl} onClick={() => setActiveCluster(cl)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${activeCluster === cl ? "bg-amber-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+              {cl}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Podium */}
+      {top3.length > 0 && (
+        <Card className="shadow-sm">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+              <Trophy size={14} className="text-amber-500" />
+              Podium {activeCluster !== "all" ? `— ${activeCluster}` : ""}
+            </CardTitle>
+            <button onClick={onRefresh} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+              <RefreshCw size={12} />Refresh
+            </button>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-end justify-center gap-4">
+              {/* Silver (rank 2) — left */}
+              {top3[1] && (
+                <div className={`flex-1 border-2 rounded-xl p-4 text-center ${podiumColors[1].bg}`}>
+                  <div className="text-2xl mb-1">{podiumColors[1].icon}</div>
+                  <p className="text-xs font-bold text-gray-500 mb-1">Rank #2</p>
+                  <p className="text-sm font-semibold truncate">{top3[1].nama_toko}</p>
+                  <p className="text-xs text-muted-foreground">{top3[1].cluster}</p>
+                  <p className="text-sm font-bold mt-2">{fmtNum(top3[1].score)} {scoreLabel}</p>
+                  <p className="text-xs text-amber-700 font-medium mt-1">{top3[1].reward_label}</p>
+                  <p className="text-xs text-purple-700">{fmtRp(top3[1].reward_rupiah)}</p>
+                </div>
+              )}
+              {/* Gold (rank 1) — center, taller */}
+              {top3[0] && (
+                <div className={`flex-1 border-2 rounded-xl p-4 text-center scale-105 shadow-md ${podiumColors[0].bg}`}>
+                  <div className="text-3xl mb-1">{podiumColors[0].icon}</div>
+                  <p className="text-xs font-bold text-amber-600 mb-1">Rank #1</p>
+                  <p className="text-sm font-bold truncate">{top3[0].nama_toko}</p>
+                  <p className="text-xs text-muted-foreground">{top3[0].cluster}</p>
+                  <p className="text-base font-bold mt-2">{fmtNum(top3[0].score)} {scoreLabel}</p>
+                  <p className="text-xs text-amber-700 font-semibold mt-1">{top3[0].reward_label}</p>
+                  <p className="text-sm font-bold text-purple-700">{fmtRp(top3[0].reward_rupiah)}</p>
+                </div>
+              )}
+              {/* Bronze (rank 3) — right */}
+              {top3[2] && (
+                <div className={`flex-1 border-2 rounded-xl p-4 text-center ${podiumColors[2].bg}`}>
+                  <div className="text-2xl mb-1">{podiumColors[2].icon}</div>
+                  <p className="text-xs font-bold text-orange-500 mb-1">Rank #3</p>
+                  <p className="text-sm font-semibold truncate">{top3[2].nama_toko}</p>
+                  <p className="text-xs text-muted-foreground">{top3[2].cluster}</p>
+                  <p className="text-sm font-bold mt-2">{fmtNum(top3[2].score)} {scoreLabel}</p>
+                  <p className="text-xs text-orange-700 font-medium mt-1">{top3[2].reward_label}</p>
+                  <p className="text-xs text-purple-700">{fmtRp(top3[2].reward_rupiah)}</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Full standings table */}
+      <Card className="shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Klasemen Lengkap</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs w-12">Rank</TableHead>
+                  <TableHead className="text-xs">Toko</TableHead>
+                  {data.scope === "per_cluster" && activeCluster === "all" && <TableHead className="text-xs">Cluster</TableHead>}
+                  <TableHead className="text-xs text-right">{data.basis_ranking === "volume" ? "Volume (ton)" : "Growth (%)"}</TableHead>
+                  <TableHead className="text-xs text-right">Transaksi</TableHead>
+                  <TableHead className="text-xs">Reward</TableHead>
+                  <TableHead className="text-xs text-right">Nilai Reward</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {displayStandings.map(s => (
+                  <TableRow key={`${s.id_toko}-${s.rank}`} className={s.rank <= 3 ? "bg-amber-50/40" : ""}>
+                    <TableCell>
+                      <span className={`text-sm font-bold ${s.rank === 1 ? "text-amber-600" : s.rank === 2 ? "text-gray-500" : s.rank === 3 ? "text-orange-600" : "text-muted-foreground"}`}>
+                        #{s.rank}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <p className="text-sm font-medium">{s.nama_toko}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">{s.id_toko}</p>
+                    </TableCell>
+                    {data.scope === "per_cluster" && activeCluster === "all" && (
+                      <TableCell className="text-xs text-muted-foreground">{s.cluster}</TableCell>
+                    )}
+                    <TableCell className="text-right text-sm font-semibold">{fmtNum(s.score)}</TableCell>
+                    <TableCell className="text-right text-sm">{fmtNum(s.jumlah_transaksi)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{s.reward_label}</TableCell>
+                    <TableCell className="text-right text-sm font-medium text-purple-700">
+                      {s.reward_rupiah > 0 ? fmtRp(s.reward_rupiah) : "–"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {data.standings.length > 100 && (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                Menampilkan 100 dari {data.standings.length} toko.
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {data.tidak_eligible > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-800">
+          <span className="font-semibold">{data.tidak_eligible} toko tidak eligible</span> karena jumlah transaksi kurang dari {data.minimum_transaksi}x selama periode program.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function PromoDetailPage() {
@@ -1007,7 +1320,17 @@ export default function PromoDetailPage() {
                 <CardTitle className="text-sm font-semibold">Konfigurasi Promo</CardTitle>
               </CardHeader>
               <CardContent>
-                <KonfigurasiSection cfg={promo.konfigurasi_promo} />
+                {promo.konfigurasi_promo ? (
+                  <KonfigurasiSection cfg={promo.konfigurasi_promo} />
+                ) : promo.reward_config ? (
+                  <div className="bg-gray-50 rounded-xl p-4">
+                    <pre className="text-xs text-gray-700 whitespace-pre-wrap overflow-auto max-h-48">
+                      {JSON.stringify(promo.reward_config, null, 2)}
+                    </pre>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Konfigurasi tidak tersedia</p>
+                )}
               </CardContent>
             </Card>
 
@@ -1111,9 +1434,13 @@ export default function PromoDetailPage() {
                 <Skeleton className="h-64 rounded-xl" />
                 <Skeleton className="h-48 rounded-xl" />
               </div>
-            ) : monitoring && monitoring.is_multi_tier ? (
-              <MultiTierMonitoringView data={monitoring} />
-            ) : monitoring && !monitoring.is_multi_tier ? (
+            ) : monitoring?.tipe_program === "flat_multiplier" ? (
+              <FlatMultiplierMonitoringView data={monitoring} />
+            ) : monitoring?.tipe_program === "multi_tier" || (monitoring as MultiTierMonData | null)?.is_multi_tier ? (
+              <MultiTierMonitoringView data={monitoring as MultiTierMonData} />
+            ) : monitoring?.tipe_program === "leaderboard" ? (
+              <LeaderboardView data={monitoring} onRefresh={() => { setMonLoaded(false); fetchMonitoring(); }} />
+            ) : monitoring ? (
               <LegacyMonitoringView
                 monitoring={monitoring as MonitoringData}
                 monSortBy={monSortBy}
@@ -1135,9 +1462,11 @@ export default function PromoDetailPage() {
               </div>
             ) : !monitoring && monLoading ? (
               <Skeleton className="h-64 rounded-xl" />
-            ) : monitoring && !monitoring.is_multi_tier ? (
+            ) : !monitoring ? (
+              <p className="text-sm text-muted-foreground">Memuat data analisis...</p>
+            ) : monitoring.tipe_program === "legacy" ? (
               (() => {
-                const mon = monitoring as MonitoringData;
+                const mon = monitoring;
                 return (
                   <>
                     {mon.cluster_comparison.length > 0 && (
@@ -1241,7 +1570,10 @@ export default function PromoDetailPage() {
                 );
               })()
             ) : (
-              <p className="text-sm text-muted-foreground">Data analisis tersedia setelah promo selesai.</p>
+              <div className="text-center py-12 text-muted-foreground">
+                <p className="text-sm">Tab Analisis tidak tersedia untuk tipe program <span className="font-medium">{monitoring.tipe_program}</span>.</p>
+                <p className="text-xs mt-1">Lihat tab Monitoring untuk data detail program ini.</p>
+              </div>
             )}
           </TabsContent>
         </Tabs>
