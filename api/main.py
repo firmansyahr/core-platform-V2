@@ -7,7 +7,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
 from api.core.limiter import limiter
-from api.routers import aegis, auth, cad_history, competitor, export, health, home, ilp, loyalty, performance, promo, settings
+from api.routers import aegis, auth, cad_history, cannibalization, competitor, export, health, home, ilp, loyalty, performance, promo, settings
 
 
 @asynccontextmanager
@@ -54,3 +54,4 @@ app.include_router(loyalty.router)
 app.include_router(promo.router)
 app.include_router(performance.router)
 app.include_router(competitor.router)
+app.include_router(cannibalization.router)

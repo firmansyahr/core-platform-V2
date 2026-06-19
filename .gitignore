@@ -9,3 +9,4 @@ frontend/.next/
 api/data/loyalty_members.json
 api/data/promos.json
 api/data/cad_history.json
+api/data/models/
