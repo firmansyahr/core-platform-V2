@@ -228,6 +228,63 @@ function KpiCard({ title, value, delta, deltaUp, sub, icon, accentColor }: KpiCa
   );
 }
 
+// ─── Competitor Intelligence mini-card ────────────────────────────────────────
+
+function CompetitorCard() {
+  const [data, setData] = useState<{
+    triangulation_summary: { konfirmasi_kompetitor: number; waspada_awal: number; tidak_cukup_data: number };
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    fetch(`${API}/api/competitor/overview`)
+      .then((r) => r.json())
+      .then((r) => setData(r.data ?? null))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const s = data?.triangulation_summary;
+
+  return (
+    <Card
+      className="cursor-pointer hover:shadow-md transition-shadow border-orange-200/60 dark:border-orange-800/40"
+      onClick={() => router.push("/competitor")}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-start gap-3">
+          <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-lg shrink-0">
+            <HugeiconsIcon icon={toIcon(Globe02Icon)} size={18} className="text-orange-600 dark:text-orange-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-sm">Competitor Intelligence</p>
+            <p className="text-xs text-muted-foreground">Triangulasi AEGIS + ASPERSSI</p>
+            {loading ? (
+              <div className="flex gap-3 mt-2">
+                {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-5 w-16 rounded" />)}
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 mt-2 flex-wrap">
+                <span className="text-[11px] font-semibold text-red-600 dark:text-red-400">
+                  {s?.konfirmasi_kompetitor ?? 0} terkonfirmasi
+                </span>
+                <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                  {s?.waspada_awal ?? 0} waspada
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  {s?.tidak_cukup_data ?? 0} data kurang
+                </span>
+              </div>
+            )}
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Custom Tooltips ──────────────────────────────────────────────────────────
 
 function VolumeTip({
@@ -1214,6 +1271,9 @@ export default function HomePage() {
               ) : null}
             </div>
           )}
+
+          {/* ── Competitor Intelligence Card ─────────────────────────── */}
+          <CompetitorCard />
 
           {/* ── AI Report Shortcut ──────────────────────────────────────── */}
           <Card

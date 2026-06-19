@@ -13,6 +13,7 @@ import {
   BarChartIcon,
   AwardIcon,
   ChartUpIcon,
+  Globe02Icon,
 } from "@hugeicons/core-free-icons";
 import { getUser, logout } from "@/lib/auth";
 import type { AuthUser } from "@/lib/auth";
@@ -254,6 +255,12 @@ export default function Navbar() {
               Tracker
             </a>
 
+            {/* Intelligence */}
+            <a href="/competitor" className={linkCls("/competitor")}>
+              <HugeiconsIcon icon={toIcon(Globe02Icon)} size={15} />
+              Intelligence
+            </a>
+
             {/* Report */}
             <a href="/report" className={linkCls("/report")}>
               <FileText size={15} strokeWidth={1.75} />
@@ -426,6 +433,12 @@ export default function Navbar() {
             <a href="/performance" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/performance")}>
               <HugeiconsIcon icon={toIcon(ChartUpIcon)} size={16} />
               Tracker
+            </a>
+
+            {/* Intelligence */}
+            <a href="/competitor" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/competitor")}>
+              <HugeiconsIcon icon={toIcon(Globe02Icon)} size={16} />
+              Intelligence
             </a>
 
             {/* Report */}

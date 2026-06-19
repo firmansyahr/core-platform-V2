@@ -1138,6 +1138,17 @@ export default function StoreDetailPage() {
   const { isAdmin }    = useAuth();
   const currentUser    = getUser()?.name || getUser()?.username || "";
 
+  interface CompTriRow {
+    provinsi:           string;
+    verdict:            string;
+    aegis_warning_pct:  number;
+    own_brand_ms_pct:   number | null;
+    top_competitor: { brand: string; ms_current_pct: number; ms_change_pp: number; trend: string } | null;
+    ms_brand_periode:   string | null;
+    insight:            string;
+  }
+  const [compContext,   setCompContext]   = useState<CompTriRow | null>(null);
+
   useEffect(() => {
     if (!id) return;
     fetch(`${API}/api/aegis/store/${encodeURIComponent(id)}`)
@@ -1218,6 +1229,22 @@ export default function StoreDetailPage() {
   useEffect(() => {
     if (!loading && data) fetchCadHistory();
   }, [loading, data, fetchCadHistory]);
+
+  useEffect(() => {
+    if (!loading && data) {
+      const prov = data.info_toko.provinsi;
+      fetch(`${API}/api/competitor/triangulation`)
+        .then((r) => r.ok ? r.json() : null)
+        .then((r) => {
+          if (!r?.data) return;
+          const match = (r.data as CompTriRow[]).find(
+            (t) => t.provinsi === prov || t.provinsi.includes(prov)
+          );
+          setCompContext(match ?? null);
+        })
+        .catch(() => {});
+    }
+  }, [loading, data]);
 
   if (loading) return <LoadingSkeleton />;
   if (error || !data) return <ErrorState error={error ?? "Data tidak ditemukan"} />;
@@ -1368,6 +1395,58 @@ export default function StoreDetailPage() {
                   ) : null}
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Konteks Pasar Provinsi (ASPERSSI) ───────────────────── */}
+        {compContext && (
+          <Card className="border-orange-200/50 dark:border-orange-800/30 bg-orange-50/30 dark:bg-orange-950/10">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div className="space-y-1.5 flex-1">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-orange-600 dark:text-orange-400">
+                    Konteks Pasar Provinsi {info.provinsi}
+                  </p>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {/* Verdict */}
+                    {(() => {
+                      const vCfg: Record<string, { label: string; cls: string }> = {
+                        KONFIRMASI_KOMPETITOR:  { label: "Terkonfirmasi Kompetitor", cls: "text-red-600 dark:text-red-400" },
+                        WASPADA_AWAL:           { label: "Waspada Awal",             cls: "text-amber-600 dark:text-amber-400" },
+                        INTERNAL_ATAU_SEASONAL: { label: "Bukan Kompetitor",         cls: "text-blue-600 dark:text-blue-400" },
+                        TIDAK_CUKUP_DATA:       { label: "Data Kurang",              cls: "text-muted-foreground" },
+                        NORMAL:                 { label: "Normal",                   cls: "text-green-600 dark:text-green-400" },
+                      };
+                      const cfg = vCfg[compContext.verdict] ?? vCfg.TIDAK_CUKUP_DATA;
+                      return <span className={`text-xs font-semibold ${cfg.cls}`}>{cfg.label}</span>;
+                    })()}
+                    {compContext.own_brand_ms_pct !== null && (
+                      <span className="text-[11px] text-muted-foreground">
+                        MS Semen Elang: <strong>{compContext.own_brand_ms_pct.toFixed(1)}%</strong>
+                      </span>
+                    )}
+                    {compContext.top_competitor && (
+                      <span className="text-[11px] text-muted-foreground">
+                        Top kompetitor: <strong>{compContext.top_competitor.brand}</strong>{" "}
+                        <span className={compContext.top_competitor.ms_change_pp > 0 ? "text-red-500" : "text-green-600"}>
+                          {compContext.top_competitor.ms_change_pp > 0 ? "+" : ""}
+                          {compContext.top_competitor.ms_change_pp.toFixed(1)}pp
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <a
+                  href="/competitor"
+                  className="text-[11px] text-orange-600 dark:text-orange-400 underline underline-offset-2 hover:no-underline shrink-0"
+                >
+                  Lihat Detail →
+                </a>
+              </div>
+              <p className="text-[10px] text-muted-foreground/70 mt-2">
+                Data ASPERSSI {compContext.ms_brand_periode ?? "—"} — dalam persentase, bukan volume absolut
+              </p>
             </CardContent>
           </Card>
         )}

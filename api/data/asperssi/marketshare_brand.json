@@ -1,0 +1,125 @@
+{
+  "metadata": {
+    "sumber": "ASPERSSI",
+    "deskripsi": "Market share per brand per provinsi (%)",
+    "satuan": "Persen (%)",
+    "periode_tersedia": ["2025-12", "2026-01"],
+    "last_updated": "2026-01-31"
+  },
+  "data": [
+    {
+      "provinsi": "JAWA TIMUR",
+      "periode": "2025-12",
+      "brands": [
+        {"nama": "Semen Elang",       "market_share_pct": 28.5, "is_own_brand": true},
+        {"nama": "Brand Kompetitor A", "market_share_pct": 22.3, "is_own_brand": false},
+        {"nama": "Brand Kompetitor B", "market_share_pct": 18.1, "is_own_brand": false},
+        {"nama": "Brand Kompetitor C", "market_share_pct":  9.4, "is_own_brand": false},
+        {"nama": "Lainnya",            "market_share_pct": 21.7, "is_own_brand": false}
+      ],
+      "tersedia": true
+    },
+    {
+      "provinsi": "JAWA TIMUR",
+      "periode": "2026-01",
+      "brands": [
+        {"nama": "Semen Elang",       "market_share_pct": 27.1, "is_own_brand": true},
+        {"nama": "Brand Kompetitor A", "market_share_pct": 23.8, "is_own_brand": false},
+        {"nama": "Brand Kompetitor B", "market_share_pct": 17.9, "is_own_brand": false},
+        {"nama": "Brand Kompetitor C", "market_share_pct":  9.6, "is_own_brand": false},
+        {"nama": "Lainnya",            "market_share_pct": 21.6, "is_own_brand": false}
+      ],
+      "tersedia": true
+    },
+    {
+      "provinsi": "JAWA TENGAH",
+      "periode": "2025-12",
+      "brands": [
+        {"nama": "Semen Elang",       "market_share_pct": 31.2, "is_own_brand": true},
+        {"nama": "Brand Kompetitor A", "market_share_pct": 20.1, "is_own_brand": false},
+        {"nama": "Brand Kompetitor B", "market_share_pct": 19.4, "is_own_brand": false},
+        {"nama": "Brand Kompetitor D", "market_share_pct":  7.8, "is_own_brand": false},
+        {"nama": "Lainnya",            "market_share_pct": 21.5, "is_own_brand": false}
+      ],
+      "tersedia": true
+    },
+    {
+      "provinsi": "JAWA TENGAH",
+      "periode": "2026-01",
+      "brands": [
+        {"nama": "Semen Elang",       "market_share_pct": 30.4, "is_own_brand": true},
+        {"nama": "Brand Kompetitor A", "market_share_pct": 20.9, "is_own_brand": false},
+        {"nama": "Brand Kompetitor B", "market_share_pct": 19.1, "is_own_brand": false},
+        {"nama": "Brand Kompetitor D", "market_share_pct":  8.3, "is_own_brand": false},
+        {"nama": "Lainnya",            "market_share_pct": 21.3, "is_own_brand": false}
+      ],
+      "tersedia": true
+    },
+    {
+      "provinsi": "JAWA BARAT",
+      "periode": "2025-12",
+      "brands": [
+        {"nama": "Semen Elang",       "market_share_pct": 24.8, "is_own_brand": true},
+        {"nama": "Brand Kompetitor A", "market_share_pct": 26.4, "is_own_brand": false},
+        {"nama": "Brand Kompetitor C", "market_share_pct": 16.2, "is_own_brand": false},
+        {"nama": "Lainnya",            "market_share_pct": 32.6, "is_own_brand": false}
+      ],
+      "tersedia": true
+    },
+    {
+      "provinsi": "JAWA BARAT",
+      "periode": "2026-01",
+      "brands": [
+        {"nama": "Semen Elang",       "market_share_pct": 24.2, "is_own_brand": true},
+        {"nama": "Brand Kompetitor A", "market_share_pct": 27.1, "is_own_brand": false},
+        {"nama": "Brand Kompetitor C", "market_share_pct": 16.8, "is_own_brand": false},
+        {"nama": "Lainnya",            "market_share_pct": 31.9, "is_own_brand": false}
+      ],
+      "tersedia": true
+    },
+    {
+      "provinsi": "SUMATERA UTARA",
+      "periode": "2025-12",
+      "brands": [
+        {"nama": "Semen Elang",       "market_share_pct": 33.7, "is_own_brand": true},
+        {"nama": "Brand Kompetitor B", "market_share_pct": 24.5, "is_own_brand": false},
+        {"nama": "Brand Kompetitor E", "market_share_pct": 14.1, "is_own_brand": false},
+        {"nama": "Lainnya",            "market_share_pct": 27.7, "is_own_brand": false}
+      ],
+      "tersedia": true
+    },
+    {
+      "provinsi": "SUMATERA UTARA",
+      "periode": "2026-01",
+      "brands": [
+        {"nama": "Semen Elang",       "market_share_pct": 32.9, "is_own_brand": true},
+        {"nama": "Brand Kompetitor B", "market_share_pct": 25.3, "is_own_brand": false},
+        {"nama": "Brand Kompetitor E", "market_share_pct": 14.6, "is_own_brand": false},
+        {"nama": "Lainnya",            "market_share_pct": 27.2, "is_own_brand": false}
+      ],
+      "tersedia": true
+    },
+    {
+      "provinsi": "BANTEN",
+      "periode": "2025-12",
+      "brands": [
+        {"nama": "Semen Elang",       "market_share_pct": 22.1, "is_own_brand": true},
+        {"nama": "Brand Kompetitor A", "market_share_pct": 29.8, "is_own_brand": false},
+        {"nama": "Brand Kompetitor C", "market_share_pct": 18.4, "is_own_brand": false},
+        {"nama": "Lainnya",            "market_share_pct": 29.7, "is_own_brand": false}
+      ],
+      "tersedia": true
+    },
+    {
+      "provinsi": "BANTEN",
+      "periode": "2026-01",
+      "brands": [
+        {"nama": "Semen Elang",       "market_share_pct": 21.5, "is_own_brand": true},
+        {"nama": "Brand Kompetitor A", "market_share_pct": 30.7, "is_own_brand": false},
+        {"nama": "Brand Kompetitor C", "market_share_pct": 19.1, "is_own_brand": false},
+        {"nama": "Lainnya",            "market_share_pct": 28.7, "is_own_brand": false}
+      ],
+      "tersedia": true
+    }
+  ]
+}

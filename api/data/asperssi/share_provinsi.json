@@ -1,0 +1,27 @@
+{
+  "metadata": {
+    "sumber": "ASPERSSI",
+    "deskripsi": "Porsi pasar per provinsi dari total nasional (%)",
+    "satuan": "Persen (%)",
+    "periode_tersedia": ["2026-03", "2026-04"],
+    "last_updated": "2026-04-30"
+  },
+  "data": [
+    {"provinsi": "JAWA TIMUR",   "periode": "2026-03", "share_nasional_pct": 18.5, "tersedia": true},
+    {"provinsi": "JAWA TIMUR",   "periode": "2026-04", "share_nasional_pct": 17.8, "tersedia": true},
+    {"provinsi": "JAWA TENGAH",  "periode": "2026-03", "share_nasional_pct": 14.2, "tersedia": true},
+    {"provinsi": "JAWA TENGAH",  "periode": "2026-04", "share_nasional_pct": 14.6, "tersedia": true},
+    {"provinsi": "JAWA BARAT",   "periode": "2026-03", "share_nasional_pct": 16.1, "tersedia": true},
+    {"provinsi": "JAWA BARAT",   "periode": "2026-04", "share_nasional_pct": 15.9, "tersedia": true},
+    {"provinsi": "SUMATERA UTARA","periode": "2026-03", "share_nasional_pct": 8.3, "tersedia": true},
+    {"provinsi": "SUMATERA UTARA","periode": "2026-04", "share_nasional_pct": 8.7, "tersedia": true},
+    {"provinsi": "BANTEN",        "periode": "2026-03", "share_nasional_pct": 6.4, "tersedia": true},
+    {"provinsi": "BANTEN",        "periode": "2026-04", "share_nasional_pct": 6.2, "tersedia": true},
+    {"provinsi": "DKI JAKARTA",   "periode": "2026-03", "share_nasional_pct": 5.8, "tersedia": true},
+    {"provinsi": "DKI JAKARTA",   "periode": "2026-04", "share_nasional_pct": 5.6, "tersedia": true},
+    {"provinsi": "SUMATERA SELATAN","periode": "2026-03", "share_nasional_pct": 4.9, "tersedia": true},
+    {"provinsi": "SUMATERA SELATAN","periode": "2026-04", "share_nasional_pct": 5.1, "tersedia": true},
+    {"provinsi": "KALIMANTAN TIMUR","periode": "2026-03", "share_nasional_pct": 3.7, "tersedia": true},
+    {"provinsi": "KALIMANTAN TIMUR","periode": "2026-04", "share_nasional_pct": 3.5, "tersedia": true}
+  ]
+}
