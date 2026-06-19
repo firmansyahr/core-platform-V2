@@ -12,9 +12,11 @@ from api.core.ilp_engine import (
     W_GROWTH_DEFAULT,
     W_RATIO_DEFAULT,
     W_TRX_DEFAULT,
+    apply_cannibalization_adjustment,
     apply_ilp_scoring,
     get_ilp_features,
     get_ilp_hierarchy,
+    load_cannibalization_results,
     solve_ilp,
 )
 
@@ -56,10 +58,11 @@ class ILPRequest(BaseModel):
     ssm_filter:                list[str] = Field(default_factory=list)
     asm_filter:                list[str] = Field(default_factory=list)
     tso_filter:                list[str] = Field(default_factory=list)
-    weight_ratio_cluster:      float = Field(default=W_RATIO_DEFAULT,  ge=0.0, le=1.0)
-    weight_avg_trx:            float = Field(default=W_TRX_DEFAULT,    ge=0.0, le=1.0)
-    weight_growth:             float = Field(default=W_GROWTH_DEFAULT,  ge=0.0, le=1.0)
-    exclude_existing_loyalty:  bool  = False
+    weight_ratio_cluster:           float = Field(default=W_RATIO_DEFAULT,  ge=0.0, le=1.0)
+    weight_avg_trx:                 float = Field(default=W_TRX_DEFAULT,    ge=0.0, le=1.0)
+    weight_growth:                  float = Field(default=W_GROWTH_DEFAULT,  ge=0.0, le=1.0)
+    exclude_existing_loyalty:       bool  = False
+    use_cannibalization_adjustment: bool  = True
 
 
 class SelectedStore(BaseModel):
@@ -72,14 +75,18 @@ class SelectedStore(BaseModel):
     asm:            str
     tso:            str
     score:          float
+    score_adjusted: float
     estimated_cost: float
     brand_category: str
     avg_ton:        float
     ton_growth:     float
-    efficiency:     float   # score per juta rupiah
-    ratio_score:    float   # MinMax-normalized ratio_vs_cluster (0–100)
-    trx_score:      float   # MinMax-normalized avg_trx (0–100)
-    growth_score:   float   # MinMax-normalized ton_growth (0–100)
+    efficiency:     float         # score_adjusted per juta rupiah
+    ratio_score:    float         # MinMax-normalized ratio_vs_cluster (0–100)
+    trx_score:      float         # MinMax-normalized avg_trx (0–100)
+    growth_score:   float         # MinMax-normalized ton_growth (0–100)
+    adjustment_factor:           float        = 1.0
+    cannibalization_category:    str | None   = None
+    cannibalization_label:       str | None   = None
 
 
 class ILPResponse(BaseModel):
@@ -133,8 +140,22 @@ def run_ilp(
             f"({toko_dikecualikan} toko di-exclude)"
         )
 
+    # Apply GMM cannibalization adjustment
+    gmm_result = (
+        load_cannibalization_results() if req.use_cannibalization_adjustment else None
+    )
+    scored_df  = apply_cannibalization_adjustment(scored_df, gmm_result)
+    gmm_active = gmm_result is not None
+
+    # Build the DataFrame passed to the ILP solver:
+    # when GMM is active, overwrite "score" with "score_adjusted" so the CBC
+    # objective reflects the GMM-adjusted priority.
+    solver_df = scored_df.copy()
+    if gmm_active:
+        solver_df["score"] = solver_df["score_adjusted"]
+
     selected, method = solve_ilp(
-        scored_df,
+        solver_df,
         budget=req.budget_maks,
         n_max=req.maks_toko,
         cluster_max_pct=req.cluster_constraints.to_dict(),
@@ -146,8 +167,10 @@ def run_ilp(
 
     data: list[SelectedStore] = []
     for _, row in selected.iterrows():
-        cost  = float(row["estimated_cost"])
-        score = round(float(row["score"]), 4)
+        cost         = float(row["estimated_cost"])
+        score_orig   = round(float(row.get("score_original", row["score"])), 4)
+        score_adj    = round(float(row.get("score_adjusted", row["score"])), 4)
+        eff_score    = score_adj if gmm_active else score_orig
         data.append(
             SelectedStore(
                 id_toko=str(row["ID Toko"]),
@@ -158,15 +181,19 @@ def run_ilp(
                 ssm=str(row.get("SSM") or ""),
                 asm=str(row.get("ASM") or ""),
                 tso=str(row.get("TSO") or ""),
-                score=score,
+                score=score_orig,
+                score_adjusted=score_adj,
                 estimated_cost=round(cost, 0),
                 brand_category=str(row.get("brand_category") or ""),
                 avg_ton=round(float(row["avg_ton"]), 2),
                 ton_growth=round(float(row["ton_growth"]), 2),
-                efficiency=round(score / (cost / 1_000_000), 4) if cost > 0 else 0.0,
+                efficiency=round(eff_score / (cost / 1_000_000), 4) if cost > 0 else 0.0,
                 ratio_score=round(float(row["ratio_score"]), 2),
                 trx_score=round(float(row["trx_score"]), 2),
                 growth_score=round(float(row["growth_score"]), 2),
+                adjustment_factor=round(float(row.get("adjustment_factor", 1.0)), 3),
+                cannibalization_category=row.get("cannibalization_category") or None,
+                cannibalization_label=row.get("cannibalization_label") or None,
             )
         )
 
@@ -183,9 +210,10 @@ def run_ilp(
             "budget_utilization_pct": (
                 round(total_cost / req.budget_maks * 100, 2) if req.budget_maks > 0 else 0.0
             ),
-            "exclude_existing_loyalty":  req.exclude_existing_loyalty,
-            "toko_dikecualikan":         toko_dikecualikan,
-            "total_kandidat_dianalisis": total_kandidat,
+            "exclude_existing_loyalty":        req.exclude_existing_loyalty,
+            "toko_dikecualikan":               toko_dikecualikan,
+            "total_kandidat_dianalisis":       total_kandidat,
+            "cannibalization_adjustment_used": gmm_active,
             "weights": {
                 "ratio_cluster": req.weight_ratio_cluster,
                 "avg_trx":       req.weight_avg_trx,

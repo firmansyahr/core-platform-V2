@@ -1,4 +1,6 @@
 import functools
+import json
+from pathlib import Path
 
 import pandas as pd
 
@@ -12,6 +14,84 @@ _MAX_CANDIDATES = 3_000
 W_RATIO_DEFAULT  = 0.47
 W_TRX_DEFAULT    = 0.43
 W_GROWTH_DEFAULT = 0.10
+
+_GMM_RESULT_PATH = Path("api/data/models/gmm_training_result.json")
+
+# Score multiplier per GMM category (< 1 de-prioritizes, > 1 boosts)
+CANNIBALIZATION_ADJUSTMENTS: dict[str, float] = {
+    "kanibalisasi":                    0.70,
+    "kanibalisasi_sebagian_eksternal": 0.85,
+    "tekanan_eksternal":               1.30,
+    "fighting_brand_shift":            1.25,
+    "perlu_investigasi":               1.10,
+    "campuran":                        1.05,
+    "de_kanibalisasi":                 1.00,
+    "stabil":                          1.00,
+}
+
+
+def load_cannibalization_results() -> dict | None:
+    if not _GMM_RESULT_PATH.exists():
+        return None
+    try:
+        return json.loads(_GMM_RESULT_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def apply_cannibalization_adjustment(
+    scored_df: pd.DataFrame,
+    gmm_result: dict | None,
+) -> pd.DataFrame:
+    """
+    Adds GMM-derived columns to a scored DataFrame:
+      score_original         — original ILP score (copy of score)
+      cannibalization_category / label / confidence
+      adjustment_factor      — confidence-scaled multiplier
+      score_adjusted         — score * adjustment_factor (ILP objective)
+    When gmm_result is None all adjustments are 1.0 and score_adjusted = score.
+    """
+    df = scored_df.copy()
+    df["score_original"] = df["score"]
+
+    if gmm_result is None:
+        df["cannibalization_category"]   = None
+        df["cannibalization_label"]      = None
+        df["cannibalization_confidence"] = None
+        df["adjustment_factor"]          = 1.0
+        df["score_adjusted"]             = df["score"]
+        return df
+
+    assignments: list[dict] = gmm_result.get("store_assignments", [])
+    interps: dict            = gmm_result.get("cluster_interpretations", {})
+    lookup = {str(s["ID Toko"]): s for s in assignments}
+
+    categories, labels, confidences, factors = [], [], [], []
+    for toko_id in df["ID Toko"].astype(str):
+        s = lookup.get(toko_id)
+        if s is None:
+            categories.append(None)
+            labels.append(None)
+            confidences.append(None)
+            factors.append(1.0)
+            continue
+        cl_id      = str(s["cluster"])
+        interp     = interps.get(cl_id, {})
+        category   = interp.get("category", "campuran")
+        confidence = float(s.get(f"prob_cluster_{cl_id}", 0.5))
+        base_adj   = CANNIBALIZATION_ADJUSTMENTS.get(category, 1.0)
+        scaled     = 1.0 + (base_adj - 1.0) * confidence
+        categories.append(category)
+        labels.append(interp.get("label"))
+        confidences.append(round(confidence, 3))
+        factors.append(round(scaled, 3))
+
+    df["cannibalization_category"]   = categories
+    df["cannibalization_label"]      = labels
+    df["cannibalization_confidence"] = confidences
+    df["adjustment_factor"]          = factors
+    df["score_adjusted"]             = (df["score"] * df["adjustment_factor"]).round(4)
+    return df
 
 
 def _ilp_mask(df: pd.DataFrame) -> pd.Series:

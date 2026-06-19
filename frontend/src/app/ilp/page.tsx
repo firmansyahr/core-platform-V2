@@ -73,6 +73,7 @@ interface ILPResult {
   asm:            string;
   tso:            string;
   score:          number;
+  score_adjusted: number;
   estimated_cost: number;
   brand_category: string;
   avg_ton:        number;
@@ -81,17 +82,32 @@ interface ILPResult {
   ratio_score:    number;
   trx_score:      number;
   growth_score:   number;
+  adjustment_factor:        number;
+  cannibalization_category: string | null;
+  cannibalization_label:    string | null;
 }
 
+const GMM_BADGE: Record<string, { label: string; color: string }> = {
+  kanibalisasi:                    { label: "Kanibalisasi",      color: "#3b82f6" },
+  kanibalisasi_sebagian_eksternal: { label: "Kanibal+Eksternal", color: "#6366f1" },
+  tekanan_eksternal:               { label: "Tekanan Eksternal", color: "#DC2626" },
+  fighting_brand_shift:            { label: "Fighting Brand",    color: "#f97316" },
+  perlu_investigasi:               { label: "Perlu Investigasi", color: "#f59e0b" },
+  de_kanibalisasi:                 { label: "De-Kanibalisasi",   color: "#10b981" },
+  stabil:                          { label: "Stabil",            color: "#6b7280" },
+  campuran:                        { label: "Campuran",          color: "#6b7280" },
+};
+
 interface ILPMeta {
-  generated_at:              string;
-  method:                    string;
-  total_toko:                number;
-  total_cost:                number;
-  budget_utilization_pct:    number;
-  exclude_existing_loyalty?: boolean;
-  toko_dikecualikan?:        number;
-  total_kandidat_dianalisis?: number;
+  generated_at:                    string;
+  method:                          string;
+  total_toko:                      number;
+  total_cost:                      number;
+  budget_utilization_pct:          number;
+  exclude_existing_loyalty?:       boolean;
+  toko_dikecualikan?:              number;
+  total_kandidat_dianalisis?:      number;
+  cannibalization_adjustment_used?: boolean;
 }
 
 interface ILPResponse {
@@ -362,8 +378,8 @@ function ScenarioCompare({ a, b }: { a: Scenario; b: Scenario }) {
     },
     {
       label: "Avg Score",
-      va: a.result.data.reduce((s, r) => s + r.score, 0) / (a.result.data.length || 1),
-      vb: b.result.data.reduce((s, r) => s + r.score, 0) / (b.result.data.length || 1),
+      va: a.result.data.reduce((s, r) => s + (r.score_adjusted ?? r.score), 0) / (a.result.data.length || 1),
+      vb: b.result.data.reduce((s, r) => s + (r.score_adjusted ?? r.score), 0) / (b.result.data.length || 1),
       fmt: (v: number) => v.toFixed(2),
     },
     {
@@ -446,6 +462,7 @@ export default function ILPPage() {
   });
 
   const [excludeLoyalty, setExcludeLoyalty] = useState(true);
+  const [useGmmAdjust, setUseGmmAdjust]   = useState(true);
 
   // Scoring weights (integers 0–100 representing %)
   const [wRatio,  setWRatio]  = useState(47);
@@ -470,7 +487,7 @@ export default function ILPPage() {
   const [error, setError]             = useState<string | null>(null);
 
   // Table sort
-  const [sortKey, setSortKey]   = useState<keyof ILPResult>("score");
+  const [sortKey, setSortKey]   = useState<keyof ILPResult>("score_adjusted");
   const [sortAsc, setSortAsc]   = useState(false);
 
   // Scenarios
@@ -543,17 +560,18 @@ export default function ILPPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          budget_maks:               budgetVal,
-          maks_toko:                 maxTokoVal,
+          budget_maks:                    budgetVal,
+          maks_toko:                      maxTokoVal,
           cluster_constraints,
-          provinsi_filter:           selProvinsi,
-          ssm_filter:                selSSM,
-          asm_filter:                selASM,
-          tso_filter:                selTSO,
-          weight_ratio_cluster:      wRatio  / 100,
-          weight_avg_trx:            wTrx    / 100,
-          weight_growth:             wGrowth / 100,
-          exclude_existing_loyalty:  excludeLoyalty,
+          provinsi_filter:                selProvinsi,
+          ssm_filter:                     selSSM,
+          asm_filter:                     selASM,
+          tso_filter:                     selTSO,
+          weight_ratio_cluster:           wRatio  / 100,
+          weight_avg_trx:                 wTrx    / 100,
+          weight_growth:                  wGrowth / 100,
+          exclude_existing_loyalty:       excludeLoyalty,
+          use_cannibalization_adjustment: useGmmAdjust,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -566,7 +584,7 @@ export default function ILPPage() {
       setSolving(false);
     }
   }, [budget, maxToko, clusterPct, selProvinsi, selSSM, selASM, selTSO,
-      wRatio, wTrx, wGrowth, weightsValid, excludeLoyalty, scenarios.length]);
+      wRatio, wTrx, wGrowth, weightsValid, excludeLoyalty, useGmmAdjust, scenarios.length]);
 
   const sortedData = useMemo(() => {
     if (!result) return [];
@@ -625,7 +643,7 @@ export default function ILPPage() {
   }, [result]);
 
   const avgScore = result
-    ? result.data.reduce((s, r) => s + r.score, 0) / (result.data.length || 1)
+    ? result.data.reduce((s, r) => s + (r.score_adjusted ?? r.score), 0) / (result.data.length || 1)
     : 0;
 
   const saveScenario = () => {
@@ -659,16 +677,19 @@ export default function ILPPage() {
     if (!result) return;
     const headers = [
       "ID Toko","Nama Toko","Kabupaten","Provinsi","Cluster","SSM","ASM","TSO",
-      "Score","Ratio Score","Trx Score","Growth Score","Est Cost (Rp)",
-      "Brand","Avg TON","TON Growth %","Efficiency (pt/jt)"
+      "Score ILP","Score GMM","Faktor Adj","Ratio Score","Trx Score","Growth Score",
+      "Est Cost (Rp)","Brand","Avg TON","TON Growth %","Efficiency (pt/jt)","Sinyal GMM"
     ];
     const rows = sortedData.map((r) =>
       [
         r.id_toko, r.nama_toko, r.kabupaten, r.provinsi, r.cluster_pareto,
         r.ssm, r.asm, r.tso,
-        r.score.toFixed(2), r.ratio_score.toFixed(1), r.trx_score.toFixed(1),
+        r.score.toFixed(2), (r.score_adjusted ?? r.score).toFixed(2),
+        (r.adjustment_factor ?? 1).toFixed(3),
+        r.ratio_score.toFixed(1), r.trx_score.toFixed(1),
         r.growth_score.toFixed(1), r.estimated_cost, r.brand_category,
         r.avg_ton.toFixed(2), r.ton_growth.toFixed(2), r.efficiency.toFixed(4),
+        r.cannibalization_category ?? "—",
       ]
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
         .join(",")
@@ -833,6 +854,32 @@ export default function ILPPage() {
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Fokus optimasi pada kandidat baru — hindari rekomendasi ulang toko yang sudah terdaftar
+                </p>
+              </div>
+            </label>
+
+            {/* GMM Cannibalization Adjustment toggle */}
+            <label
+              className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors select-none
+                ${useGmmAdjust
+                  ? "border-violet-500/40 bg-violet-500/5"
+                  : "border-border bg-muted/20 hover:bg-muted/40"
+                } ${!isAdmin ? "opacity-60 cursor-not-allowed" : ""}`}
+            >
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-violet-600 cursor-pointer"
+                checked={useGmmAdjust}
+                disabled={!isAdmin}
+                onChange={(e) => setUseGmmAdjust(e.target.checked)}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium leading-tight">
+                  Aktifkan GMM Cannibalization Adjustment
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Sesuaikan ILP score berdasarkan sinyal GMM — kanibalisasi internal de-prioritas (×0.7),
+                  tekanan eksternal diprioritaskan (×1.3)
                 </p>
               </div>
             </label>
@@ -1084,6 +1131,17 @@ export default function ILPPage() {
               </div>
             )}
 
+            {/* GMM adjustment active badge */}
+            {result.meta.cannibalization_adjustment_used && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-violet-500/30 bg-violet-500/5 text-xs text-violet-700 dark:text-violet-400">
+                <HugeiconsIcon icon={toIcon(InformationCircleIcon)} size={13} />
+                <span>
+                  GMM Cannibalization Adjustment aktif — score ILP disesuaikan berdasarkan sinyal brand shift.
+                  Kolom <strong>Sinyal GMM</strong> menampilkan kategori tiap toko.
+                </span>
+              </div>
+            )}
+
             {/* Summary cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <SummaryCard
@@ -1328,7 +1386,7 @@ export default function ILPPage() {
                       <TableHead className="text-xs uppercase tracking-wider">Kabupaten</TableHead>
                       <TableHead className="text-xs uppercase tracking-wider">Cluster</TableHead>
                       <TableHead className="text-xs uppercase tracking-wider">Avg TON</TableHead>
-                      <SortHeader colKey="score">Score</SortHeader>
+                      <SortHeader colKey="score_adjusted">Score</SortHeader>
                       <SortHeader colKey="ratio_score">
                         <Tooltip text="Ratio vs Cluster (MinMax 0–100): volume toko relatif terhadap median cluster-nya">
                           <span>Ratio</span>
@@ -1347,6 +1405,7 @@ export default function ILPPage() {
                       <SortHeader colKey="estimated_cost">Est. Cost</SortHeader>
                       <SortHeader colKey="efficiency">Efisiensi</SortHeader>
                       <TableHead className="text-xs uppercase tracking-wider">Brand</TableHead>
+                      <TableHead className="text-xs uppercase tracking-wider">Sinyal GMM</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1375,8 +1434,8 @@ export default function ILPPage() {
                           <TableCell className="tabular-nums text-muted-foreground">
                             {fmtNum(row.avg_ton)}
                           </TableCell>
-                          <TableCell className="tabular-nums font-semibold">
-                            {row.score.toFixed(1)}
+                          <TableCell className="tabular-nums font-semibold" title={`ILP score: ${row.score.toFixed(1)}`}>
+                            {(row.score_adjusted ?? row.score).toFixed(1)}
                           </TableCell>
                           <TableCell className="tabular-nums text-right text-muted-foreground text-[11px]">
                             {row.ratio_score.toFixed(1)}
@@ -1401,6 +1460,20 @@ export default function ILPPage() {
                             >
                               {row.brand_category}
                             </span>
+                          </TableCell>
+                          <TableCell>
+                            {row.cannibalization_category ? (() => {
+                              const b = GMM_BADGE[row.cannibalization_category] ?? { label: row.cannibalization_category, color: "#6b7280" };
+                              return (
+                                <span
+                                  className="text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap"
+                                  style={{ color: b.color, backgroundColor: `${b.color}14`, border: `1px solid ${b.color}28` }}
+                                  title={row.cannibalization_label ?? undefined}
+                                >
+                                  {b.label}
+                                </span>
+                              );
+                            })() : <span className="text-[10px] text-muted-foreground">—</span>}
                           </TableCell>
                         </TableRow>
                       );
