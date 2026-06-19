@@ -462,7 +462,104 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* ══ 8. TECH STACK ════════════════════════════════════════════════════ */}
+        {/* ══ 8. CAD VALIDATION GUIDE ═════════════════════════════════════════ */}
+        <section className="py-16 px-6 border-t border-border">
+          <div className="max-w-4xl mx-auto">
+            <SectionLabel>Panduan Pengisian CAD Alert Validasi</SectionLabel>
+            <p className="text-sm text-muted-foreground text-center mb-8 max-w-2xl mx-auto">
+              Panduan kategori validasi lapangan untuk TSO saat mengisi hasil kunjungan
+              setelah toko muncul di CAD Alert.
+            </p>
+
+            {/* Category guide table */}
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-muted/60 border-b border-border">
+                    <th className="px-4 py-3 text-left font-semibold text-[11px] uppercase tracking-wider text-muted-foreground w-52">Kategori</th>
+                    <th className="px-4 py-3 text-left font-semibold text-[11px] uppercase tracking-wider text-muted-foreground">Kapan Digunakan</th>
+                    <th className="px-4 py-3 text-left font-semibold text-[11px] uppercase tracking-wider text-muted-foreground w-60">Contoh Catatan</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {[
+                    {
+                      k: "Kompetitor Eksternal",
+                      color: "text-red-600 dark:text-red-400",
+                      when: "Toko terbukti aktif membeli produk kompetitor (brand selain ELANG & BADAK) dalam 4 minggu terakhir, atau terpantau ada stok kompetitor di area display utama.",
+                      ex: "\"Toko beli SEMEN BANTENG 80 zak 2 minggu lalu. Harga lebih murah Rp 3.000/zak.\"",
+                    },
+                    {
+                      k: "Masalah Harga / Gap Harga Besar",
+                      color: "text-yellow-600 dark:text-yellow-400",
+                      when: "Toko mengeluhkan selisih harga >Rp 2.000/zak dengan kompetitor namun belum beralih brand. Gunakan jika harga adalah satu-satunya faktor keluhan.",
+                      ex: "\"Pelanggan tanya kenapa Elang lebih mahal Rp 4.500/zak dari Banteng. Toko belum beralih.\"",
+                    },
+                    {
+                      k: "Masalah Stok / Keterlambatan Kirim",
+                      color: "text-orange-600 dark:text-orange-400",
+                      when: "Toko mengalami kekosongan stok ELANG/BADAK minimal 3 hari, atau pengiriman distributor terlambat >2 hari dari jadwal rutin.",
+                      ex: "\"Stok ELANG kosong 5 hari karena truk distributor breakdown. Sekarang sudah isi ulang.\"",
+                    },
+                    {
+                      k: "Faktor Seasonal",
+                      color: "text-blue-600 dark:text-blue-400",
+                      when: "Penurunan volume terjadi bersamaan dengan musim hujan, bulan Ramadan, atau akhir tahun di mana seluruh area mengalami penurunan serupa. Cek dengan toko lain sekitar.",
+                      ex: "\"Semua toko di kecamatan turun volume. Proyek konstruksi berhenti sementara karena hujan deras.\"",
+                    },
+                    {
+                      k: "Faktor Internal Distributor",
+                      color: "text-purple-600 dark:text-purple-400",
+                      when: "Masalah berasal dari sisi distributor: konflik SO-toko, penghentian kredit, perubahan rute pengiriman, atau salesman baru yang belum kenal toko.",
+                      ex: "\"Distributor stop kredit toko karena tunggakan 2 bulan. Hubungan sedang diperbaiki.\"",
+                    },
+                    {
+                      k: "Kondisi Normal / False Alarm",
+                      color: "text-green-600 dark:text-green-400",
+                      when: "Kunjungan lapangan membuktikan toko tidak bermasalah: tidak ada kompetitor, stok cukup, tidak ada keluhan harga. Alert disebabkan fluktuasi data normal.",
+                      ex: "\"Toko baik-baik saja. Proyek musiman selesai, volume akan naik bulan depan.\"",
+                    },
+                    {
+                      k: "Butuh Investigasi Lanjut",
+                      color: "text-gray-500 dark:text-gray-400",
+                      when: "Situasi di lapangan tidak jelas atau toko tidak dapat ditemui. Perlukan kunjungan kedua atau eskalasi ke ASM.",
+                      ex: "\"Toko tutup 3 hari berturut-turut, tidak ada info. Perlu cek kembali minggu depan.\"",
+                    },
+                  ].map(({ k, color, when, ex }) => (
+                    <tr key={k} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-3 align-top">
+                        <span className={`font-semibold text-[11px] ${color}`}>{k}</span>
+                      </td>
+                      <td className="px-4 py-3 align-top text-muted-foreground leading-relaxed">{when}</td>
+                      <td className="px-4 py-3 align-top italic text-muted-foreground/80 leading-relaxed">{ex}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Writing tips */}
+            <div className="mt-6 rounded-xl border border-border bg-muted/30 p-5 space-y-3">
+              <p className="text-xs font-semibold text-foreground">Tips Penulisan Catatan Validasi</p>
+              <ul className="space-y-1.5 text-xs text-muted-foreground list-none">
+                {[
+                  "Tulis dalam kalimat lengkap. Hindari singkatan yang ambigu (\"KB\" → tulis \"Kabupaten Boyolali\").",
+                  "Sertakan angka konkret: volume, harga per zak, jumlah hari kosong, jumlah zak kompetitor.",
+                  "Pisahkan fakta lapangan dari asumsi. Fakta: \"Toko beli 100 zak Banteng\". Asumsi: \"Sepertinya karena harga\".",
+                  "Jika lebih dari satu kategori berlaku, pilih yang paling dominan sebagai Utama dan sisanya sebagai Sekunder.",
+                  "Action items wajib berisi langkah konkret: siapa, apa, kapan. Bukan hanya \"akan ditindaklanjuti\".",
+                ].map((tip, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="text-foreground font-medium shrink-0">{i + 1}.</span>
+                    <span>{tip}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        {/* ══ 10. TECH STACK ═══════════════════════════════════════════════════ */}
         <section className="py-16 px-6 border-t border-border">
           <div className="max-w-3xl mx-auto">
             <SectionLabel>Tech Stack</SectionLabel>
@@ -490,7 +587,7 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* ══ 9. FOOTER ════════════════════════════════════════════════════════ */}
+        {/* ══ 11. FOOTER ═══════════════════════════════════════════════════════ */}
         <section className="py-16 px-6 border-t border-border pb-24">
           <div className="max-w-sm mx-auto">
             <div className="rounded-2xl border border-border bg-card p-7 text-center space-y-5 shadow-sm">

@@ -502,6 +502,18 @@ def get_store_explanation(id_toko: str) -> dict:
     }
 
 
+@router.get("/store/{id_toko}/cad-validasi")
+def get_store_cad_history(id_toko: str) -> dict:
+    """Return all CAD alert validations that include this toko."""
+    from api.core import cad_storage as _cad
+    history = _cad.get_toko_cad_history(id_toko)
+    return {
+        "status":   "ok",
+        "data":     history,
+        "meta":     {"generated_at": datetime.now(timezone.utc).isoformat()},
+    }
+
+
 @router.get("/store/{id_toko}/insight")
 def get_store_insight(id_toko: str) -> dict:
     """Generate AI narrative insight for a specific store."""

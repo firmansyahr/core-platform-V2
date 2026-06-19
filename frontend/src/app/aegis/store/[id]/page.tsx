@@ -6,6 +6,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
+import TokoValidasiModal from "@/components/TokoValidasiModal";
+import { useAuth } from "@/hooks/useAuth";
+import { getUser } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -1117,6 +1120,24 @@ export default function StoreDetailPage() {
   const [storeInsight,     setStoreInsight]     = useState<StoreAiInsight | null>(null);
   const [storeInsightLoad, setStoreInsightLoad] = useState(false);
 
+  interface CADHistoryItem {
+    id: string;
+    kabupaten: string;
+    tgl_alert: string;
+    status: string;
+    status_resolusi: string;
+    kondisi: string | null;
+    catatan: string | null;
+    validated_by: string | null;
+    waktu_validasi: string | null;
+    cad_id: string;
+  }
+  const [cadHistory,        setCadHistory]      = useState<CADHistoryItem[]>([]);
+  const [cadLoading,        setCadLoading]      = useState(false);
+  const [showTokoModal,     setShowTokoModal]   = useState(false);
+  const { isAdmin }    = useAuth();
+  const currentUser    = getUser()?.name || getUser()?.username || "";
+
   useEffect(() => {
     if (!id) return;
     fetch(`${API}/api/aegis/store/${encodeURIComponent(id)}`)
@@ -1183,6 +1204,20 @@ export default function StoreDetailPage() {
       .catch(() => {})
       .finally(() => setPerfLoading(false));
   }, [id, loading]);
+
+  const fetchCadHistory = useCallback(() => {
+    if (!id) return;
+    setCadLoading(true);
+    fetch(`${API}/api/aegis/store/${encodeURIComponent(id)}/cad-validasi`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((r) => { if (r?.data) setCadHistory(r.data as CADHistoryItem[]); })
+      .catch(() => {})
+      .finally(() => setCadLoading(false));
+  }, [id]);
+
+  useEffect(() => {
+    if (!loading && data) fetchCadHistory();
+  }, [loading, data, fetchCadHistory]);
 
   if (loading) return <LoadingSkeleton />;
   if (error || !data) return <ErrorState error={error ?? "Data tidak ditemukan"} />;
@@ -1700,6 +1735,104 @@ export default function StoreDetailPage() {
           ))}
         </div>
 
+        {/* ── Riwayat Validasi CAD ────────────────────────────────── */}
+        <Card>
+          <CardHeader className="border-b border-border pb-3">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-sm">Riwayat Validasi CAD</CardTitle>
+              {isAdmin && (
+                <button
+                  onClick={() => setShowTokoModal(true)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-amber-500/60 text-amber-600
+                    hover:bg-amber-50 dark:text-amber-400 dark:border-amber-500/40 dark:hover:bg-amber-950/30 transition-colors"
+                >
+                  + Tambah Validasi
+                </button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="pt-3 pb-3">
+            {cadLoading ? (
+              <div className="space-y-2 py-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="flex gap-3 items-start">
+                    <div className="w-2 h-2 rounded-full bg-muted mt-1.5 shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-3 bg-muted rounded w-2/3" />
+                      <div className="h-3 bg-muted rounded w-1/2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : cadHistory.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4 text-center">
+                Belum ada riwayat validasi CAD untuk toko ini.
+              </p>
+            ) : (
+              <div className="relative">
+                {/* Timeline line */}
+                <div className="absolute left-[6px] top-4 bottom-2 w-px bg-border" />
+                <div className="space-y-4 pl-5">
+                  {cadHistory.map((item) => {
+                    const KONDISI_CLS: Record<string, string> = {
+                      "Kompetitor Eksternal":               "text-red-600 dark:text-red-400",
+                      "Masalah Harga / Gap Harga Besar":    "text-yellow-600 dark:text-yellow-400",
+                      "Masalah Stok / Keterlambatan Kirim": "text-orange-600 dark:text-orange-400",
+                      "Faktor Seasonal":                    "text-blue-600 dark:text-blue-400",
+                      "Faktor Internal Distributor":        "text-purple-600 dark:text-purple-400",
+                      "Kondisi Normal / False Alarm":       "text-green-600 dark:text-green-400",
+                      "Butuh Investigasi Lanjut":           "text-muted-foreground",
+                    };
+                    return (
+                      <div key={item.id} className="relative">
+                        {/* Dot */}
+                        <div className="absolute -left-5 top-1.5 w-2.5 h-2.5 rounded-full border-2 border-background bg-border" />
+                        <div className="rounded-lg border border-border bg-muted/20 px-3 py-2.5 space-y-1.5">
+                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                            <div>
+                              <p className="text-xs font-semibold">
+                                Alert CAD · {item.tgl_alert || "—"}
+                                {item.cad_id && (
+                                  <Link
+                                    href={`/aegis/cad-history/${encodeURIComponent(item.cad_id)}`}
+                                    className="ml-1.5 text-[10px] text-blue-500 hover:underline"
+                                  >
+                                    Lihat Detail →
+                                  </Link>
+                                )}
+                              </p>
+                              {item.kondisi && (
+                                <p className={`text-[11px] font-medium ${KONDISI_CLS[item.kondisi] ?? "text-muted-foreground"}`}>
+                                  {item.kondisi}
+                                </p>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                              {item.waktu_validasi
+                                ? new Date(item.waktu_validasi).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })
+                                : "—"}
+                            </span>
+                          </div>
+                          {item.catatan && (
+                            <p className="text-[11px] text-muted-foreground leading-snug line-clamp-2">
+                              {item.catatan}
+                            </p>
+                          )}
+                          {item.validated_by && (
+                            <p className="text-[10px] text-muted-foreground/70">
+                              oleh {item.validated_by}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <p className="text-center text-[11px] text-muted-foreground pb-1">
           CORE Platform v2 · AEGIS Store Detail · {info.id_toko}
         </p>
@@ -1711,6 +1844,19 @@ export default function StoreDetailPage() {
       {/* Journey Modal */}
       {showJourney && (
         <StoreJourneyModal idToko={id} onClose={() => setShowJourney(false)} />
+      )}
+
+      {/* Toko Validasi Modal */}
+      {showTokoModal && (
+        <TokoValidasiModal
+          cadId=""
+          idToko={id}
+          namaToko={info.nama_toko}
+          aegisScore={cw.aegis_score}
+          currentUser={currentUser}
+          onClose={() => setShowTokoModal(false)}
+          onSaved={() => { fetchCadHistory(); setShowTokoModal(false); }}
+        />
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -23,11 +23,33 @@ class CADUpdateBody(BaseModel):
     status_resolusi:   Optional[str] = None
 
 
+class ValidateBody(BaseModel):
+    hasil_validasi: dict
+    validated_by:   str
+    tgl_validasi:   Optional[str] = None
+
+
+class TokoValidasiBody(BaseModel):
+    id_toko:     str
+    nama_toko:   Optional[str]   = None
+    aegis_score: Optional[float] = None
+    kondisi:     str
+    catatan:     Optional[str]   = None
+    validated_by: str
+
+
+class FollowUpBody(BaseModel):
+    status:        Optional[str]  = None
+    eskalasi_asm:  Optional[bool] = None
+    catatan:       Optional[str]  = None
+    reminder_sent: Optional[bool] = None
+
+
 def _ts() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# ── GET endpoints (no auth — consistent with existing AEGIS endpoints) ─────────
+# ── GET endpoints ──────────────────────────────────────────────────────────────
 
 @router.get("/cad-history")
 def list_cad_history(
@@ -63,6 +85,22 @@ def cad_history_summary() -> dict[str, Any]:
     }
 
 
+@router.get("/cad-history/{rec_id}/toko-validasi")
+def get_toko_validasi(rec_id: str) -> dict[str, Any]:
+    result = cad_storage.get_toko_validasi(rec_id)
+    if result is None:
+        raise HTTPException(404, f"Record '{rec_id}' tidak ditemukan")
+    return {"status": "ok", "data": result, "meta": {"generated_at": _ts()}}
+
+
+@router.get("/cad-history/{rec_id}")
+def get_cad_record(rec_id: str) -> dict[str, Any]:
+    record = cad_storage.get_record_by_id(rec_id)
+    if record is None:
+        raise HTTPException(404, f"Record '{rec_id}' tidak ditemukan")
+    return {"status": "ok", "data": record, "meta": {"generated_at": _ts()}}
+
+
 @router.get("/tso-list")
 def get_tso_list() -> dict[str, Any]:
     stores = get_store_crs()
@@ -70,7 +108,7 @@ def get_tso_list() -> dict[str, Any]:
     return {"status": "ok", "data": tsos}
 
 
-# ── POST endpoints (admin only) ────────────────────────────────────────────────
+# ── POST/PUT endpoints (admin only) ───────────────────────────────────────────
 
 @router.post("/cad-history/generate")
 def generate_cad_history(
@@ -82,6 +120,44 @@ def generate_cad_history(
         "data": {"created": created, "skipped": skipped},
         "meta": {"generated_at": _ts()},
     }
+
+
+@router.put("/cad-history/{rec_id}/validate")
+def validate_cad_record(
+    rec_id: str,
+    body: ValidateBody,
+    _user: UserInfo = Depends(get_current_admin_user),
+) -> dict[str, Any]:
+    tgl    = body.tgl_validasi or date.today().isoformat()
+    record = cad_storage.validate_record(rec_id, body.hasil_validasi, body.validated_by, tgl)
+    if record is None:
+        raise HTTPException(404, f"Record '{rec_id}' tidak ditemukan")
+    return {"status": "ok", "data": record, "meta": {"generated_at": _ts()}}
+
+
+@router.post("/cad-history/{rec_id}/toko-validasi")
+def add_toko_validasi(
+    rec_id: str,
+    body: TokoValidasiBody,
+    _user: UserInfo = Depends(get_current_admin_user),
+) -> dict[str, Any]:
+    result = cad_storage.add_toko_validasi(rec_id, body.model_dump())
+    if result is None:
+        raise HTTPException(404, f"Record '{rec_id}' tidak ditemukan")
+    return {"status": "ok", "data": result, "meta": {"generated_at": _ts()}}
+
+
+@router.put("/cad-history/{rec_id}/follow-up")
+def update_follow_up(
+    rec_id: str,
+    body: FollowUpBody,
+    _user: UserInfo = Depends(get_current_admin_user),
+) -> dict[str, Any]:
+    data   = {k: v for k, v in body.model_dump().items() if v is not None}
+    record = cad_storage.update_follow_up(rec_id, data)
+    if record is None:
+        raise HTTPException(404, f"Record '{rec_id}' tidak ditemukan")
+    return {"status": "ok", "data": record, "meta": {"generated_at": _ts()}}
 
 
 @router.post("/cad-history/{rec_id}/update")
