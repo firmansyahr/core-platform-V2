@@ -1084,6 +1084,15 @@ export default function PromoDetailPage() {
   const [monLoading,         setMonLoading]         = useState(false);
   const [monLoaded,          setMonLoaded]          = useState(false);
   const [activeTab,          setActiveTab]          = useState("detail");
+
+  // Read ?tab= query param on mount to support direct navigation from list page
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    if (tab && ["detail", "monitoring", "analisis"].includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, []);
   const [showAddMember,      setShowAddMember]      = useState(false);
   const [showUpload,         setShowUpload]         = useState(false);
   const [confirm,            setConfirm]            = useState<null | { msg: string; action: () => Promise<void> }>(null);
@@ -1251,8 +1260,8 @@ export default function PromoDetailPage() {
           </p>
         </div>
 
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        {/* Tabs — horizontal bar + full-width content, no sidebar */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <div className="flex items-center justify-between border-b mb-6">
             <TabsList className="h-auto p-0 bg-transparent border-0">
               <TabsTrigger value="detail" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3">Detail Promo</TabsTrigger>
@@ -1314,7 +1323,7 @@ export default function PromoDetailPage() {
           </div>
 
           {/* ── Tab: Detail ── */}
-          <TabsContent value="detail" className="space-y-5 mt-4">
+          <TabsContent value="detail" className="w-full space-y-5 mt-4">
             {/* Konfigurasi */}
             <Card className="shadow-sm">
               <CardHeader className="pb-3">
@@ -1418,7 +1427,7 @@ export default function PromoDetailPage() {
           </TabsContent>
 
           {/* ── Tab: Monitoring ── */}
-          <TabsContent value="monitoring" className="space-y-5 mt-4">
+          <TabsContent value="monitoring" className="w-full space-y-5 mt-4">
             {!hasMon ? (
               <div className="text-center py-12 text-muted-foreground">
                 Monitoring tersedia setelah program diaktifkan
@@ -1452,7 +1461,7 @@ export default function PromoDetailPage() {
           </TabsContent>
 
           {/* ── Tab: Analisis ── */}
-          <TabsContent value="analisis" className="space-y-5 mt-4">
+          <TabsContent value="analisis" className="w-full space-y-5 mt-4">
             {!isSelesai ? (
               <div className="text-center py-12 text-muted-foreground">
                 Analisis tersedia setelah program selesai
