@@ -72,7 +72,8 @@ interface SmartPromo {
 interface ILPRec {
   id_toko: string; nama_toko: string; kabupaten: string;
   cluster_pareto: string; tso: string;
-  ilp_score: number; aegis_score: number; aegis_level: string; est_cost_bln: number;
+  ilp_score: number; aegis_score: number; aegis_level: string;
+  avg_ton_bulanan: number; est_cost_bln: number;
 }
 interface HistoryEvent {
   id_member: string; id_toko: string; nama_toko: string;
@@ -2228,7 +2229,7 @@ function LoyaltyContent() {
             id_toko: prefillStore.id_toko, nama_toko: prefillStore.nama_toko,
             kabupaten: prefillStore.kabupaten, cluster_pareto: prefillStore.cluster_pareto,
             tso: prefillStore.tso, aegis_score: prefillStore.aegis_score,
-            aegis_level: prefillStore.aegis_level, avg_ton_bulanan: prefillStore.est_cost_bln,
+            aegis_level: prefillStore.aegis_level, avg_ton_bulanan: prefillStore.avg_ton_bulanan,
           } as Partial<StoreSearch> : undefined}
         />
       )}

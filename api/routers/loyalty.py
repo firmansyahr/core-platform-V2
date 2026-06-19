@@ -558,10 +558,11 @@ def get_ilp_recs(limit: int = Query(50, ge=1, le=200)) -> dict:
             "kabupaten":      str(row.get("Kabupaten Toko", "")),
             "cluster_pareto": str(row.get("Cluster Pareto", "")),
             "tso":            str(row.get("TSO", "")),
-            "ilp_score":      round(float(row.get("score", 0)), 2),
-            "aegis_score":    round(float(row.get("aegis_score", 0)), 2),
-            "aegis_level":    str(row.get("alert", "Normal")),
-            "est_cost_bln":   round(float(row.get("estimated_cost", 0)) / 12),
+            "ilp_score":        round(float(row.get("score", 0)), 2),
+            "aegis_score":      round(float(row.get("aegis_score", 0)), 2),
+            "aegis_level":      str(row.get("alert", "Normal")),
+            "avg_ton_bulanan":  round(float(row.get("avg_ton", 0)), 2),
+            "est_cost_bln":     round(float(row.get("estimated_cost", 0)) / 12),
         })
 
     return {"status": "ok", "data": data, "meta": _meta(total=len(data))}
