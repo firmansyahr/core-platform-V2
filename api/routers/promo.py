@@ -558,6 +558,20 @@ def cancel_promo(promo_id: str, body: CancelBody) -> dict:
     return {"status": "ok", "data": updated}
 
 
+# ── DELETE /api/promo/{promo_id} ──────────────────────────────────────────────
+
+@router.delete("/{promo_id}")
+def delete_promo(promo_id: str) -> dict:
+    with _LOCK:
+        promos = _rp(_PROMOS_PATH)
+        idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
+        if idx is None:
+            raise HTTPException(404, detail="Promo tidak ditemukan")
+        promos.pop(idx)
+        _wp(_PROMOS_PATH, promos)
+    return {"status": "ok", "deleted_id": promo_id}
+
+
 # ── POST /api/promo/{promo_id}/peserta/add-one ───────────────────────────────
 
 @router.post("/{promo_id}/peserta/add-one")

@@ -13,9 +13,13 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Plus, Search, X, Calendar, Users, Zap, TrendingUp, AlertCircle,
-  ChevronRight, BarChart2, ExternalLink, Trophy,
+  Plus, Search, X, Users, Zap, TrendingUp, AlertCircle,
+  ChevronRight, BarChart2, Trophy, MoreVertical, Trash2, Eye, Calendar,
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const fmtRp  = (n: number) => "Rp " + new Intl.NumberFormat("id-ID").format(Math.round(n));
@@ -859,6 +863,9 @@ export default function PromoListPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [confirm, setConfirm]     = useState<null | { msg: string; action: () => Promise<void> }>(null);
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Promo | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [toast, setToast]         = useState<string | null>(null);
 
   const fetchPromos = useCallback(async () => {
     setLoading(true);
@@ -914,7 +921,20 @@ export default function PromoListPage() {
     }, "Selesaikan promo ini? Achievement final akan dihitung dari data transaksi.");
   }
 
-  void router;
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    try {
+      const r = await fetch(`${API}/api/promo/${deleteTarget.id}`, { method: "DELETE" });
+      if (!r.ok) { const j = await r.json(); throw new Error(j.detail); }
+      setPromos(prev => prev.filter(p => p.id !== deleteTarget.id));
+      setToast("Program berhasil dihapus");
+      setTimeout(() => setToast(null), 3000);
+    } catch { /* ignore */ } finally {
+      setDeleteLoading(false);
+      setDeleteTarget(null);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -924,6 +944,39 @@ export default function PromoListPage() {
       )}
       {confirm && (
         <Confirm message={confirm.msg} onConfirm={execConfirm} onCancel={() => setConfirm(null)} loading={confirmLoading} />
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => !deleteLoading && setDeleteTarget(null)} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-xl p-6 w-96 z-10 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                <Trash2 size={18} className="text-red-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm">Hapus Program Promo?</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Anda akan menghapus <span className="font-medium text-foreground">&quot;{deleteTarget.nama_promo}&quot;</span> beserta
+                  seluruh data peserta dan riwayat monitoring. Tindakan ini tidak bisa dibatalkan.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={() => setDeleteTarget(null)} disabled={deleteLoading}>Batal</Button>
+              <Button size="sm" className="bg-red-600 hover:bg-red-700" disabled={deleteLoading} onClick={confirmDelete}>
+                {deleteLoading ? "Menghapus..." : "Ya, Hapus Program"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-gray-900 text-white text-sm px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-in slide-in-from-bottom-2">
+          <span className="w-2 h-2 rounded-full bg-green-400" />
+          {toast}
+        </div>
       )}
 
       <main className="pt-16 max-w-7xl mx-auto px-6 py-8 space-y-6">
@@ -1031,19 +1084,34 @@ export default function PromoListPage() {
                       {fmtRp(p.summary_peserta?.estimasi_budget_total ?? 0)}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Link href={`/loyalty/promo/${p.id}`}>
-                          <Button variant="outline" size="sm" className="h-7 px-2 text-xs">
-                            <ExternalLink size={12} className="mr-1" />
-                            {p.status === "Aktif" ? "Monitor" : p.status === "Selesai" ? "Laporan" : "Detail"}
-                          </Button>
-                        </Link>
+                      <div className="flex items-center gap-1.5">
                         {p.status === "Draft" && (
-                          <Button size="sm" className="h-7 px-2 text-xs bg-green-600 hover:bg-green-700" onClick={() => handleActivate(p.id)}>Aktifkan</Button>
+                          <Button size="sm" className="h-7 px-2 text-xs bg-green-600 hover:bg-green-700 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleActivate(p.id)}>Aktifkan</Button>
                         )}
                         {p.status === "Aktif" && (
-                          <Button size="sm" className="h-7 px-2 text-xs bg-blue-600 hover:bg-blue-700" onClick={() => handleComplete(p.id)}>Selesaikan</Button>
+                          <Button size="sm" className="h-7 px-2 text-xs bg-blue-600 hover:bg-blue-700 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleComplete(p.id)}>Selesaikan</Button>
                         )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <MoreVertical size={14} />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuItem onClick={() => router.push(`/loyalty/promo/${p.id}`)}>
+                              <Eye size={14} className="mr-2" />
+                              {p.status === "Aktif" ? "Monitor" : p.status === "Selesai" ? "Laporan" : "Lihat Detail"}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                              onClick={() => setDeleteTarget(p)}
+                            >
+                              <Trash2 size={14} className="mr-2" />
+                              Hapus Program
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   </TableRow>

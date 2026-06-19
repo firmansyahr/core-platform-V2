@@ -1251,30 +1251,6 @@ export default function PromoDetailPage() {
           </p>
         </div>
 
-        {/* Summary strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-gray-50 rounded-xl p-3 text-center">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Total Peserta</p>
-            <p className="text-xl font-bold">{fmtNum(promo.summary_peserta.total_toko)}</p>
-          </div>
-          <div className="bg-gray-50 rounded-xl p-3 text-center">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Est. Budget</p>
-            <p className="text-lg font-bold">{fmtRp(promo.summary_peserta.estimasi_budget_total)}</p>
-          </div>
-          <div className="bg-gray-50 rounded-xl p-3 text-center">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Durasi</p>
-            <p className="text-xl font-bold">
-              {Math.round((new Date(promo.periode_selesai).getTime() - new Date(promo.periode_mulai).getTime()) / 86400000) + 1} hari
-            </p>
-          </div>
-          <div className="bg-gray-50 rounded-xl p-3 text-center">
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Achievement</p>
-            <p className={`text-xl font-bold ${isSelesai && promo.final_summary ? (promo.final_summary.overall_achievement_pct >= 100 ? "text-green-600" : promo.final_summary.overall_achievement_pct >= 80 ? "text-amber-600" : "text-red-600") : "text-muted-foreground"}`}>
-              {isSelesai && promo.final_summary ? `${promo.final_summary.overall_achievement_pct.toFixed(1)}%` : isAktif ? "Live" : "–"}
-            </p>
-          </div>
-        </div>
-
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <div className="flex items-center justify-between border-b mb-6">
@@ -1310,6 +1286,30 @@ export default function PromoDetailPage() {
                   </Button>
                 </a>
               )}
+            </div>
+          </div>
+
+          {/* Summary strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            <div className="bg-gray-50 rounded-xl p-3 text-center">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Total Peserta</p>
+              <p className="text-xl font-bold">{fmtNum(promo.summary_peserta.total_toko)}</p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3 text-center">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Est. Budget</p>
+              <p className="text-lg font-bold">{fmtRp(promo.summary_peserta.estimasi_budget_total)}</p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3 text-center">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Durasi</p>
+              <p className="text-xl font-bold">
+                {Math.round((new Date(promo.periode_selesai).getTime() - new Date(promo.periode_mulai).getTime()) / 86400000) + 1} hari
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-3 text-center">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Achievement</p>
+              <p className={`text-xl font-bold ${isSelesai && promo.final_summary ? (promo.final_summary.overall_achievement_pct >= 100 ? "text-green-600" : promo.final_summary.overall_achievement_pct >= 80 ? "text-amber-600" : "text-red-600") : "text-muted-foreground"}`}>
+                {isSelesai && promo.final_summary ? `${promo.final_summary.overall_achievement_pct.toFixed(1)}%` : isAktif ? "Live" : "–"}
+              </p>
             </div>
           </div>
 
