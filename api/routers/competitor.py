@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import io
 import json
+import time
 from datetime import datetime, timezone
 from typing import Any
+
+from pydantic import BaseModel
 
 import pandas as pd
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -38,6 +41,74 @@ def _get_crs_by_provinsi() -> pd.DataFrame:
         return compute_store_crs(df)
     except Exception:
         return pd.DataFrame()
+
+
+# ── CRUD helpers for ASPERSSI data ───────────────────────────────────────────
+
+def _ensure_ms_row_ids(payload: dict) -> tuple[dict, bool]:
+    changed = False
+    ts  = int(time.time() * 1000)
+    idx = 0
+    for entry in payload.get("data", []):
+        for brand in entry.get("brands", []):
+            if "row_id" not in brand:
+                brand["row_id"] = f"MS-{ts}-{idx}"
+                idx += 1
+                changed = True
+    return payload, changed
+
+
+def _ensure_sp_row_ids(payload: dict) -> tuple[dict, bool]:
+    changed = False
+    ts = int(time.time() * 1000)
+    for idx, entry in enumerate(payload.get("data", [])):
+        if "row_id" not in entry:
+            entry["row_id"] = f"SP-{ts}-{idx}"
+            changed = True
+    return payload, changed
+
+
+def _load_ms_with_ids() -> dict:
+    payload = ce.load_marketshare_brand()
+    payload, changed = _ensure_ms_row_ids(payload)
+    if changed:
+        ce.save_marketshare_brand(payload)
+    return payload
+
+
+def _load_sp_with_ids() -> dict:
+    payload = ce.load_share_provinsi()
+    payload, changed = _ensure_sp_row_ids(payload)
+    if changed:
+        ce.save_share_provinsi(payload)
+    return payload
+
+
+def _today() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+class AddMsRowBody(BaseModel):
+    provinsi:         str
+    periode:          str
+    nama_brand:       str
+    market_share_pct: float
+    is_own_brand:     bool = False
+
+
+class UpdateMsRowBody(BaseModel):
+    market_share_pct: float
+    is_own_brand:     bool
+
+
+class AddSpRowBody(BaseModel):
+    provinsi:          str
+    periode:           str
+    share_nasional_pct: float
+
+
+class UpdateSpRowBody(BaseModel):
+    share_nasional_pct: float
 
 
 # ── AI Insight ────────────────────────────────────────────────────────────────
@@ -350,3 +421,165 @@ async def upload_marketshare(
         "preview_5_baris": preview,
         "errors":          errors[:10],
     })
+
+
+# ── Market Share Brand CRUD ───────────────────────────────────────────────────
+
+@router.get("/asperssi/marketshare/list")
+def ms_list(provinsi: str = "", periode: str = "") -> dict:
+    payload = _load_ms_with_ids()
+    rows: list[dict] = []
+    for entry in payload.get("data", []):
+        if provinsi and entry["provinsi"] != provinsi.strip().upper():
+            continue
+        if periode and entry["periode"] != periode.strip():
+            continue
+        for brand in entry.get("brands", []):
+            rows.append({
+                "row_id":           brand["row_id"],
+                "provinsi":         entry["provinsi"],
+                "periode":          entry["periode"],
+                "nama_brand":       brand["nama"],
+                "market_share_pct": brand["market_share_pct"],
+                "is_own_brand":     brand.get("is_own_brand", False),
+            })
+    return _ok(rows)
+
+
+@router.post("/asperssi/marketshare/add-row")
+def ms_add_row(
+    body: AddMsRowBody,
+    _user: dict = Depends(get_current_admin_user),
+) -> dict:
+    if not (0 <= body.market_share_pct <= 100):
+        raise HTTPException(400, "market_share_pct harus antara 0–100")
+    payload = _load_ms_with_ids()
+    prov  = body.provinsi.strip().upper()
+    per   = body.periode.strip()
+    brand = body.nama_brand.strip()
+    for entry in payload.get("data", []):
+        if entry["provinsi"] == prov and entry["periode"] == per:
+            if any(b["nama"] == brand for b in entry.get("brands", [])):
+                raise HTTPException(400, f"Data {brand} – {prov} – {per} sudah ada")
+    row_id    = f"MS-{int(time.time() * 1000)}-0"
+    new_brand = {"row_id": row_id, "nama": brand, "market_share_pct": body.market_share_pct, "is_own_brand": body.is_own_brand}
+    existing_entry = next((e for e in payload.get("data", []) if e["provinsi"] == prov and e["periode"] == per), None)
+    if existing_entry:
+        existing_entry["brands"].append(new_brand)
+    else:
+        payload.setdefault("data", []).append({"provinsi": prov, "periode": per, "brands": [new_brand], "tersedia": True})
+    payload.setdefault("metadata", {}).update({"periode_tersedia": sorted({e["periode"] for e in payload["data"]}), "last_updated": _today()})
+    ce.save_marketshare_brand(payload)
+    return _ok({"row_id": row_id, "provinsi": prov, "periode": per, "nama_brand": brand, "market_share_pct": body.market_share_pct, "is_own_brand": body.is_own_brand})
+
+
+@router.put("/asperssi/marketshare/{row_id}")
+def ms_update_row(
+    row_id: str,
+    body: UpdateMsRowBody,
+    _user: dict = Depends(get_current_admin_user),
+) -> dict:
+    if not (0 <= body.market_share_pct <= 100):
+        raise HTTPException(400, "market_share_pct harus antara 0–100")
+    payload = _load_ms_with_ids()
+    for entry in payload.get("data", []):
+        for brand in entry.get("brands", []):
+            if brand.get("row_id") == row_id:
+                brand["market_share_pct"] = body.market_share_pct
+                brand["is_own_brand"]     = body.is_own_brand
+                payload.setdefault("metadata", {})["last_updated"] = _today()
+                ce.save_marketshare_brand(payload)
+                return _ok({"row_id": row_id, "provinsi": entry["provinsi"], "periode": entry["periode"], "nama_brand": brand["nama"], "market_share_pct": body.market_share_pct, "is_own_brand": body.is_own_brand})
+    raise HTTPException(404, f"Row {row_id} tidak ditemukan")
+
+
+@router.delete("/asperssi/marketshare/{row_id}")
+def ms_delete_row(
+    row_id: str,
+    _user: dict = Depends(get_current_admin_user),
+) -> dict:
+    payload = _load_ms_with_ids()
+    for entry in payload.get("data", []):
+        brands = entry.get("brands", [])
+        for i, brand in enumerate(brands):
+            if brand.get("row_id") == row_id:
+                brands.pop(i)
+                if not brands:
+                    payload["data"].remove(entry)
+                payload.setdefault("metadata", {})["last_updated"] = _today()
+                ce.save_marketshare_brand(payload)
+                return _ok({"deleted_row_id": row_id})
+    raise HTTPException(404, f"Row {row_id} tidak ditemukan")
+
+
+# ── Share Provinsi CRUD ───────────────────────────────────────────────────────
+
+@router.get("/asperssi/share-provinsi/list")
+def sp_list(provinsi: str = "", periode: str = "") -> dict:
+    payload = _load_sp_with_ids()
+    rows: list[dict] = []
+    for entry in payload.get("data", []):
+        if provinsi and entry["provinsi"] != provinsi.strip().upper():
+            continue
+        if periode and entry["periode"] != periode.strip():
+            continue
+        rows.append({
+            "row_id":             entry["row_id"],
+            "provinsi":           entry["provinsi"],
+            "periode":            entry["periode"],
+            "share_nasional_pct": entry["share_nasional_pct"],
+        })
+    return _ok(rows)
+
+
+@router.post("/asperssi/share-provinsi/add-row")
+def sp_add_row(
+    body: AddSpRowBody,
+    _user: dict = Depends(get_current_admin_user),
+) -> dict:
+    if not (0 <= body.share_nasional_pct <= 100):
+        raise HTTPException(400, "share_nasional_pct harus antara 0–100")
+    payload = _load_sp_with_ids()
+    prov = body.provinsi.strip().upper()
+    per  = body.periode.strip()
+    if any(e["provinsi"] == prov and e["periode"] == per for e in payload.get("data", [])):
+        raise HTTPException(400, f"Data {prov} – {per} sudah ada")
+    row_id = f"SP-{int(time.time() * 1000)}-0"
+    payload.setdefault("data", []).append({"row_id": row_id, "provinsi": prov, "periode": per, "share_nasional_pct": body.share_nasional_pct, "tersedia": True})
+    payload.setdefault("metadata", {}).update({"periode_tersedia": sorted({e["periode"] for e in payload["data"]}), "last_updated": _today()})
+    ce.save_share_provinsi(payload)
+    return _ok({"row_id": row_id, "provinsi": prov, "periode": per, "share_nasional_pct": body.share_nasional_pct})
+
+
+@router.put("/asperssi/share-provinsi/{row_id}")
+def sp_update_row(
+    row_id: str,
+    body: UpdateSpRowBody,
+    _user: dict = Depends(get_current_admin_user),
+) -> dict:
+    if not (0 <= body.share_nasional_pct <= 100):
+        raise HTTPException(400, "share_nasional_pct harus antara 0–100")
+    payload = _load_sp_with_ids()
+    for entry in payload.get("data", []):
+        if entry.get("row_id") == row_id:
+            entry["share_nasional_pct"] = body.share_nasional_pct
+            payload.setdefault("metadata", {})["last_updated"] = _today()
+            ce.save_share_provinsi(payload)
+            return _ok({"row_id": row_id, "provinsi": entry["provinsi"], "periode": entry["periode"], "share_nasional_pct": body.share_nasional_pct})
+    raise HTTPException(404, f"Row {row_id} tidak ditemukan")
+
+
+@router.delete("/asperssi/share-provinsi/{row_id}")
+def sp_delete_row(
+    row_id: str,
+    _user: dict = Depends(get_current_admin_user),
+) -> dict:
+    payload = _load_sp_with_ids()
+    data = payload.get("data", [])
+    for i, entry in enumerate(data):
+        if entry.get("row_id") == row_id:
+            data.pop(i)
+            payload.setdefault("metadata", {})["last_updated"] = _today()
+            ce.save_share_provinsi(payload)
+            return _ok({"deleted_row_id": row_id})
+    raise HTTPException(404, f"Row {row_id} tidak ditemukan")

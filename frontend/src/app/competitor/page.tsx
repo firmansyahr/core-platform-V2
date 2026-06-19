@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -79,6 +79,22 @@ interface Overview {
   competitor_ranking_asperssi: RankRow[];
   competitor_ranking_cad:      CADRow[];
   data_disclaimer:             string[];
+}
+
+interface MsRow {
+  row_id:           string;
+  provinsi:         string;
+  periode:          string;
+  nama_brand:       string;
+  market_share_pct: number;
+  is_own_brand:     boolean;
+}
+
+interface SpRow {
+  row_id:             string;
+  provinsi:           string;
+  periode:            string;
+  share_nasional_pct: number;
 }
 
 // ─── Style helpers ────────────────────────────────────────────────────────────
@@ -376,6 +392,613 @@ function UploadSection({
   );
 }
 
+// ─── CRUD table constants ─────────────────────────────────────────────────────
+
+const PAGE_SIZE = 15;
+
+// ─── MsDataTable ─────────────────────────────────────────────────────────────
+
+function MsDataTable({ onDataChanged }: { onDataChanged: () => void }) {
+  const [rows,         setRows]         = useState<MsRow[]>([]);
+  const [loadingTable, setLoadingTable] = useState(true);
+  const [search,       setSearch]       = useState("");
+  const [filterPeriode,setFilterPeriode]= useState("");
+  const [page,         setPage]         = useState(1);
+  const [editId,       setEditId]       = useState<string | null>(null);
+  const [editVals,     setEditVals]     = useState({ market_share_pct: 0, is_own_brand: false });
+  const [saving,       setSaving]       = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<MsRow | null>(null);
+  const [showAdd,      setShowAdd]      = useState(false);
+  const [addForm,      setAddForm]      = useState({ provinsi: "", periode: "", nama_brand: "", market_share_pct: 0, is_own_brand: false });
+  const [addError,     setAddError]     = useState("");
+
+  const fetchRows = useCallback(() => {
+    setLoadingTable(true);
+    fetch(`${API}/api/competitor/asperssi/marketshare/list`)
+      .then(r => r.json()).then(r => { setRows(r.data ?? []); setPage(1); })
+      .catch(() => {}).finally(() => setLoadingTable(false));
+  }, []);
+
+  useEffect(() => { fetchRows(); }, [fetchRows]);
+
+  const allPeriodes  = useMemo(() => Array.from(new Set(rows.map(r => r.periode))).sort(), [rows]);
+  const allProvinsis = useMemo(() => Array.from(new Set(rows.map(r => r.provinsi))).sort(), [rows]);
+  const allBrands    = useMemo(() => Array.from(new Set(rows.map(r => r.nama_brand))).sort(), [rows]);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return rows.filter(r =>
+      (!search || r.provinsi.toLowerCase().includes(q) || r.nama_brand.toLowerCase().includes(q)) &&
+      (!filterPeriode || r.periode === filterPeriode)
+    );
+  }, [rows, search, filterPeriode]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paged      = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const hdrs = (tok: string | null) =>
+    tok ? { "Authorization": `Bearer ${tok}`, "Content-Type": "application/json" } as HeadersInit
+        : { "Content-Type": "application/json" } as HeadersInit;
+
+  const saveEdit = async () => {
+    if (!editId) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${API}/api/competitor/asperssi/marketshare/${editId}`, {
+        method: "PUT", headers: hdrs(getToken()), body: JSON.stringify(editVals),
+      });
+      if (res.ok) { setEditId(null); fetchRows(); onDataChanged(); }
+    } finally { setSaving(false); }
+  };
+
+  const doDelete = async () => {
+    if (!deleteTarget) return;
+    setSaving(true);
+    try {
+      const tok = getToken();
+      const res = await fetch(`${API}/api/competitor/asperssi/marketshare/${deleteTarget.row_id}`, {
+        method: "DELETE", headers: tok ? { "Authorization": `Bearer ${tok}` } as HeadersInit : {},
+      });
+      if (res.ok) { setDeleteTarget(null); fetchRows(); onDataChanged(); }
+    } finally { setSaving(false); }
+  };
+
+  const doAdd = async () => {
+    setAddError("");
+    const prov = addForm.provinsi.trim().toUpperCase();
+    if (!prov || !addForm.periode || !addForm.nama_brand.trim()) {
+      setAddError("Provinsi, Periode, dan Nama Brand wajib diisi"); return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`${API}/api/competitor/asperssi/marketshare/add-row`, {
+        method: "POST", headers: hdrs(getToken()),
+        body: JSON.stringify({ ...addForm, provinsi: prov, nama_brand: addForm.nama_brand.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setShowAdd(false);
+        setAddForm({ provinsi: "", periode: "", nama_brand: "", market_share_pct: 0, is_own_brand: false });
+        fetchRows(); onDataChanged();
+      } else { setAddError(data.detail ?? "Gagal menyimpan"); }
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          className="flex-1 min-w-44 px-3 py-1.5 text-sm border border-border rounded-lg bg-background"
+          placeholder="Cari provinsi atau brand…"
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1); }}
+        />
+        <select
+          className="px-3 py-1.5 text-sm border border-border rounded-lg bg-background"
+          value={filterPeriode}
+          onChange={e => { setFilterPeriode(e.target.value); setPage(1); }}
+        >
+          <option value="">Semua Periode</option>
+          {allPeriodes.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <button
+          onClick={() => { setShowAdd(true); setAddError(""); }}
+          className="px-3 py-1.5 text-xs font-medium bg-foreground text-background rounded-lg hover:opacity-80 transition-opacity shrink-0"
+        >
+          + Tambah Baris
+        </button>
+      </div>
+
+      {/* Table */}
+      <div className="border border-border rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted/50 border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
+                <th className="px-3 py-2.5 text-left font-semibold">Provinsi</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Periode</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Brand</th>
+                <th className="px-3 py-2.5 text-right font-semibold">Market Share %</th>
+                <th className="px-3 py-2.5 text-center font-semibold">Sendiri</th>
+                <th className="px-3 py-2.5 text-right font-semibold pr-3">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loadingTable ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i} className="border-b border-muted/50">
+                    {Array.from({ length: 6 }).map((_, j) => (
+                      <td key={j} className="px-3 py-2.5"><Skeleton className="h-3.5 w-full rounded" /></td>
+                    ))}
+                  </tr>
+                ))
+              ) : paged.length === 0 ? (
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  Tidak ada data{search || filterPeriode ? " sesuai filter" : ""}
+                </td></tr>
+              ) : paged.map(row => (
+                <tr
+                  key={row.row_id}
+                  className={`border-b border-muted/50 transition-colors ${editId === row.row_id ? "bg-blue-50/30 dark:bg-blue-950/10" : "hover:bg-muted/20"}`}
+                >
+                  <td className="px-3 py-2.5 text-xs">{row.provinsi}</td>
+                  <td className="px-3 py-2.5 text-xs font-mono">{row.periode}</td>
+                  <td className="px-3 py-2.5 text-xs font-medium">
+                    {row.nama_brand}
+                    {row.is_own_brand && editId !== row.row_id && (
+                      <span className="ml-1.5 text-[9px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded">Sendiri</span>
+                    )}
+                  </td>
+                  {editId === row.row_id ? (
+                    <>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number" min={0} max={100} step={0.1}
+                          className="w-24 px-2 py-1 text-xs border border-border rounded bg-background text-right ml-auto block"
+                          value={editVals.market_share_pct}
+                          onChange={e => setEditVals(v => ({ ...v, market_share_pct: parseFloat(e.target.value) || 0 }))}
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <input
+                          type="checkbox" checked={editVals.is_own_brand}
+                          onChange={e => setEditVals(v => ({ ...v, is_own_brand: e.target.checked }))}
+                          className="h-4 w-4 accent-blue-600"
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={saveEdit} disabled={saving}
+                            className="px-2.5 py-1 text-[11px] font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50">
+                            ✓ Simpan
+                          </button>
+                          <button onClick={() => setEditId(null)}
+                            className="px-2.5 py-1 text-[11px] border border-border rounded hover:bg-muted">
+                            ✕
+                          </button>
+                        </div>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-xs font-semibold">
+                        {row.market_share_pct.toFixed(1)}%
+                      </td>
+                      <td className="px-3 py-2.5 text-center text-xs">
+                        {row.is_own_brand
+                          ? <span className="text-green-600 dark:text-green-400">✓</span>
+                          : <span className="text-muted-foreground/30">—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 pr-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => { setEditId(row.row_id); setEditVals({ market_share_pct: row.market_share_pct, is_own_brand: row.is_own_brand }); }}
+                            className="px-2 py-1 text-[11px] border border-border rounded hover:bg-muted transition-colors" title="Edit">
+                            ✎
+                          </button>
+                          <button
+                            onClick={() => setDeleteTarget(row)}
+                            className="px-2 py-1 text-[11px] border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors" title="Hapus">
+                            ✕
+                          </button>
+                        </div>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-2.5 border-t border-border bg-muted/20">
+            <p className="text-[11px] text-muted-foreground">{filtered.length} baris · hal {page} / {totalPages}</p>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                className="px-2 py-1 text-xs border border-border rounded hover:bg-muted disabled:opacity-40">← Prev</button>
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                className="px-2 py-1 text-xs border border-border rounded hover:bg-muted disabled:opacity-40">Next →</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Delete dialog */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-background border border-border rounded-xl shadow-xl p-6 max-w-sm w-full mx-4 space-y-4">
+            <p className="text-sm font-semibold">Hapus data ini?</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              <span className="font-medium text-foreground">{deleteTarget.nama_brand}</span>
+              {" — "}{deleteTarget.provinsi} — {deleteTarget.periode}
+            </p>
+            <p className="text-xs text-red-600 dark:text-red-400">Tindakan ini tidak bisa dibatalkan.</p>
+            <div className="flex gap-2">
+              <button onClick={doDelete} disabled={saving}
+                className="flex-1 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
+                Hapus
+              </button>
+              <button onClick={() => setDeleteTarget(null)}
+                className="flex-1 py-2 text-sm border border-border rounded-lg hover:bg-muted">
+                Batal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add modal */}
+      {showAdd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-background border border-border rounded-xl shadow-xl p-6 max-w-sm w-full mx-4 space-y-4">
+            <p className="text-sm font-semibold">Tambah Baris Market Share</p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">Provinsi</label>
+                <input
+                  list="ms-prov-list"
+                  className="mt-1 w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background"
+                  placeholder="Contoh: JAWA TIMUR"
+                  value={addForm.provinsi}
+                  onChange={e => setAddForm(f => ({ ...f, provinsi: e.target.value.toUpperCase() }))}
+                />
+                <datalist id="ms-prov-list">{allProvinsis.map(p => <option key={p} value={p} />)}</datalist>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">Periode (YYYY-MM)</label>
+                <input
+                  type="month"
+                  className="mt-1 w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background"
+                  value={addForm.periode}
+                  onChange={e => setAddForm(f => ({ ...f, periode: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">Nama Brand</label>
+                <input
+                  list="ms-brand-list"
+                  className="mt-1 w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background"
+                  placeholder="Nama brand"
+                  value={addForm.nama_brand}
+                  onChange={e => setAddForm(f => ({ ...f, nama_brand: e.target.value }))}
+                />
+                <datalist id="ms-brand-list">{allBrands.map(b => <option key={b} value={b} />)}</datalist>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">Market Share (%)</label>
+                <input
+                  type="number" min={0} max={100} step={0.1}
+                  className="mt-1 w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background"
+                  value={addForm.market_share_pct}
+                  onChange={e => setAddForm(f => ({ ...f, market_share_pct: parseFloat(e.target.value) || 0 }))}
+                />
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox" checked={addForm.is_own_brand}
+                  onChange={e => setAddForm(f => ({ ...f, is_own_brand: e.target.checked }))}
+                  className="h-4 w-4 accent-blue-600"
+                />
+                <span className="text-sm">Brand Sendiri (Semen Elang / Badak)</span>
+              </label>
+              {addError && <p className="text-xs text-red-600 dark:text-red-400">{addError}</p>}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={doAdd} disabled={saving}
+                className="flex-1 py-2 text-sm font-medium bg-foreground text-background rounded-lg hover:opacity-80 disabled:opacity-50">
+                Simpan
+              </button>
+              <button onClick={() => { setShowAdd(false); setAddError(""); }}
+                className="flex-1 py-2 text-sm border border-border rounded-lg hover:bg-muted">
+                Batal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── SpDataTable ─────────────────────────────────────────────────────────────
+
+function SpDataTable({ onDataChanged }: { onDataChanged: () => void }) {
+  const [rows,         setRows]         = useState<SpRow[]>([]);
+  const [loadingTable, setLoadingTable] = useState(true);
+  const [search,       setSearch]       = useState("");
+  const [filterPeriode,setFilterPeriode]= useState("");
+  const [page,         setPage]         = useState(1);
+  const [editId,       setEditId]       = useState<string | null>(null);
+  const [editVal,      setEditVal]      = useState(0);
+  const [saving,       setSaving]       = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<SpRow | null>(null);
+  const [showAdd,      setShowAdd]      = useState(false);
+  const [addForm,      setAddForm]      = useState({ provinsi: "", periode: "", share_nasional_pct: 0 });
+  const [addError,     setAddError]     = useState("");
+
+  const fetchRows = useCallback(() => {
+    setLoadingTable(true);
+    fetch(`${API}/api/competitor/asperssi/share-provinsi/list`)
+      .then(r => r.json()).then(r => { setRows(r.data ?? []); setPage(1); })
+      .catch(() => {}).finally(() => setLoadingTable(false));
+  }, []);
+
+  useEffect(() => { fetchRows(); }, [fetchRows]);
+
+  const allPeriodes  = useMemo(() => Array.from(new Set(rows.map(r => r.periode))).sort(), [rows]);
+  const allProvinsis = useMemo(() => Array.from(new Set(rows.map(r => r.provinsi))).sort(), [rows]);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return rows.filter(r =>
+      (!search || r.provinsi.toLowerCase().includes(q)) &&
+      (!filterPeriode || r.periode === filterPeriode)
+    );
+  }, [rows, search, filterPeriode]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paged      = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const hdrs = (tok: string | null) =>
+    tok ? { "Authorization": `Bearer ${tok}`, "Content-Type": "application/json" } as HeadersInit
+        : { "Content-Type": "application/json" } as HeadersInit;
+
+  const saveEdit = async () => {
+    if (!editId) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`${API}/api/competitor/asperssi/share-provinsi/${editId}`, {
+        method: "PUT", headers: hdrs(getToken()), body: JSON.stringify({ share_nasional_pct: editVal }),
+      });
+      if (res.ok) { setEditId(null); fetchRows(); onDataChanged(); }
+    } finally { setSaving(false); }
+  };
+
+  const doDelete = async () => {
+    if (!deleteTarget) return;
+    setSaving(true);
+    try {
+      const tok = getToken();
+      const res = await fetch(`${API}/api/competitor/asperssi/share-provinsi/${deleteTarget.row_id}`, {
+        method: "DELETE", headers: tok ? { "Authorization": `Bearer ${tok}` } as HeadersInit : {},
+      });
+      if (res.ok) { setDeleteTarget(null); fetchRows(); onDataChanged(); }
+    } finally { setSaving(false); }
+  };
+
+  const doAdd = async () => {
+    setAddError("");
+    const prov = addForm.provinsi.trim().toUpperCase();
+    if (!prov || !addForm.periode) { setAddError("Provinsi dan Periode wajib diisi"); return; }
+    setSaving(true);
+    try {
+      const res = await fetch(`${API}/api/competitor/asperssi/share-provinsi/add-row`, {
+        method: "POST", headers: hdrs(getToken()),
+        body: JSON.stringify({ ...addForm, provinsi: prov }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setShowAdd(false);
+        setAddForm({ provinsi: "", periode: "", share_nasional_pct: 0 });
+        fetchRows(); onDataChanged();
+      } else { setAddError(data.detail ?? "Gagal menyimpan"); }
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          className="flex-1 min-w-44 px-3 py-1.5 text-sm border border-border rounded-lg bg-background"
+          placeholder="Cari provinsi…"
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(1); }}
+        />
+        <select
+          className="px-3 py-1.5 text-sm border border-border rounded-lg bg-background"
+          value={filterPeriode}
+          onChange={e => { setFilterPeriode(e.target.value); setPage(1); }}
+        >
+          <option value="">Semua Periode</option>
+          {allPeriodes.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <button
+          onClick={() => { setShowAdd(true); setAddError(""); }}
+          className="px-3 py-1.5 text-xs font-medium bg-foreground text-background rounded-lg hover:opacity-80 transition-opacity shrink-0"
+        >
+          + Tambah Baris
+        </button>
+      </div>
+
+      {/* Table */}
+      <div className="border border-border rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted/50 border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
+                <th className="px-3 py-2.5 text-left font-semibold">Provinsi</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Periode</th>
+                <th className="px-3 py-2.5 text-right font-semibold">Share Nasional (%)</th>
+                <th className="px-3 py-2.5 text-right font-semibold pr-3">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loadingTable ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i} className="border-b border-muted/50">
+                    {Array.from({ length: 4 }).map((_, j) => (
+                      <td key={j} className="px-3 py-2.5"><Skeleton className="h-3.5 w-full rounded" /></td>
+                    ))}
+                  </tr>
+                ))
+              ) : paged.length === 0 ? (
+                <tr><td colSpan={4} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  Tidak ada data{search || filterPeriode ? " sesuai filter" : ""}
+                </td></tr>
+              ) : paged.map(row => (
+                <tr
+                  key={row.row_id}
+                  className={`border-b border-muted/50 transition-colors ${editId === row.row_id ? "bg-blue-50/30 dark:bg-blue-950/10" : "hover:bg-muted/20"}`}
+                >
+                  <td className="px-3 py-2.5 text-xs">{row.provinsi}</td>
+                  <td className="px-3 py-2.5 text-xs font-mono">{row.periode}</td>
+                  {editId === row.row_id ? (
+                    <>
+                      <td className="px-3 py-2">
+                        <input
+                          type="number" min={0} max={100} step={0.1}
+                          className="w-28 px-2 py-1 text-xs border border-border rounded bg-background text-right ml-auto block"
+                          value={editVal}
+                          onChange={e => setEditVal(parseFloat(e.target.value) || 0)}
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={saveEdit} disabled={saving}
+                            className="px-2.5 py-1 text-[11px] font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50">
+                            ✓ Simpan
+                          </button>
+                          <button onClick={() => setEditId(null)}
+                            className="px-2.5 py-1 text-[11px] border border-border rounded hover:bg-muted">
+                            ✕
+                          </button>
+                        </div>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-xs font-semibold">
+                        {row.share_nasional_pct.toFixed(1)}%
+                      </td>
+                      <td className="px-3 py-2.5 pr-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => { setEditId(row.row_id); setEditVal(row.share_nasional_pct); }}
+                            className="px-2 py-1 text-[11px] border border-border rounded hover:bg-muted transition-colors" title="Edit">
+                            ✎
+                          </button>
+                          <button
+                            onClick={() => setDeleteTarget(row)}
+                            className="px-2 py-1 text-[11px] border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors" title="Hapus">
+                            ✕
+                          </button>
+                        </div>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-2.5 border-t border-border bg-muted/20">
+            <p className="text-[11px] text-muted-foreground">{filtered.length} baris · hal {page} / {totalPages}</p>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                className="px-2 py-1 text-xs border border-border rounded hover:bg-muted disabled:opacity-40">← Prev</button>
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                className="px-2 py-1 text-xs border border-border rounded hover:bg-muted disabled:opacity-40">Next →</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Delete dialog */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-background border border-border rounded-xl shadow-xl p-6 max-w-sm w-full mx-4 space-y-4">
+            <p className="text-sm font-semibold">Hapus data ini?</p>
+            <p className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">{deleteTarget.provinsi}</span> — {deleteTarget.periode}
+            </p>
+            <p className="text-xs text-red-600 dark:text-red-400">Tindakan ini tidak bisa dibatalkan.</p>
+            <div className="flex gap-2">
+              <button onClick={doDelete} disabled={saving}
+                className="flex-1 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">Hapus</button>
+              <button onClick={() => setDeleteTarget(null)}
+                className="flex-1 py-2 text-sm border border-border rounded-lg hover:bg-muted">Batal</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add modal */}
+      {showAdd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-background border border-border rounded-xl shadow-xl p-6 max-w-sm w-full mx-4 space-y-4">
+            <p className="text-sm font-semibold">Tambah Baris Share Provinsi</p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">Provinsi</label>
+                <input
+                  list="sp-prov-list"
+                  className="mt-1 w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background"
+                  placeholder="Contoh: JAWA TIMUR"
+                  value={addForm.provinsi}
+                  onChange={e => setAddForm(f => ({ ...f, provinsi: e.target.value.toUpperCase() }))}
+                />
+                <datalist id="sp-prov-list">{allProvinsis.map(p => <option key={p} value={p} />)}</datalist>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">Periode (YYYY-MM)</label>
+                <input
+                  type="month"
+                  className="mt-1 w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background"
+                  value={addForm.periode}
+                  onChange={e => setAddForm(f => ({ ...f, periode: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-muted-foreground">Share Nasional (%)</label>
+                <input
+                  type="number" min={0} max={100} step={0.1}
+                  className="mt-1 w-full px-3 py-1.5 text-sm border border-border rounded-lg bg-background"
+                  value={addForm.share_nasional_pct}
+                  onChange={e => setAddForm(f => ({ ...f, share_nasional_pct: parseFloat(e.target.value) || 0 }))}
+                />
+              </div>
+              {addError && <p className="text-xs text-red-600 dark:text-red-400">{addError}</p>}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={doAdd} disabled={saving}
+                className="flex-1 py-2 text-sm font-medium bg-foreground text-background rounded-lg hover:opacity-80 disabled:opacity-50">Simpan</button>
+              <button onClick={() => { setShowAdd(false); setAddError(""); }}
+                className="flex-1 py-2 text-sm border border-border rounded-lg hover:bg-muted">Batal</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function CompetitorPage() {
@@ -418,6 +1041,12 @@ export default function CompetitorPage() {
   }, []);
 
   useEffect(() => {
+    fetchOverview();
+    fetchTriangulation();
+    fetchInsight();
+  }, [fetchOverview, fetchTriangulation, fetchInsight]);
+
+  const refreshAll = useCallback(() => {
     fetchOverview();
     fetchTriangulation();
     fetchInsight();
@@ -844,21 +1473,47 @@ export default function CompetitorPage() {
 
         {/* ── TAB 3: Upload (admin only) ────────────────────────────────────── */}
         {activeTab === "upload" && isAdmin && (
-          <div className="space-y-5">
-            <UploadSection
-              title="Upload Share Provinsi"
-              endpoint="/api/competitor/asperssi/upload-share-provinsi"
-              templateEndpoint="/api/competitor/asperssi/template/share-provinsi"
-              periode={cov?.share_provinsi.periode_tersedia.join(", ") ?? "—"}
-              columns={["Provinsi", "Periode (YYYY-MM)", "Share Nasional (%)"]}
-            />
-            <UploadSection
-              title="Upload Market Share Brand"
-              endpoint="/api/competitor/asperssi/upload-marketshare"
-              templateEndpoint="/api/competitor/asperssi/template/marketshare"
-              periode={cov?.marketshare_brand.periode_tersedia.join(", ") ?? "—"}
-              columns={["Provinsi", "Periode (YYYY-MM)", "Nama Brand", "Market Share (%)", "Brand Sendiri (Y/N)"]}
-            />
+          <div className="space-y-8">
+            {/* Excel upload sections */}
+            <div className="space-y-5">
+              <UploadSection
+                title="Upload Share Provinsi"
+                endpoint="/api/competitor/asperssi/upload-share-provinsi"
+                templateEndpoint="/api/competitor/asperssi/template/share-provinsi"
+                periode={cov?.share_provinsi.periode_tersedia.join(", ") ?? "—"}
+                columns={["Provinsi", "Periode (YYYY-MM)", "Share Nasional (%)"]}
+              />
+              <UploadSection
+                title="Upload Market Share Brand"
+                endpoint="/api/competitor/asperssi/upload-marketshare"
+                templateEndpoint="/api/competitor/asperssi/template/marketshare"
+                periode={cov?.marketshare_brand.periode_tersedia.join(", ") ?? "—"}
+                columns={["Provinsi", "Periode (YYYY-MM)", "Nama Brand", "Market Share (%)", "Brand Sendiri (Y/N)"]}
+              />
+            </div>
+
+            {/* Manual CRUD — Market Share Brand */}
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold">Data Market Share Brand (Edit Manual)</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Edit, hapus, atau tambah baris langsung tanpa upload Excel.
+                  Perubahan langsung memperbarui Tab Triangulasi dan Ranking.
+                </p>
+              </div>
+              <MsDataTable onDataChanged={refreshAll} />
+            </div>
+
+            {/* Manual CRUD — Share Provinsi */}
+            <div className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold">Data Share Provinsi (Edit Manual)</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Edit, hapus, atau tambah baris langsung tanpa upload Excel.
+                </p>
+              </div>
+              <SpDataTable onDataChanged={refreshAll} />
+            </div>
           </div>
         )}
 
