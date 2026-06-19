@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
+import { RewardConfigDisplay } from "@/components/RewardConfigDisplay";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -1239,45 +1240,15 @@ export default function PromoDetailPage() {
         </nav>
 
         {/* Header */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-2xl font-bold tracking-tight">{promo.nama_promo}</h1>
-              <StatusBadge status={promo.status} />
-            </div>
-            <p className="text-sm text-muted-foreground mt-1">
-              {promo.id} · {fmtDate(promo.periode_mulai)} – {fmtDate(promo.periode_selesai)}
-              {promo.deskripsi && ` · ${promo.deskripsi}`}
-            </p>
+        <div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold tracking-tight">{promo.nama_promo}</h1>
+            <StatusBadge status={promo.status} />
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {isDraft && (
-              <>
-                <Button variant="outline" size="sm" className="text-red-600 border-red-300 hover:bg-red-50" onClick={handleCancel}>Batalkan</Button>
-                <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={handleActivate}>Aktifkan</Button>
-              </>
-            )}
-            {isAktif && (
-              <>
-                <Button variant="outline" size="sm" className="text-red-600 border-red-300 hover:bg-red-50" onClick={handleCancel}>Batalkan</Button>
-                <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleComplete}>Selesaikan</Button>
-              </>
-            )}
-            {isSelesai && (
-              <a href={`${API}/api/promo/${promoId}/monitoring/export`} target="_blank">
-                <Button size="sm" className="bg-purple-600 hover:bg-purple-700 gap-1.5">
-                  <FileDown size={14} />Export Laporan
-                </Button>
-              </a>
-            )}
-            {isAktif && (
-              <a href={`${API}/api/promo/${promoId}/monitoring/export`} target="_blank">
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  <FileDown size={14} />Export
-                </Button>
-              </a>
-            )}
-          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            {promo.id} · {fmtDate(promo.periode_mulai)} – {fmtDate(promo.periode_selesai)}
+            {promo.deskripsi && ` · ${promo.deskripsi}`}
+          </p>
         </div>
 
         {/* Summary strip */}
@@ -1306,11 +1277,41 @@ export default function PromoDetailPage() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent mb-6">
-            <TabsTrigger value="detail">Detail Promo</TabsTrigger>
-            <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
-            <TabsTrigger value="analisis">Analisis</TabsTrigger>
-          </TabsList>
+          <div className="flex items-center justify-between border-b mb-6">
+            <TabsList className="h-auto p-0 bg-transparent border-0">
+              <TabsTrigger value="detail" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3">Detail Promo</TabsTrigger>
+              <TabsTrigger value="monitoring" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3">Monitoring</TabsTrigger>
+              <TabsTrigger value="analisis" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3">Analisis</TabsTrigger>
+            </TabsList>
+            <div className="flex items-center gap-2 pb-2">
+              {isDraft && (
+                <>
+                  <Button variant="outline" size="sm" className="text-red-600 border-red-300 hover:bg-red-50" onClick={handleCancel}>Batalkan</Button>
+                  <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={handleActivate}>Aktifkan</Button>
+                </>
+              )}
+              {isAktif && (
+                <>
+                  <Button variant="outline" size="sm" className="text-red-600 border-red-300 hover:bg-red-50" onClick={handleCancel}>Batalkan</Button>
+                  <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleComplete}>Selesaikan</Button>
+                </>
+              )}
+              {isSelesai && (
+                <a href={`${API}/api/promo/${promoId}/monitoring/export`} target="_blank">
+                  <Button size="sm" className="bg-purple-600 hover:bg-purple-700 gap-1.5">
+                    <FileDown size={14} />Export Laporan
+                  </Button>
+                </a>
+              )}
+              {isAktif && (
+                <a href={`${API}/api/promo/${promoId}/monitoring/export`} target="_blank">
+                  <Button variant="outline" size="sm" className="gap-1.5">
+                    <FileDown size={14} />Export
+                  </Button>
+                </a>
+              )}
+            </div>
+          </div>
 
           {/* ── Tab: Detail ── */}
           <TabsContent value="detail" className="space-y-5 mt-4">
@@ -1323,11 +1324,7 @@ export default function PromoDetailPage() {
                 {promo.konfigurasi_promo ? (
                   <KonfigurasiSection cfg={promo.konfigurasi_promo} />
                 ) : promo.reward_config ? (
-                  <div className="bg-gray-50 rounded-xl p-4">
-                    <pre className="text-xs text-gray-700 whitespace-pre-wrap overflow-auto max-h-48">
-                      {JSON.stringify(promo.reward_config, null, 2)}
-                    </pre>
-                  </div>
+                  <RewardConfigDisplay tipe_program={promo.tipe_program} reward_config={promo.reward_config} />
                 ) : (
                   <p className="text-sm text-muted-foreground">Konfigurasi tidak tersedia</p>
                 )}
