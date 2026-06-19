@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, RefreshCw } from "lucide-react";
+import { Sparkles, RefreshCw, Plus } from "lucide-react";
 import StoreJourneyModal from "@/components/StoreJourneyModal";
 import {
   ComposedChart,
@@ -1279,27 +1279,35 @@ export default function StoreDetailPage() {
 
               {/* Left: name + badges + info grid */}
               <div className="flex-1 space-y-4">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2 mb-2">
-                    {/* Cluster badge */}
-                    <span
-                      className="text-[10px] font-bold px-2.5 py-1 rounded-full"
-                      style={{ backgroundColor: `${clusterColor}18`, color: clusterColor, border: `1px solid ${clusterColor}30` }}
-                    >
-                      {info.cluster_pareto}
-                    </span>
-                    {/* Level badge */}
-                    {cw.level !== "Normal" && (
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      {/* Cluster badge */}
                       <span
                         className="text-[10px] font-bold px-2.5 py-1 rounded-full"
-                        style={{ backgroundColor: `${levelColor}18`, color: levelColor, border: `1px solid ${levelColor}30` }}
+                        style={{ backgroundColor: `${clusterColor}18`, color: clusterColor, border: `1px solid ${clusterColor}30` }}
                       >
-                        ⚠ {cw.level}
+                        {info.cluster_pareto}
                       </span>
-                    )}
+                      {/* Level badge */}
+                      {cw.level !== "Normal" && (
+                        <span
+                          className="text-[10px] font-bold px-2.5 py-1 rounded-full"
+                          style={{ backgroundColor: `${levelColor}18`, color: levelColor, border: `1px solid ${levelColor}30` }}
+                        >
+                          ⚠ {cw.level}
+                        </span>
+                      )}
+                    </div>
+                    <h1 className="text-xl font-bold tracking-tight">{info.nama_toko}</h1>
+                    <p className="text-sm text-muted-foreground mt-0.5 font-mono">{info.id_toko}</p>
                   </div>
-                  <h1 className="text-xl font-bold tracking-tight">{info.nama_toko}</h1>
-                  <p className="text-sm text-muted-foreground mt-0.5 font-mono">{info.id_toko}</p>
+                  {isAdmin && (
+                    <Button size="sm" variant="outline" className="shrink-0" onClick={() => setShowTokoModal(true)}>
+                      <Plus className="h-4 w-4 mr-1" />
+                      Tambah Validasi
+                    </Button>
+                  )}
                 </div>
 
                 {/* Info grid */}
