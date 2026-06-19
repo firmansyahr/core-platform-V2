@@ -9,7 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight, Sparkles, RefreshCw, FileText } from "lucide-react";
+import Link from "next/link";
+import { ChevronRight, Sparkles, RefreshCw, FileText, Gift, AlertTriangle, Swords, TrendingUp } from "lucide-react";
 import AegisMap from "@/components/aegis/AegisMap";
 import type { RegionMapData } from "@/components/aegis/AegisMap";
 import { apiFetch } from "@/lib/fetch";
@@ -134,6 +135,31 @@ interface LoyaltyAchievement {
   } | null;
 }
 
+interface CadSummary {
+  pending_validasi: number;
+  in_progress: number;
+}
+
+interface TriItem {
+  provinsi: string;
+  verdict: string;
+  top_competitor?: { brand: string } | null;
+}
+
+interface ActivePromo {
+  id: string;
+  nama_promo: string;
+  tipe_program?: string;
+}
+
+interface PerfOverview {
+  total_dipantau: number;
+  membaik: number;
+  stabil: number;
+  perlu_perhatian: number;
+  dalam_pemantauan: number;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const fmtNum = (n: number) =>
@@ -223,63 +249,6 @@ function KpiCard({ title, value, delta, deltaUp, sub, icon, accentColor }: KpiCa
         {sub && (
           <p className="text-xs text-muted-foreground mt-1.5">{sub}</p>
         )}
-      </CardContent>
-    </Card>
-  );
-}
-
-// ─── Competitor Intelligence mini-card ────────────────────────────────────────
-
-function CompetitorCard() {
-  const [data, setData] = useState<{
-    triangulation_summary: { konfirmasi_kompetitor: number; waspada_awal: number; tidak_cukup_data: number };
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const router = useRouter();
-
-  useEffect(() => {
-    fetch(`${API}/api/competitor/overview`)
-      .then((r) => r.json())
-      .then((r) => setData(r.data ?? null))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  const s = data?.triangulation_summary;
-
-  return (
-    <Card
-      className="cursor-pointer hover:shadow-md transition-shadow border-orange-200/60 dark:border-orange-800/40"
-      onClick={() => router.push("/competitor")}
-    >
-      <CardContent className="p-4">
-        <div className="flex items-start gap-3">
-          <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-lg shrink-0">
-            <HugeiconsIcon icon={toIcon(Globe02Icon)} size={18} className="text-orange-600 dark:text-orange-400" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="font-medium text-sm">Competitor Intelligence</p>
-            <p className="text-xs text-muted-foreground">Triangulasi AEGIS + ASPERSSI</p>
-            {loading ? (
-              <div className="flex gap-3 mt-2">
-                {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-5 w-16 rounded" />)}
-              </div>
-            ) : (
-              <div className="flex items-center gap-3 mt-2 flex-wrap">
-                <span className="text-[11px] font-semibold text-red-600 dark:text-red-400">
-                  {s?.konfirmasi_kompetitor ?? 0} terkonfirmasi
-                </span>
-                <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                  {s?.waspada_awal ?? 0} waspada
-                </span>
-                <span className="text-[11px] text-muted-foreground">
-                  {s?.tidak_cukup_data ?? 0} data kurang
-                </span>
-              </div>
-            )}
-          </div>
-          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
-        </div>
       </CardContent>
     </Card>
   );
@@ -390,6 +359,13 @@ export default function HomePage() {
   }
   const [aiInsight,      setAiInsight]      = useState<AiInsight | null>(null);
   const [aiInsightLoad,  setAiInsightLoad]  = useState(true);
+  const [cadSummary,     setCadSummary]     = useState<CadSummary | null>(null);
+  const [triData,        setTriData]        = useState<TriItem[]>([]);
+  const [triLoad,        setTriLoad]        = useState(true);
+  const [activePromos,   setActivePromos]   = useState<ActivePromo[]>([]);
+  const [promosLoad,     setPromosLoad]     = useState(true);
+  const [perfData,       setPerfData]       = useState<PerfOverview | null>(null);
+  const [perfLoad,       setPerfLoad]       = useState(true);
 
   useEffect(() => {
     Promise.all([
@@ -427,6 +403,27 @@ export default function HomePage() {
       .then((j) => setLoyaltyData(j.data ?? null))
       .catch(() => {})
       .finally(() => setLoyaltyLoad(false));
+
+    // New sections — non-blocking, parallel
+    Promise.all([
+      fetch(`${API}/api/aegis/cad-history/summary`).then((r) => r.json()),
+      fetch(`${API}/api/competitor/triangulation`).then((r) => r.json()),
+      fetch(`${API}/api/promo?status=Aktif`).then((r) => r.json()),
+    ])
+      .then(([cad, tri, promo]) => {
+        setCadSummary(cad.data ?? null);
+        setTriData(Array.isArray(tri.data) ? tri.data : []);
+        setActivePromos(Array.isArray(promo.data) ? promo.data : []);
+      })
+      .catch(() => {})
+      .finally(() => { setTriLoad(false); setPromosLoad(false); });
+
+    // Performance overview — requires auth, hide gracefully on 401
+    apiFetch(`${API}/api/performance/overview`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((j) => setPerfData(j.data ?? null))
+      .catch(() => setPerfData(null))
+      .finally(() => setPerfLoad(false));
   }, []);
 
   const fetchAiInsight = useCallback(() => {
@@ -494,6 +491,30 @@ export default function HomePage() {
               Gagal terhubung ke API — pastikan FastAPI berjalan di{" "}
               <code className="font-mono text-xs">{API}</code>. Detail: {error}
             </div>
+          )}
+
+          {/* ── CAD Alert Pending Banner ─────────────────────────────────── */}
+          {cadSummary && cadSummary.pending_validasi > 0 && (
+            <Card className="border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/20">
+              <CardContent className="p-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400 shrink-0" />
+                  <span className="text-sm text-orange-900 dark:text-orange-200">
+                    <strong>{cadSummary.pending_validasi}</strong> CAD Alert menunggu validasi
+                    {cadSummary.in_progress > 0 && (
+                      <span className="text-orange-600 dark:text-orange-400 ml-1">
+                        ({cadSummary.in_progress} sedang diproses)
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <Link href="/aegis/cad-history">
+                  <Button size="sm" variant="outline" className="shrink-0 text-xs border-orange-300 hover:bg-orange-100 dark:hover:bg-orange-950">
+                    Validasi Sekarang
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
           )}
 
           {/* ── KPI Cards ───────────────────────────────────────────────── */}
@@ -600,6 +621,178 @@ export default function HomePage() {
                     ) : null}
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── Competitor Intelligence + Program Promo ─────────────────── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            {/* Competitor Intelligence */}
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Swords className="h-4 w-4 text-red-500" />
+                  Competitor Intelligence
+                </CardTitle>
+                <Link href="/competitor" className="text-xs text-primary hover:underline">
+                  Lihat Detail →
+                </Link>
+              </CardHeader>
+              <CardContent>
+                {triLoad ? (
+                  <div className="grid grid-cols-3 gap-3">
+                    {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}
+                  </div>
+                ) : (() => {
+                  const konfirmasi = triData.filter((t) => t.verdict === "KONFIRMASI_KOMPETITOR").length;
+                  const waspada    = triData.filter((t) => t.verdict === "WASPADA_AWAL").length;
+                  const kurang     = triData.filter((t) => t.verdict === "TIDAK_CUKUP_DATA").length;
+                  const topThreat  = triData.find((t) => t.verdict === "KONFIRMASI_KOMPETITOR");
+                  return (
+                    <>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="text-center p-2 rounded-lg bg-red-50 dark:bg-red-950/20">
+                          <div className="text-xl font-bold text-red-600 dark:text-red-400">{konfirmasi}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">Terkonfirmasi</div>
+                        </div>
+                        <div className="text-center p-2 rounded-lg bg-yellow-50 dark:bg-yellow-950/20">
+                          <div className="text-xl font-bold text-yellow-600 dark:text-yellow-400">{waspada}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">Waspada</div>
+                        </div>
+                        <div className="text-center p-2 rounded-lg bg-muted">
+                          <div className="text-xl font-bold text-muted-foreground">{kurang}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">Data Kurang</div>
+                        </div>
+                      </div>
+                      {topThreat && (
+                        <div className="mt-3 pt-3 border-t border-border">
+                          <div className="text-xs text-muted-foreground mb-1">Wilayah Paling Kritis</div>
+                          <div className="text-sm font-medium">
+                            {topThreat.provinsi}
+                            {topThreat.top_competitor?.brand && (
+                              <span className="text-xs text-red-600 dark:text-red-400 ml-2">— {topThreat.top_competitor.brand}</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {triData.length === 0 && (
+                        <p className="text-sm text-muted-foreground text-center py-3">Belum ada data triangulasi</p>
+                      )}
+                    </>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+
+            {/* Program Promo Aktif */}
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Gift className="h-4 w-4 text-purple-500" />
+                  Program Promo Aktif
+                </CardTitle>
+                <Link href="/loyalty/promo" className="text-xs text-primary hover:underline">
+                  Kelola →
+                </Link>
+              </CardHeader>
+              <CardContent>
+                {promosLoad ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 rounded-lg" />)}
+                  </div>
+                ) : activePromos.length === 0 ? (
+                  <div className="text-sm text-muted-foreground text-center py-6">
+                    Belum ada program promo aktif
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {activePromos.slice(0, 3).map((promo) => {
+                      const tipeLabel =
+                        promo.tipe_program === "flat_multiplier" ? "Flat Multiplier" :
+                        promo.tipe_program === "multi_tier" ? "Multi-Tier" :
+                        promo.tipe_program === "leaderboard" ? "Leaderboard" :
+                        promo.tipe_program ?? "–";
+                      return (
+                        <Link key={promo.id} href={`/loyalty/promo/${promo.id}`}>
+                          <div className="flex items-center justify-between p-2.5 rounded-lg border border-border hover:bg-muted/30 transition-colors cursor-pointer">
+                            <div>
+                              <div className="text-sm font-medium leading-snug">{promo.nama_promo}</div>
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 mt-1">
+                                {tipeLabel}
+                              </span>
+                            </div>
+                            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
+                          </div>
+                        </Link>
+                      );
+                    })}
+                    {activePromos.length > 3 && (
+                      <p className="text-xs text-muted-foreground text-center pt-1">
+                        +{activePromos.length - 3} program lainnya
+                      </p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* ── Performance Tracker Summary ──────────────────────────────── */}
+          {(perfLoad || perfData) && (
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-green-500" />
+                  Outcome Program Loyalty
+                </CardTitle>
+                <Link href="/performance" className="text-xs text-primary hover:underline">
+                  Lihat detail tracker →
+                </Link>
+              </CardHeader>
+              <CardContent>
+                {perfLoad ? (
+                  <div className="flex items-center gap-4">
+                    <Skeleton className="h-[100px] w-[100px] rounded-full shrink-0" />
+                    <div className="space-y-2 flex-1">
+                      {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-4 w-32 rounded" />)}
+                    </div>
+                  </div>
+                ) : perfData && perfData.total_dipantau > 0 ? (() => {
+                  const total = perfData.total_dipantau;
+                  const verdictData = [
+                    { verdict: "Membaik",          count: perfData.membaik,          color: "#22c55e" },
+                    { verdict: "Stabil",            count: perfData.stabil,           color: "#3b82f6" },
+                    { verdict: "Perlu Perhatian",   count: perfData.perlu_perhatian,  color: "#ef4444" },
+                    { verdict: "Dalam Pemantauan",  count: perfData.dalam_pemantauan, color: "#9ca3af" },
+                  ].filter((d) => d.count > 0);
+                  return (
+                    <div className="flex items-center gap-6">
+                      <div className="shrink-0">
+                        <PieChart width={100} height={100}>
+                          <Pie data={verdictData} dataKey="count" innerRadius={30} outerRadius={45} strokeWidth={0}>
+                            {verdictData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                          </Pie>
+                        </PieChart>
+                      </div>
+                      <div className="space-y-1.5">
+                        {verdictData.map((d) => (
+                          <div key={d.verdict} className="flex items-center gap-2 text-xs">
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: d.color }} />
+                            <span className="text-muted-foreground">{d.verdict}:</span>
+                            <span className="font-semibold">{d.count}</span>
+                            <span className="text-muted-foreground">({((d.count / total) * 100).toFixed(0)}%)</span>
+                          </div>
+                        ))}
+                        <p className="text-[10px] text-muted-foreground pt-1">{total} toko dipantau</p>
+                      </div>
+                    </div>
+                  );
+                })() : (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Belum ada data performance. Login untuk melihat tracker.
+                  </p>
+                )}
               </CardContent>
             </Card>
           )}
@@ -1272,27 +1465,44 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* ── Competitor Intelligence Card ─────────────────────────── */}
-          <CompetitorCard />
+          {/* ── Shortcut Cards Row ──────────────────────────────────────── */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Card
+              className="cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => router.push("/report")}
+            >
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg shrink-0">
+                  <FileText className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm">AI Report Generator</p>
+                  <p className="text-xs text-muted-foreground">
+                    Generate laporan bulanan otomatis dengan analisis AI
+                  </p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+              </CardContent>
+            </Card>
 
-          {/* ── AI Report Shortcut ──────────────────────────────────────── */}
-          <Card
-            className="cursor-pointer hover:shadow-md transition-shadow"
-            onClick={() => router.push("/report")}
-          >
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg shrink-0">
-                <FileText className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm">AI Report Generator</p>
-                <p className="text-xs text-muted-foreground">
-                  Generate laporan bulanan otomatis dengan analisis AI
-                </p>
-              </div>
-              <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-            </CardContent>
-          </Card>
+            <Card
+              className="cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => router.push("/competitor")}
+            >
+              <CardContent className="p-4 flex items-center gap-3">
+                <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg shrink-0">
+                  <Swords className="h-5 w-5 text-red-600 dark:text-red-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm">Competitor Intelligence</p>
+                  <p className="text-xs text-muted-foreground">
+                    Pantau ancaman kompetitor per wilayah secara real-time
+                  </p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+              </CardContent>
+            </Card>
+          </div>
 
           {/* Footer */}
           <p className="text-center text-[11px] text-muted-foreground pb-4">
