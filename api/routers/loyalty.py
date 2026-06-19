@@ -561,8 +561,10 @@ def get_ilp_recs(limit: int = Query(50, ge=1, le=200)) -> dict:
             "ilp_score":        round(float(row.get("score", 0)), 2),
             "aegis_score":      round(float(row.get("aegis_score", 0)), 2),
             "aegis_level":      str(row.get("alert", "Normal")),
-            "avg_ton_bulanan":  round(float(row.get("avg_ton", 0)), 2),
-            "est_cost_bln":     round(float(row.get("estimated_cost", 0)) / 12),
+            "avg_ton_bulanan":        round(float(row.get("avg_ton", 0)), 2),
+            "avg_ton_elang_bulanan":  round(float(row.get("avg_ton_elang", 0)), 2),
+            "avg_ton_badak_bulanan":  round(float(row.get("avg_ton_badak", 0)), 2),
+            "est_cost_bln":           round(float(row.get("estimated_cost", 0)) / 12),
         })
 
     return {"status": "ok", "data": data, "meta": _meta(total=len(data))}
@@ -638,21 +640,22 @@ def search_stores(q: str = Query("", min_length=1)) -> dict:
     data: list[dict] = []
     for _, row in matched.iterrows():
         id_toko = str(row["ID Toko"])
-        avg_ton = (
-            float(ilp_idx.at[id_toko, "avg_ton"] or 0)
-            if not ilp_idx.empty and id_toko in ilp_idx.index
-            else 0.0
-        )
+        has_ilp = not ilp_idx.empty and id_toko in ilp_idx.index
+        avg_ton       = float(ilp_idx.at[id_toko, "avg_ton"]       or 0) if has_ilp else 0.0
+        avg_ton_elang = float(ilp_idx.at[id_toko, "avg_ton_elang"] or 0) if has_ilp else 0.0
+        avg_ton_badak = float(ilp_idx.at[id_toko, "avg_ton_badak"] or 0) if has_ilp else 0.0
         data.append({
-            "id_toko":        id_toko,
-            "nama_toko":      str(row.get("Nama Toko") or ""),
-            "kabupaten":      str(row.get("Kabupaten Toko") or ""),
-            "cluster_pareto": str(row.get("Cluster Pareto") or ""),
-            "tso":            str(row.get("TSO") or ""),
-            "aegis_score":    round(float(row.get("aegis_score") or 0), 2),
-            "aegis_level":    str(row.get("alert") or "Normal"),
-            "avg_ton_bulanan": round(avg_ton, 2),
-            "sudah_ada":      id_toko in active_ids,
+            "id_toko":               id_toko,
+            "nama_toko":             str(row.get("Nama Toko") or ""),
+            "kabupaten":             str(row.get("Kabupaten Toko") or ""),
+            "cluster_pareto":        str(row.get("Cluster Pareto") or ""),
+            "tso":                   str(row.get("TSO") or ""),
+            "aegis_score":           round(float(row.get("aegis_score") or 0), 2),
+            "aegis_level":           str(row.get("alert") or "Normal"),
+            "avg_ton_bulanan":        round(avg_ton, 2),
+            "avg_ton_elang_bulanan":  round(avg_ton_elang, 2),
+            "avg_ton_badak_bulanan":  round(avg_ton_badak, 2),
+            "sudah_ada":             id_toko in active_ids,
         })
 
     return {"status": "ok", "data": data}

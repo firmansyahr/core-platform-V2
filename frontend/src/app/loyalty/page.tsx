@@ -73,7 +73,8 @@ interface ILPRec {
   id_toko: string; nama_toko: string; kabupaten: string;
   cluster_pareto: string; tso: string;
   ilp_score: number; aegis_score: number; aegis_level: string;
-  avg_ton_bulanan: number; est_cost_bln: number;
+  avg_ton_bulanan: number; avg_ton_elang_bulanan: number; avg_ton_badak_bulanan: number;
+  est_cost_bln: number;
 }
 interface HistoryEvent {
   id_member: string; id_toko: string; nama_toko: string;
@@ -82,7 +83,11 @@ interface HistoryEvent {
 interface StoreSearch {
   id_toko: string; nama_toko: string; kabupaten: string;
   cluster_pareto: string; tso: string;
-  aegis_score: number; aegis_level: string; avg_ton_bulanan: number; sudah_ada: boolean;
+  aegis_score: number; aegis_level: string;
+  avg_ton_bulanan: number;
+  avg_ton_elang_bulanan?: number;
+  avg_ton_badak_bulanan?: number;
+  sudah_ada: boolean;
 }
 interface HistoricalTarget {
   id_toko: string; nama_toko: string; cluster: string;
@@ -133,6 +138,11 @@ const CLUSTERS = ["Super Platinum", "Platinum", "Gold", "Silver", "Bronze"] as c
 const RATES: Record<string, number> = {
   "Emergency Boost": 15_000, "Retention Boost": 10_000,
   "Loyalty Reward": 10_000, Standard: 5_000,
+};
+const RATE_ELANG_BASE = 5_000;
+const RATE_BADAK_BASE = 2_500;
+const REWARD_MULTIPLIER: Record<string, number> = {
+  "Standard": 1, "Retention Boost": 2, "Loyalty Reward": 2, "Emergency Boost": 3,
 };
 const TAKEOUT_REASONS = [
   "Volume Turun", "Tidak Aktif", "Sudah Normal", "Efisiensi Rendah", "Keputusan Manual",
@@ -244,8 +254,14 @@ function AddMemberModal({
 
   useEffect(() => { if (!prefill) search(query); }, [query, search, prefill]);
 
+  const multiplier  = REWARD_MULTIPLIER[rewardType] ?? 1;
+  const elangTon    = selected?.avg_ton_elang_bulanan ?? 0;
+  const badakTon    = selected?.avg_ton_badak_bulanan ?? 0;
+  const hasBrandData = elangTon > 0 || badakTon > 0;
   const estBudget = selected
-    ? Math.round((selected.avg_ton_bulanan ?? 0) * (RATES[rewardType] ?? 5000))
+    ? hasBrandData
+      ? Math.round(elangTon * RATE_ELANG_BASE * multiplier + badakTon * RATE_BADAK_BASE * multiplier)
+      : Math.round((selected.avg_ton_bulanan ?? 0) * RATE_ELANG_BASE * multiplier)
     : 0;
 
   async function handleSubmit() {
@@ -344,9 +360,36 @@ function AddMemberModal({
         </div>
 
         {selected && (
-          <div className="rounded-md bg-primary/5 border border-primary/20 px-3 py-2 flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">Estimasi budget/bulan</span>
-            <span className="text-sm font-bold text-primary">{fmtRp(estBudget)}</span>
+          <div className="rounded-md bg-primary/5 border border-primary/20 px-3 py-2.5 space-y-1.5">
+            {hasBrandData ? (
+              <>
+                {elangTon > 0 && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">
+                      Elang: {fmtNum(elangTon)} ton × Rp {fmtNum(RATE_ELANG_BASE)} × {multiplier}×
+                    </span>
+                    <span className="tabular-nums">{fmtRp(Math.round(elangTon * RATE_ELANG_BASE * multiplier))}</span>
+                  </div>
+                )}
+                {badakTon > 0 && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">
+                      Badak: {fmtNum(badakTon)} ton × Rp {fmtNum(RATE_BADAK_BASE)} × {multiplier}×
+                    </span>
+                    <span className="tabular-nums">{fmtRp(Math.round(badakTon * RATE_BADAK_BASE * multiplier))}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between border-t border-primary/20 pt-1.5 mt-1">
+                  <span className="text-xs text-muted-foreground font-medium">Estimasi budget/bulan</span>
+                  <span className="text-sm font-bold text-primary">{fmtRp(estBudget)}</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Estimasi budget/bulan</span>
+                <span className="text-sm font-bold text-primary">{estBudget > 0 ? fmtRp(estBudget) : "–"}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -2230,6 +2273,8 @@ function LoyaltyContent() {
             kabupaten: prefillStore.kabupaten, cluster_pareto: prefillStore.cluster_pareto,
             tso: prefillStore.tso, aegis_score: prefillStore.aegis_score,
             aegis_level: prefillStore.aegis_level, avg_ton_bulanan: prefillStore.avg_ton_bulanan,
+            avg_ton_elang_bulanan: prefillStore.avg_ton_elang_bulanan,
+            avg_ton_badak_bulanan: prefillStore.avg_ton_badak_bulanan,
           } as Partial<StoreSearch> : undefined}
         />
       )}

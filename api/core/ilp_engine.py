@@ -110,6 +110,8 @@ def compute_ilp_features(df: pd.DataFrame) -> pd.DataFrame:
         .reindex(columns=["elang", "badak"], fill_value=0)
         .reindex(stores.index, fill_value=0)
     )
+    stores["avg_ton_elang"] = brand_mon["elang"]
+    stores["avg_ton_badak"] = brand_mon["badak"]
     stores["estimated_cost"] = (
         brand_mon["elang"] * REWARD["SEMEN ELANG"]
         + brand_mon["badak"] * REWARD["SEMEN BADAK"]
