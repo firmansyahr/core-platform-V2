@@ -14,12 +14,8 @@ import {
 } from "@/components/ui/table";
 import {
   Plus, Search, X, Users, Zap, TrendingUp, AlertCircle,
-  ChevronRight, BarChart2, Trophy, MoreVertical, Trash2, Eye, Calendar,
+  ChevronRight, BarChart2, Trophy, Trash2, Eye, Activity, Calendar,
 } from "lucide-react";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const fmtRp  = (n: number) => "Rp " + new Intl.NumberFormat("id-ID").format(Math.round(n));
@@ -1054,7 +1050,7 @@ export default function PromoListPage() {
                     </TableCell>
                   </TableRow>
                 ) : filtered.map(p => (
-                  <TableRow key={p.id} className="group">
+                  <TableRow key={p.id}>
                     <TableCell>
                       <Link href={`/loyalty/promo/${p.id}`} className="font-medium text-sm hover:text-purple-600 hover:underline">
                         {p.nama_promo}
@@ -1086,32 +1082,29 @@ export default function PromoListPage() {
                     <TableCell>
                       <div className="flex items-center gap-1.5">
                         {p.status === "Draft" && (
-                          <Button size="sm" className="h-7 px-2 text-xs bg-green-600 hover:bg-green-700 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleActivate(p.id)}>Aktifkan</Button>
+                          <Button size="sm" className="h-7 px-2 text-xs bg-green-600 hover:bg-green-700" onClick={() => handleActivate(p.id)}>
+                            Aktifkan
+                          </Button>
                         )}
                         {p.status === "Aktif" && (
-                          <Button size="sm" className="h-7 px-2 text-xs bg-blue-600 hover:bg-blue-700 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleComplete(p.id)}>Selesaikan</Button>
+                          <Button size="sm" className="h-7 px-2 text-xs bg-blue-600 hover:bg-blue-700" onClick={() => handleComplete(p.id)}>
+                            Selesaikan
+                          </Button>
                         )}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <MoreVertical size={14} />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-44">
-                            <DropdownMenuItem onClick={() => router.push(`/loyalty/promo/${p.id}`)}>
-                              <Eye size={14} className="mr-2" />
-                              {p.status === "Aktif" ? "Monitor" : p.status === "Selesai" ? "Laporan" : "Lihat Detail"}
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                              onClick={() => setDeleteTarget(p)}
-                            >
-                              <Trash2 size={14} className="mr-2" />
-                              Hapus Program
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        <Button variant="outline" size="sm" className="h-7 px-2 text-xs gap-1"
+                          onClick={() => router.push(`/loyalty/promo/${p.id}?tab=detail`)}>
+                          <Eye size={11} />
+                          Detail
+                        </Button>
+                        <Button variant="outline" size="sm" className="h-7 px-2 text-xs gap-1"
+                          onClick={() => router.push(`/loyalty/promo/${p.id}?tab=monitoring`)}>
+                          <Activity size={11} />
+                          Monitoring
+                        </Button>
+                        <Button variant="outline" size="sm" className="h-7 w-7 p-0 text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
+                          onClick={() => setDeleteTarget(p)}>
+                          <Trash2 size={12} />
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
