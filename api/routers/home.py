@@ -14,6 +14,11 @@ from api.core.insight_engine import (
     generate_home_insight,
     generate_monthly_report,
 )
+from api.core.report_data_collector import (
+    collect_competitor_data,
+    collect_performance_tracker_data,
+    collect_program_promo_breakdown,
+)
 
 router = APIRouter(prefix="/api/home", tags=["home"])
 
@@ -339,9 +344,10 @@ def generate_report() -> dict:
     summary_resp = get_home_summary()
     summary_dict = summary_resp.data.model_dump()
 
-    stores    = get_store_crs()
-    warning   = stores[stores["alert"] != "Normal"]
+    stores  = get_store_crs()
+    warning = stores[stores["alert"] != "Normal"]
 
+    # ── AEGIS ────────────────────────────────────────────────────────────────
     top_kab: list[dict] = []
     if "Kabupaten Toko" in warning.columns:
         kab_counts = (
@@ -355,6 +361,9 @@ def generate_report() -> dict:
         for p, cnt in warning["pola_kode"].value_counts().items():
             pola_dist[str(p)] = int(cnt)
 
+    cad_pending  = int((stores.get("cad", stores.get("cad_count", None)) == 1).sum()) if "cad" in stores.columns else 0
+
+    # ── Loyalty ───────────────────────────────────────────────────────────────
     loyalty_summary: dict = {}
     try:
         from api.routers.loyalty import get_summary as loyalty_get_summary  # type: ignore[import]
@@ -363,28 +372,37 @@ def generate_report() -> dict:
     except Exception:
         pass
 
-    # Determine current periode
+    # ── Periode ───────────────────────────────────────────────────────────────
     df = load_data()
     latest_p = df["Tanggal Transaksi"].dt.to_period("M").max()
     periode  = str(latest_p)
+
+    # ── New sections (competitor, promo, performance) ─────────────────────────
+    competitor_data     = collect_competitor_data()
+    program_promo_data  = collect_program_promo_breakdown()
+    performance_data    = collect_performance_tracker_data()
 
     report_data = {
         "periode": periode,
         "summary": summary_dict,
         "aegis": {
-            "total_warning": int(len(warning)),
-            "merah":   int((warning["alert"] == "Merah").sum()),
-            "oranye":  int((warning["alert"] == "Oranye").sum()),
-            "kuning":  int((warning["alert"] == "Kuning").sum()),
-            "top_kabupaten": top_kab,
-            "distribusi_pola": pola_dist,
+            "total_warning":     int(len(warning)),
+            "merah":             int((warning["alert"] == "Merah").sum()),
+            "oranye":            int((warning["alert"] == "Oranye").sum()),
+            "kuning":            int((warning["alert"] == "Kuning").sum()),
+            "top_kabupaten":     top_kab,
+            "distribusi_pola":   pola_dist,
+            "cad_alert_pending": cad_pending,
         },
-        "loyalty": loyalty_summary,
+        "loyalty":             loyalty_summary,
+        "competitor":          competitor_data,
+        "program_promo":       program_promo_data,
+        "performance_tracker": performance_data,
     }
 
     result = generate_monthly_report(report_data)
 
-    # Cache the raw data for PDF generation
+    # Cache for PDF generation — result already contains raw_data
     _report_cache["latest"] = {"report_data": report_data, "result": result}
 
     return {"status": "ok", "data": result, "meta": _META()}
@@ -412,11 +430,15 @@ def download_report_pdf(periode: str = Query(default="")) -> Response:
         report_data = cached.get("report_data", {})
         result    = cached.get("result", {})
 
-    sections = result.get("sections") or {}
-    periode_label = report_data.get("periode", periode or "N/A")
-    summary  = report_data.get("summary", {})
-    aegis    = report_data.get("aegis", {})
-    loyalty  = report_data.get("loyalty", {})
+    sections         = result.get("sections") or {}
+    raw_data         = result.get("raw_data") or report_data
+    periode_label    = raw_data.get("periode", periode or "N/A")
+    summary          = raw_data.get("summary", {})
+    aegis            = raw_data.get("aegis", {})
+    loyalty          = raw_data.get("loyalty", {})
+    competitor       = raw_data.get("competitor", {})
+    program_promo    = raw_data.get("program_promo", {})
+    perf_tracker     = raw_data.get("performance_tracker", {})
 
     buf = _BytesIO()
     _DARK   = colors.HexColor("#0f172a")
@@ -476,7 +498,6 @@ def download_report_pdf(periode: str = Query(default="")) -> Response:
     for para in (sections.get("executive_summary") or "–").split("\n\n"):
         story.append(Paragraph(para.strip().replace("\n", " "), body_st))
         story.append(Spacer(1, 5))
-
     story.append(Spacer(1, 8))
 
     # ── 2. KPI Table
@@ -490,34 +511,70 @@ def download_report_pdf(periode: str = Query(default="")) -> Response:
         ["Warning Merah", str(summary.get("warning_merah", 0))],
         ["Warning Oranye", str(summary.get("warning_oranye", 0))],
         ["Warning Kuning", str(summary.get("warning_kuning", 0))],
-        ["Porsi Produk Murah", f"{summary.get('fighting_brand_share_pct', 0):.1f}%"],
+        ["Porsi Produk Murah (FBSI)", f"{summary.get('fighting_brand_share_pct', 0):.1f}%"],
         ["Volume Berisiko", f"{summary.get('volume_at_risk_pct', 0):.1f}% dari total"],
+        ["CAD Alert Aktif", str(summary.get("cad_alert_count", 0))],
     ]
     kpi_tbl = Table(kpi_rows, colWidths=[9*cm, 7*cm])
-    kpi_tbl.setStyle(_tbl_style(len(kpi_rows)-1))
+    kpi_tbl.setStyle(_tbl_style(len(kpi_rows) - 1))
     story.append(kpi_tbl)
     story.append(Spacer(1, 8))
 
     # ── 3. AEGIS Analysis
-    story.append(Paragraph("3. Kondisi Pasar & AEGIS Warning", h2_st))
+    story.append(Paragraph("3. Analisis AEGIS & Early Warning", h2_st))
     for para in (sections.get("analisis_aegis") or "–").split("\n\n"):
         story.append(Paragraph(para.strip().replace("\n", " "), body_st))
         story.append(Spacer(1, 5))
 
-    top_kab = aegis.get("top_kabupaten", [])
-    if top_kab:
+    top_kab_list = aegis.get("top_kabupaten", [])
+    if top_kab_list:
         story.append(Spacer(1, 6))
         story.append(Paragraph("Top 5 Kabupaten Warning", caption_st))
         kab_rows = [["Kabupaten", "Jumlah Toko"]] + [
-            [k["kabupaten"].replace("KABUPATEN ", "KAB. "), str(k["jumlah"])] for k in top_kab
+            [k["kabupaten"].replace("KABUPATEN ", "KAB. "), str(k["jumlah"])]
+            for k in top_kab_list
         ]
         kab_tbl = Table(kab_rows, colWidths=[11*cm, 5*cm])
-        kab_tbl.setStyle(_tbl_style(len(kab_rows)-1))
+        kab_tbl.setStyle(_tbl_style(len(kab_rows) - 1))
         story.append(kab_tbl)
     story.append(Spacer(1, 8))
 
-    # ── 4. Loyalty
-    story.append(Paragraph("4. Program Loyalty", h2_st))
+    # ── 4. Competitor Intelligence (BARU)
+    story.append(Paragraph("4. Competitor Intelligence", h2_st))
+    for para in (sections.get("analisis_competitor") or "–").split("\n\n"):
+        story.append(Paragraph(para.strip().replace("\n", " "), body_st))
+        story.append(Spacer(1, 5))
+
+    tri_sum = competitor.get("triangulation_summary", {})
+    if tri_sum:
+        story.append(Spacer(1, 6))
+        story.append(Paragraph("Triangulasi per Provinsi (AEGIS × ASPERSSI)", caption_st))
+        comp_rows = [
+            ["Status", "Jumlah Provinsi"],
+            ["Konfirmasi Kompetitor", str(tri_sum.get("konfirmasi_kompetitor", 0))],
+            ["Waspada Awal", str(tri_sum.get("waspada_awal", 0))],
+            ["Internal/Seasonal", str(tri_sum.get("internal_seasonal", 0))],
+            ["Data Tidak Cukup", str(tri_sum.get("tidak_cukup_data", 0))],
+        ]
+        comp_tbl = Table(comp_rows, colWidths=[11*cm, 5*cm])
+        comp_tbl.setStyle(_tbl_style(len(comp_rows) - 1))
+        story.append(comp_tbl)
+    top_komp = competitor.get("top_5_kompetitor_asperssi", [])
+    if top_komp:
+        story.append(Spacer(1, 6))
+        story.append(Paragraph("Top 5 Kompetitor ASPERSSI (market share)", caption_st))
+        komp_rows = [["Brand", "Avg MS%", "Tren (pp)", "Arah"]] + [
+            [r["brand"], f"{r['avg_ms_pct']:.1f}%",
+             f"{r['avg_trend_pp']:+.2f}", r["trend_label"]]
+            for r in top_komp
+        ]
+        komp_tbl = Table(komp_rows, colWidths=[7*cm, 3*cm, 3*cm, 3*cm])
+        komp_tbl.setStyle(_tbl_style(len(komp_rows) - 1))
+        story.append(komp_tbl)
+    story.append(Spacer(1, 8))
+
+    # ── 5. Program Loyalty
+    story.append(Paragraph("5. Program Loyalty — Overview", h2_st))
     for para in (sections.get("analisis_loyalty") or "–").split("\n\n"):
         story.append(Paragraph(para.strip().replace("\n", " "), body_st))
         story.append(Spacer(1, 5))
@@ -528,15 +585,72 @@ def download_report_pdf(periode: str = Query(default="")) -> Response:
         ["Peserta Aktif", str(loyalty.get("total_aktif", "–"))],
         ["Efektivitas Program", f"{eff.get('efektivitas_pct', 0):.1f}%" if eff else "–"],
         ["Volume Achievement", f"{eff.get('volume_achievement_pct', 0):.1f}%" if eff else "–"],
-        ["Estimasi Budget", f"Rp {loyalty.get('est_budget_bulan', 0):,.0f}"],
+        ["Estimasi Budget/Bulan", f"Rp {loyalty.get('est_budget_bulan', 0):,.0f}"],
     ]
     loy_tbl = Table(loy_rows, colWidths=[9*cm, 7*cm])
-    loy_tbl.setStyle(_tbl_style(len(loy_rows)-1))
+    loy_tbl.setStyle(_tbl_style(len(loy_rows) - 1))
     story.append(loy_tbl)
     story.append(Spacer(1, 8))
 
-    # ── 5. Recommendations
-    story.append(Paragraph("5. Rekomendasi Tindakan", h2_st))
+    # ── 6. Breakdown Program Promo per Tipe (BARU)
+    story.append(Paragraph("6. Breakdown Program Promo per Tipe", h2_st))
+    for para in (sections.get("breakdown_program_promo") or "–").split("\n\n"):
+        story.append(Paragraph(para.strip().replace("\n", " "), body_st))
+        story.append(Spacer(1, 5))
+
+    if program_promo:
+        story.append(Spacer(1, 6))
+        story.append(Paragraph("Ringkasan Program Promo Aktif", caption_st))
+        def _rp(x: int) -> str:
+            return f"Rp {x:,.0f}"
+        promo_rows = [
+            ["Tipe Program", "Aktif", "Peserta", "Est. Budget"],
+            ["Flat Multiplier",
+             str(program_promo.get("flat_multiplier", {}).get("jumlah_aktif", 0)),
+             str(program_promo.get("flat_multiplier", {}).get("total_peserta", 0)),
+             _rp(program_promo.get("flat_multiplier", {}).get("total_rupiah", 0))],
+            ["Multi-Tier Target",
+             str(program_promo.get("multi_tier", {}).get("jumlah_aktif", 0)),
+             str(program_promo.get("multi_tier", {}).get("total_peserta", 0)),
+             _rp(program_promo.get("multi_tier", {}).get("total_rupiah", 0))],
+            ["Leaderboard/Gamifikasi",
+             str(program_promo.get("leaderboard", {}).get("jumlah_aktif", 0)),
+             str(program_promo.get("leaderboard", {}).get("total_peserta", 0)),
+             _rp(program_promo.get("leaderboard", {}).get("total_rupiah", 0))],
+        ]
+        promo_tbl = Table(promo_rows, colWidths=[6*cm, 2.5*cm, 2.5*cm, 5*cm])
+        promo_tbl.setStyle(_tbl_style(len(promo_rows) - 1))
+        story.append(promo_tbl)
+    story.append(Spacer(1, 8))
+
+    # ── 7. Performance Tracker Outcome (BARU)
+    story.append(Paragraph("7. Performance Tracker — Outcome Measurement", h2_st))
+    for para in (sections.get("performance_outcome") or "–").split("\n\n"):
+        story.append(Paragraph(para.strip().replace("\n", " "), body_st))
+        story.append(Spacer(1, 5))
+
+    vd = perf_tracker.get("verdict_distribution", {})
+    if vd:
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(
+            f"Success Rate: {perf_tracker.get('success_rate_pct', 0):.1f}% "
+            f"({vd.get('membaik', 0)} dari {perf_tracker.get('total_dipantau', 0)} toko dipantau)",
+            caption_st,
+        ))
+        perf_rows = [
+            ["Verdict", "Jumlah Toko"],
+            ["Membaik",          str(vd.get("membaik", 0))],
+            ["Stabil",           str(vd.get("stabil", 0))],
+            ["Perlu Perhatian",  str(vd.get("perlu_perhatian", 0))],
+            ["Dalam Pemantauan", str(vd.get("dalam_pemantauan", 0))],
+        ]
+        perf_tbl = Table(perf_rows, colWidths=[11*cm, 5*cm])
+        perf_tbl.setStyle(_tbl_style(len(perf_rows) - 1))
+        story.append(perf_tbl)
+    story.append(Spacer(1, 8))
+
+    # ── 8. Recommendations
+    story.append(Paragraph("8. Rekomendasi Tindakan Prioritas", h2_st))
     for line in (sections.get("rekomendasi") or "–").split("\n"):
         if line.strip():
             story.append(Paragraph(line.strip(), body_st))

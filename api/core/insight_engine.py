@@ -189,31 +189,34 @@ ATURAN:
 
 def generate_monthly_report(report_data: dict) -> dict:
     if not os.getenv("ANTHROPIC_API_KEY"):
-        return {"status": "disabled", "sections": None}
+        return {"status": "disabled", "sections": None, "raw_data": report_data}
 
     try:
         sections: dict[str, str] = {}
         client = _get_client()
 
+        # Section 1 — Executive Summary (semua data, 3-4 paragraf)
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=400,
-            system="""Kamu adalah analis bisnis senior. Tulis executive
-summary laporan bulanan distribusi semen dalam bahasa Indonesia formal.
-2-3 paragraf. Fokus pada highlight utama yang perlu diketahui manajemen.""",
+            max_tokens=500,
+            system="""Kamu adalah analis bisnis senior. Tulis executive summary laporan bulanan
+distribusi semen dalam bahasa Indonesia formal. 3-4 paragraf. WAJIB sebutkan angka konkret
+untuk setiap klaim. Cakup kondisi volume, status AEGIS, ringkasan situasi kompetitor, dan
+status program loyalty — dalam satu narasi yang mengalir, tidak terpisah per topik.""",
             messages=[{
                 "role": "user",
-                "content": f"Data bulan ini:\n{json.dumps(report_data.get('summary', {}), ensure_ascii=False)}",
+                "content": f"Data lengkap bulan ini:\n{json.dumps(report_data, ensure_ascii=False)}",
             }],
         )
         sections["executive_summary"] = response.content[0].text
 
+        # Section 3 — Analisis AEGIS & Early Warning
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=400,
-            system="""Tulis analisis kondisi warning AEGIS bulan ini
-dalam bahasa Indonesia. Jelaskan distribusi pola, wilayah kritis,
-dan tren dibanding bulan lalu. 2-3 paragraf.""",
+            max_tokens=450,
+            system="""Tulis analisis kondisi warning AEGIS bulan ini dalam bahasa Indonesia.
+WAJIB sebutkan angka spesifik: distribusi pola (A/B/C/D), top kabupaten kritis dengan
+jumlah toko, tren dibanding bulan lalu, dan status CAD Alert. 2-3 paragraf detail.""",
             messages=[{
                 "role": "user",
                 "content": f"Data AEGIS:\n{json.dumps(report_data.get('aegis', {}), ensure_ascii=False)}",
@@ -221,12 +224,29 @@ dan tren dibanding bulan lalu. 2-3 paragraf.""",
         )
         sections["analisis_aegis"] = response.content[0].text
 
+        # Section 4 — Competitor Intelligence (BARU)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=450,
+            system="""Tulis analisis kondisi kompetitor bulan ini dalam bahasa Indonesia.
+WAJIB jelaskan: berapa wilayah terkonfirmasi tekanan kompetitor, kompetitor mana yang
+paling agresif (sebutkan nama brand dan angka market share), apakah ada sinyal dari
+brand kecil/lokal tak teridentifikasi (kategori 'Lainnya'), dan sinyal ancaman ke depan.
+Jika data ASPERSSI terbatas, sebutkan keterbatasannya dengan jujur. 2-3 paragraf.""",
+            messages=[{
+                "role": "user",
+                "content": f"Data competitor:\n{json.dumps(report_data.get('competitor', {}), ensure_ascii=False)}",
+            }],
+        )
+        sections["analisis_competitor"] = response.content[0].text
+
+        # Section 5 — Program Loyalty Overview
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=400,
-            system="""Tulis analisis efektivitas program loyalty bulan ini
-dalam bahasa Indonesia. Jelaskan pencapaian target, keaktifan peserta,
-dan rekomendasi perbaikan. 2-3 paragraf.""",
+            system="""Tulis analisis efektivitas program loyalty bulan ini dalam bahasa Indonesia.
+Jelaskan jumlah peserta aktif, efektivitas program (%), estimasi budget, pencapaian target,
+dan top achiever vs bottom achiever. 2-3 paragraf. Sebutkan angka konkret.""",
             messages=[{
                 "role": "user",
                 "content": f"Data Loyalty:\n{json.dumps(report_data.get('loyalty', {}), ensure_ascii=False)}",
@@ -234,12 +254,46 @@ dan rekomendasi perbaikan. 2-3 paragraf.""",
         )
         sections["analisis_loyalty"] = response.content[0].text
 
+        # Section 6 — Breakdown Program Promo per Tipe (BARU)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=450,
+            system="""Jelaskan kondisi program promo bulan ini dalam bahasa Indonesia, dipecah
+per tipe: Flat Multiplier (reward tetap per ton), Multi-Tier Target (level pencapaian), dan
+Gamifikasi/Leaderboard (kompetisi ranking). Sebutkan jumlah program aktif, total peserta,
+dan estimasi reward per tipe. Jika tipe tertentu tidak ada program aktif, sebutkan juga.
+2-3 paragraf.""",
+            messages=[{
+                "role": "user",
+                "content": f"Data program promo:\n{json.dumps(report_data.get('program_promo', {}), ensure_ascii=False)}",
+            }],
+        )
+        sections["breakdown_program_promo"] = response.content[0].text
+
+        # Section 7 — Performance Tracker Outcome (BARU)
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=400,
-            system="""Berikan 5 rekomendasi tindakan prioritas bulan depan
-dalam bahasa Indonesia. Format bernomor. Setiap poin: tindakan konkret +
-alasan singkat + target yang bertanggung jawab (TSO/ASM/Manajemen).""",
+            system="""Jelaskan outcome program loyalty bulan ini berdasarkan Performance Tracker
+dalam bahasa Indonesia. Sebutkan success rate (% toko verdict Membaik), contoh toko dengan
+improvement terbaik (nama dan delta volume), dan toko yang perlu perhatian khusus.
+Tekankan apakah program secara keseluruhan terbukti efektif atau perlu evaluasi. 2-3 paragraf.""",
+            messages=[{
+                "role": "user",
+                "content": f"Data performance tracker:\n{json.dumps(report_data.get('performance_tracker', {}), ensure_ascii=False)}",
+            }],
+        )
+        sections["performance_outcome"] = response.content[0].text
+
+        # Section 8 — Rekomendasi Tindakan Prioritas (diperdalam)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            system="""Berikan 6-8 rekomendasi tindakan prioritas bulan depan dalam bahasa Indonesia.
+Format bernomor. Setiap poin WAJIB mengandung: (a) tindakan konkret, (b) data pendukung spesifik
+(angka/nama wilayah/nama toko), (c) penanggung jawab (TSO/ASM/Manajemen), (d) urgensi (Tinggi/Sedang/Rendah).
+Rekomendasi harus mencakup minimal: 1 terkait AEGIS, 1 terkait kompetitor, 1 terkait program loyalty,
+1 terkait performance tracker.""",
             messages=[{
                 "role": "user",
                 "content": f"Semua data:\n{json.dumps(report_data, ensure_ascii=False)}",
@@ -248,14 +302,15 @@ alasan singkat + target yang bertanggung jawab (TSO/ASM/Manajemen).""",
         sections["rekomendasi"] = response.content[0].text
 
         return {
-            "status": "ok",
-            "sections": sections,
-            "periode": report_data.get("periode", ""),
+            "status":       "ok",
+            "sections":     sections,
+            "raw_data":     report_data,
+            "periode":      report_data.get("periode", ""),
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
 
     except Exception as e:
-        return {"status": "error", "sections": None, "error": str(e)}
+        return {"status": "error", "sections": None, "raw_data": report_data, "error": str(e)}
 
 
 def generate_competitor_insight(triangulation_data: list, ranking_data: list) -> dict:
