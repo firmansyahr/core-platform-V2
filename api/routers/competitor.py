@@ -166,45 +166,22 @@ def cad_intelligence() -> dict:
 
 
 # ── Overview (combined) ───────────────────────────────────────────────────────
+# Lightweight: coverage + CAD intel only.
+# Triangulation summary is derived on the frontend from /triangulation.
+# Ranking is fetched independently from /ranking.
 
 @router.get("/overview")
 def overview() -> dict:
-    store_crs = _get_crs_by_provinsi()
-    sp        = ce.load_share_provinsi()
-    ms        = ce.load_marketshare_brand()
-    cov       = ce.get_asperssi_coverage()
-
-    tri: list[dict] = []
-    if not store_crs.empty:
-        tri = ce.triangulate_aegis_with_asperssi(store_crs, sp, ms)
-
-    # Summary counts
-    tri_summary = {
-        "konfirmasi_kompetitor": sum(1 for t in tri if t["verdict"] == "KONFIRMASI_KOMPETITOR"),
-        "waspada_awal":          sum(1 for t in tri if t["verdict"] == "WASPADA_AWAL"),
-        "internal_seasonal":     sum(1 for t in tri if t["verdict"] == "INTERNAL_ATAU_SEASONAL"),
-        "tidak_cukup_data":      sum(1 for t in tri if t["verdict"] == "TIDAK_CUKUP_DATA"),
-        "normal":                sum(1 for t in tri if t["verdict"] == "NORMAL"),
-    }
-
-    top_threats = [
-        t for t in tri
-        if t["verdict"] in ("KONFIRMASI_KOMPETITOR", "WASPADA_AWAL")
-    ][:3]
-
-    ms_ranking  = ce.get_competitor_ranking(ms)
-    records     = cad_storage.get_records(status="all", kabupaten="", limit=9999, offset=0)
-    cad_intel   = ce.get_cad_intelligence(records)
+    cov     = ce.get_asperssi_coverage()
+    records = cad_storage.get_records(status="all", kabupaten="", limit=9999, offset=0)
+    cad_intel = ce.get_cad_intelligence(records)
 
     return _ok({
-        "coverage":                   cov,
-        "triangulation_summary":      tri_summary,
-        "top_threats":                top_threats,
-        "competitor_ranking_asperssi": ms_ranking[:5],
-        "competitor_ranking_cad":      cad_intel["kompetitor_list"][:5],
+        "coverage":              cov,
+        "competitor_ranking_cad": cad_intel["kompetitor_list"][:5],
         "data_disclaimer": [
             "Semua data ASPERSSI dalam persen — tidak tersedia volume absolut",
-            "Share provinsi (Mar–Apr 2026) dan market share brand (Des 2025–Jan 2026) dari periode berbeda",
+            "Share provinsi dan market share brand dari periode berbeda",
             "Triangulasi berdasarkan arah tren, bukan magnitude absolut",
         ],
     })

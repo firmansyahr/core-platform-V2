@@ -68,17 +68,8 @@ interface Overview {
     marketshare_brand: { periode_tersedia: string[]; brands_tracked: string[]; provinsi_count: number; last_updated: string | null };
     catatan:           string[];
   };
-  triangulation_summary: {
-    konfirmasi_kompetitor: number;
-    waspada_awal:          number;
-    internal_seasonal:     number;
-    tidak_cukup_data:      number;
-    normal:                number;
-  };
-  top_threats:               TriRow[];
-  competitor_ranking_asperssi: RankRow[];
-  competitor_ranking_cad:      CADRow[];
-  data_disclaimer:             string[];
+  competitor_ranking_cad: CADRow[];
+  data_disclaimer:        string[];
 }
 
 interface MsRow {
@@ -1007,11 +998,12 @@ export default function CompetitorPage() {
   const [overview,  setOverview]  = useState<Overview | null>(null);
   const [triList,   setTriList]   = useState<TriRow[]>([]);
   const [loading,   setLoading]   = useState(true);
-  const [triLoading,setTL]        = useState(false);
+  const [triLoading,setTL]        = useState(true);
   const [activeTab, setActiveTab] = useState<"tri" | "rank" | "upload">("tri");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [insight, setInsight] = useState<{ status: string; narasi: string | null; generated_at?: string; cached?: boolean } | null>(null);
   const [insightLoading, setInsightLoading] = useState(true);
+  const [rankingData, setRankingData] = useState<RankRow[]>([]);
 
   const fetchOverview = useCallback(() => {
     setLoading(true);
@@ -1040,20 +1032,36 @@ export default function CompetitorPage() {
       .finally(() => setInsightLoading(false));
   }, []);
 
+  const fetchRanking = useCallback(() => {
+    fetch(`${API}/api/competitor/ranking`)
+      .then((r) => r.json())
+      .then((r) => setRankingData(r.data ?? []))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     fetchOverview();
     fetchTriangulation();
     fetchInsight();
-  }, [fetchOverview, fetchTriangulation, fetchInsight]);
+    fetchRanking();
+  }, [fetchOverview, fetchTriangulation, fetchInsight, fetchRanking]);
 
   const refreshAll = useCallback(() => {
     fetchOverview();
     fetchTriangulation();
     fetchInsight();
-  }, [fetchOverview, fetchTriangulation, fetchInsight]);
+    fetchRanking();
+  }, [fetchOverview, fetchTriangulation, fetchInsight, fetchRanking]);
 
-  const summary = overview?.triangulation_summary;
-  const cov     = overview?.coverage;
+  const summary = useMemo(() => ({
+    konfirmasi_kompetitor: triList.filter(r => r.verdict === "KONFIRMASI_KOMPETITOR").length,
+    waspada_awal:          triList.filter(r => r.verdict === "WASPADA_AWAL").length,
+    internal_seasonal:     triList.filter(r => r.verdict === "INTERNAL_ATAU_SEASONAL").length,
+    tidak_cukup_data:      triList.filter(r => r.verdict === "TIDAK_CUKUP_DATA").length,
+    normal:                triList.filter(r => r.verdict === "NORMAL").length,
+  }), [triList]);
+
+  const cov = overview?.coverage;
 
   return (
     <div className="min-h-screen bg-background">
@@ -1072,42 +1080,6 @@ export default function CompetitorPage() {
             <p className="text-sm text-muted-foreground mt-0.5">
               Triangulasi sinyal AEGIS internal dengan data pasar ASPERSSI
             </p>
-          </div>
-        </div>
-
-        {/* Data Coverage Banner */}
-        <div className="rounded-xl border border-yellow-300/70 dark:border-yellow-700/40 bg-yellow-50/60 dark:bg-yellow-950/20 p-4">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="space-y-2 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="text-yellow-600 dark:text-yellow-400 text-sm">ⓘ</span>
-                <p className="text-sm font-semibold text-yellow-800 dark:text-yellow-300">Data ASPERSSI tersedia:</p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pl-5">
-                <div className="text-xs text-yellow-700 dark:text-yellow-400">
-                  <span className="font-medium">Share Provinsi:</span>{" "}
-                  {cov?.share_provinsi.periode_tersedia.join(", ") ?? "Mar–Apr 2026"}{" "}
-                  <span className="font-bold">(dalam %)</span>
-                </div>
-                <div className="text-xs text-yellow-700 dark:text-yellow-400">
-                  <span className="font-medium">Market Share Brand:</span>{" "}
-                  {cov?.marketshare_brand.periode_tersedia.join(", ") ?? "Des 2025–Jan 2026"}{" "}
-                  <span className="font-bold">(dalam %)</span>
-                </div>
-              </div>
-              <p className="text-[11px] text-yellow-600 dark:text-yellow-500 pl-5">
-                Catatan: kedua dataset dari periode berbeda.
-                Interpretasi <strong>tren arah</strong>, bukan nilai absolut.
-              </p>
-            </div>
-            {isAdmin && (
-              <button
-                onClick={() => setActiveTab("upload")}
-                className="shrink-0 px-3 py-1.5 text-xs font-medium border border-yellow-400 dark:border-yellow-600 text-yellow-700 dark:text-yellow-400 rounded-lg hover:bg-yellow-100 dark:hover:bg-yellow-950/40 transition-colors"
-              >
-                Upload Data Baru
-              </button>
-            )}
           </div>
         </div>
 
@@ -1164,7 +1136,7 @@ export default function CompetitorPage() {
         ) : null}
 
         {/* KPI cards */}
-        {loading ? (
+        {triLoading ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
           </div>
@@ -1367,7 +1339,7 @@ export default function CompetitorPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/50">
-                      {(overview?.competitor_ranking_asperssi ?? []).map((r, i) => (
+                      {rankingData.map((r, i) => (
                         <tr key={r.brand} className="hover:bg-muted/20">
                           <td className="py-2 font-medium flex items-center gap-1.5">
                             <span className="text-muted-foreground/50 text-[9px] w-4">{i + 1}</span>
@@ -1382,7 +1354,7 @@ export default function CompetitorPage() {
                           <td className="py-2 text-right text-muted-foreground">{r.provinsi_count}</td>
                         </tr>
                       ))}
-                      {!overview?.competitor_ranking_asperssi?.length && (
+                      {!rankingData.length && (
                         <tr><td colSpan={4} className="py-6 text-center text-muted-foreground">Tidak ada data</td></tr>
                       )}
                     </tbody>
@@ -1444,10 +1416,8 @@ export default function CompetitorPage() {
 
             {/* Discrepancy insight */}
             {(overview?.competitor_ranking_cad?.length ?? 0) > 0 &&
-             (overview?.competitor_ranking_asperssi?.length ?? 0) > 0 && (() => {
-              const asperssiNames = new Set(
-                (overview?.competitor_ranking_asperssi ?? []).map((r) => r.brand.toLowerCase())
-              );
+             rankingData.length > 0 && (() => {
+              const asperssiNames = new Set(rankingData.map((r) => r.brand.toLowerCase()));
               const cadOnly = (overview?.competitor_ranking_cad ?? []).filter(
                 (r) => !asperssiNames.has(r.brand.toLowerCase())
               );
