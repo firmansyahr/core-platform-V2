@@ -6,6 +6,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Sparkles, RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { getToken } from "@/lib/auth";
 import {
@@ -386,6 +387,8 @@ export default function CompetitorPage() {
   const [triLoading,setTL]        = useState(false);
   const [activeTab, setActiveTab] = useState<"tri" | "rank" | "upload">("tri");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [insight, setInsight] = useState<{ status: string; narasi: string | null; generated_at?: string; cached?: boolean } | null>(null);
+  const [insightLoading, setInsightLoading] = useState(true);
 
   const fetchOverview = useCallback(() => {
     setLoading(true);
@@ -405,10 +408,20 @@ export default function CompetitorPage() {
       .finally(() => setTL(false));
   }, []);
 
+  const fetchInsight = useCallback(() => {
+    setInsightLoading(true);
+    fetch(`${API}/api/competitor/insight`)
+      .then((r) => r.json())
+      .then((r) => setInsight(r.data ?? null))
+      .catch(() => {})
+      .finally(() => setInsightLoading(false));
+  }, []);
+
   useEffect(() => {
     fetchOverview();
     fetchTriangulation();
-  }, [fetchOverview, fetchTriangulation]);
+    fetchInsight();
+  }, [fetchOverview, fetchTriangulation, fetchInsight]);
 
   const summary = overview?.triangulation_summary;
   const cov     = overview?.coverage;
@@ -468,6 +481,58 @@ export default function CompetitorPage() {
             )}
           </div>
         </div>
+
+        {/* AI Insight */}
+        {insightLoading ? (
+          <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Skeleton className="h-4 w-4 rounded" />
+                <Skeleton className="h-4 w-56 rounded" />
+              </div>
+              <Skeleton className="h-4 w-full rounded mb-2" />
+              <Skeleton className="h-4 w-4/5 rounded mb-2" />
+              <Skeleton className="h-4 w-3/4 rounded" />
+            </CardContent>
+          </Card>
+        ) : insight && insight.status !== "disabled" ? (
+          <Card className="border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400">
+                  <Sparkles className="h-4 w-4 shrink-0" />
+                  <span className="text-xs font-semibold uppercase tracking-wider">
+                    AI Insight — Competitor Intelligence
+                  </span>
+                  {insight.cached && (
+                    <span className="text-[10px] text-blue-500 dark:text-blue-500 font-normal">(cached)</span>
+                  )}
+                </div>
+                <button
+                  onClick={fetchInsight}
+                  className="shrink-0 p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                  title="Refresh insight"
+                >
+                  <RefreshCw className="h-3.5 w-3.5 text-blue-500" />
+                </button>
+              </div>
+              {insight.status === "ok" ? (
+                <p className="text-sm text-blue-900 dark:text-blue-200 leading-relaxed mt-3">
+                  {insight.narasi}
+                </p>
+              ) : (
+                <p className="text-sm text-blue-700 dark:text-blue-400 mt-3 italic">
+                  Gagal menghasilkan insight. Coba refresh kembali.
+                </p>
+              )}
+              {insight.generated_at && (
+                <p className="text-[10px] text-blue-500 dark:text-blue-500 mt-2">
+                  Dibuat: {new Date(insight.generated_at).toLocaleString("id-ID")}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
 
         {/* KPI cards */}
         {loading ? (

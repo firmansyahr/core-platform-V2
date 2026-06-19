@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 
 from api.core import competitor_engine as ce
 from api.core import cad_storage
+from api.core import insight_engine as ie
 from api.core.aegis_engine import compute_store_crs
 from api.core.auth import get_current_admin_user
 from api.core.data_loader import get_data
@@ -37,6 +38,23 @@ def _get_crs_by_provinsi() -> pd.DataFrame:
         return compute_store_crs(df)
     except Exception:
         return pd.DataFrame()
+
+
+# ── AI Insight ────────────────────────────────────────────────────────────────
+
+@router.get("/insight")
+def competitor_insight() -> dict:
+    store_crs = _get_crs_by_provinsi()
+    sp        = ce.load_share_provinsi()
+    ms        = ce.load_marketshare_brand()
+
+    tri: list[dict] = []
+    if not store_crs.empty:
+        tri = ce.triangulate_aegis_with_asperssi(store_crs, sp, ms)
+
+    ranking = ce.get_competitor_ranking(ms)
+    result  = ie.generate_competitor_insight(tri, ranking)
+    return _ok(result)
 
 
 # ── Coverage ──────────────────────────────────────────────────────────────────

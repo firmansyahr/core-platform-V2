@@ -258,6 +258,76 @@ alasan singkat + target yang bertanggung jawab (TSO/ASM/Manajemen).""",
         return {"status": "error", "sections": None, "error": str(e)}
 
 
+def generate_competitor_insight(triangulation_data: list, ranking_data: list) -> dict:
+    cache_key = "competitor_insight"
+    now = time.time()
+
+    if cache_key in _insight_cache:
+        if now - _insight_cache_time.get(cache_key, 0) < CACHE_TTL:
+            return {**_insight_cache[cache_key], "cached": True}
+
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        return {"status": "disabled", "narasi": None, "cached": False}
+
+    try:
+        konfirmasi  = [t for t in triangulation_data if t.get("verdict") == "KONFIRMASI_KOMPETITOR"]
+        waspada     = [t for t in triangulation_data if t.get("verdict") == "WASPADA_AWAL"]
+        top_threats = (konfirmasi + waspada)[:3]
+
+        threats_text = ""
+        for t in top_threats:
+            threats_text += f"\n- {t.get('provinsi', '-')}: {t.get('verdict', '-')} — {t.get('insight', '-')[:80]}"
+
+        ranking_text = ""
+        for i, r in enumerate(ranking_data[:5]):
+            ranking_text += (
+                f"\n{i+1}. {r.get('brand', '-')}: avg MS {r.get('avg_ms_pct', 0):.1f}%, "
+                f"tren {r.get('avg_trend_pp', 0):+.2f}pp ({r.get('trend_label', '-')})"
+            )
+
+        context = f"""
+Data Competitor Intelligence:
+- Provinsi konfirmasi tekanan kompetitor: {len(konfirmasi)}
+- Provinsi waspada awal: {len(waspada)}
+- Total provinsi dianalisis: {len(triangulation_data)}
+
+Ancaman utama:{threats_text if threats_text else " tidak ada"}
+
+Ranking kompetitor berdasarkan market share:{ranking_text if ranking_text else " data tidak tersedia"}
+"""
+
+        message = _get_client().messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=350,
+            system="""Kamu adalah analis intelijen kompetitor senior untuk
+perusahaan distributor semen. Tulis insight ringkas 3-4 kalimat dalam bahasa
+Indonesia formal yang mudah dipahami manajemen. Fokus pada:
+1. Gambaran umum situasi kompetitif saat ini
+2. Wilayah atau kompetitor yang paling mengancam
+3. Satu rekomendasi strategis konkret untuk tim lapangan
+Jangan gunakan bullet points. Tulis dalam 1 paragraf yang mengalir natural.""",
+            messages=[
+                {"role": "user", "content": f"Berikan insight berdasarkan data kompetitor berikut:\n{context}"}
+            ],
+        )
+
+        narasi = message.content[0].text
+        result = {
+            "status": "ok",
+            "narasi": narasi,
+            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "tokens_used": message.usage.input_tokens + message.usage.output_tokens,
+            "cached": False,
+        }
+
+        _insight_cache[cache_key] = result
+        _insight_cache_time[cache_key] = now
+        return result
+
+    except Exception as e:
+        return {"status": "error", "narasi": None, "error": str(e), "cached": False}
+
+
 def generate_cad_talking_points(wilayah: str, stores_data: list) -> dict:
     cache_key = f"cad_tp_{wilayah}"
     now = time.time()
