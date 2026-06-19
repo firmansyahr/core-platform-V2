@@ -13,7 +13,6 @@ import {
   BarChartIcon,
   AwardIcon,
   ChartUpIcon,
-  Globe02Icon,
 } from "@hugeicons/core-free-icons";
 import { getUser, logout } from "@/lib/auth";
 import type { AuthUser } from "@/lib/auth";
@@ -37,9 +36,10 @@ const ROLE_LABEL: Record<string, string> = {
 // ─── AEGIS dropdown items ─────────────────────────────────────────────────────
 
 const AEGIS_ITEMS = [
-  { label: "⚠️ AEGIS Monitor",    href: "/aegis" },
-  { label: "🗺️ Peta Wilayah",     href: "/aegis/map" },
-  { label: "📋 CAD Alert History", href: "/aegis/cad-history" },
+  { label: "⚠️ AEGIS Monitor",            href: "/aegis" },
+  { label: "🗺️ Peta Wilayah",             href: "/aegis/map" },
+  { label: "📋 CAD Alert History",         href: "/aegis/cad-history" },
+  { label: "⚔️ Competitor Intelligence",   href: "/competitor" },
 ];
 
 // ─── Loyalty dropdown items ───────────────────────────────────────────────────
@@ -114,7 +114,7 @@ export default function Navbar() {
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
 
-  const isAegisActive   = pathname === "/aegis" || pathname.startsWith("/aegis/");
+  const isAegisActive   = pathname === "/aegis" || pathname.startsWith("/aegis/") || pathname === "/competitor";
   const isLoyaltyActive = pathname === "/loyalty" || pathname.startsWith("/loyalty/");
 
   const linkCls = (href: string) =>
@@ -253,12 +253,6 @@ export default function Navbar() {
             <a href="/performance" className={linkCls("/performance")}>
               <HugeiconsIcon icon={toIcon(ChartUpIcon)} size={15} />
               Tracker
-            </a>
-
-            {/* Intelligence */}
-            <a href="/competitor" className={linkCls("/competitor")}>
-              <HugeiconsIcon icon={toIcon(Globe02Icon)} size={15} />
-              Intelligence
             </a>
 
             {/* Report */}
@@ -433,12 +427,6 @@ export default function Navbar() {
             <a href="/performance" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/performance")}>
               <HugeiconsIcon icon={toIcon(ChartUpIcon)} size={16} />
               Tracker
-            </a>
-
-            {/* Intelligence */}
-            <a href="/competitor" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/competitor")}>
-              <HugeiconsIcon icon={toIcon(Globe02Icon)} size={16} />
-              Intelligence
             </a>
 
             {/* Report */}
