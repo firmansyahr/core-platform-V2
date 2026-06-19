@@ -34,6 +34,8 @@ interface TriRow {
     trend:          string;
   } | null;
   brand_changes: { brand: string; ms_current_pct: number; ms_change_pp: number; trend: string }[];
+  aggregate_others_pct:   number | null;
+  aggregate_others_trend: string | null;
   ms_brand_periode: string | null;
   verdict:          string;
   insight:          string;
@@ -50,6 +52,15 @@ interface RankRow {
   provinsi_count: number;
   data_points:    number;
   catatan:        string;
+}
+
+interface AggregateOthers {
+  label:          string;
+  avg_ms_pct:     number;
+  avg_trend_pp:   number;
+  trend_label:    string;
+  provinsi_count: number;
+  is_aggregate:   boolean;
 }
 
 interface CADRow {
@@ -73,12 +84,13 @@ interface Overview {
 }
 
 interface MsRow {
-  row_id:           string;
-  provinsi:         string;
-  periode:          string;
-  nama_brand:       string;
-  market_share_pct: number;
-  is_own_brand:     boolean;
+  row_id:               string;
+  provinsi:             string;
+  periode:              string;
+  nama_brand:           string;
+  market_share_pct:     number;
+  is_own_brand:         boolean;
+  is_aggregate_others:  boolean;
 }
 
 interface SpRow {
@@ -227,6 +239,16 @@ function ExpandedRow({ row }: { row: TriRow }) {
           <div className="rounded-lg bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200/70 dark:border-yellow-800/40 p-2.5">
             <p className="text-[10px] text-yellow-700 dark:text-yellow-400 leading-snug">
               ⚠ {row.catatan_data}
+            </p>
+          </div>
+        )}
+        {(row.aggregate_others_pct ?? 0) > 5 && (
+          <div className="rounded-lg bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-700/40 p-2.5">
+            <p className="text-[10px] text-gray-600 dark:text-gray-400 leading-snug">
+              ℹ Selain kompetitor teridentifikasi, terdapat{" "}
+              <strong>{row.aggregate_others_pct?.toFixed(1)}%</strong> market share dari brand
+              kecil/lokal yang tidak teridentifikasi secara individual
+              {row.aggregate_others_trend ? ` (${row.aggregate_others_trend})` : ""}.
             </p>
           </div>
         )}
@@ -398,9 +420,10 @@ function MsDataTable({ onDataChanged }: { onDataChanged: () => void }) {
   const [editId,       setEditId]       = useState<string | null>(null);
   const [editVals,     setEditVals]     = useState({ market_share_pct: 0, is_own_brand: false });
   const [saving,       setSaving]       = useState(false);
+  const [togglingId,   setTogglingId]   = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MsRow | null>(null);
   const [showAdd,      setShowAdd]      = useState(false);
-  const [addForm,      setAddForm]      = useState({ provinsi: "", periode: "", nama_brand: "", market_share_pct: 0, is_own_brand: false });
+  const [addForm,      setAddForm]      = useState({ provinsi: "", periode: "", nama_brand: "", market_share_pct: 0, is_own_brand: false, is_aggregate_others: false as boolean | null });
   const [addError,     setAddError]     = useState("");
 
   const fetchRows = useCallback(() => {
@@ -454,6 +477,17 @@ function MsDataTable({ onDataChanged }: { onDataChanged: () => void }) {
     } finally { setSaving(false); }
   };
 
+  const toggleAggregate = async (rowId: string, val: boolean) => {
+    setTogglingId(rowId);
+    try {
+      const res = await fetch(`${API}/api/competitor/asperssi/marketshare/${rowId}/toggle-aggregate`, {
+        method: "PUT", headers: hdrs(getToken()),
+        body: JSON.stringify({ is_aggregate_others: val }),
+      });
+      if (res.ok) { fetchRows(); onDataChanged(); }
+    } finally { setTogglingId(null); }
+  };
+
   const doAdd = async () => {
     setAddError("");
     const prov = addForm.provinsi.trim().toUpperCase();
@@ -469,7 +503,7 @@ function MsDataTable({ onDataChanged }: { onDataChanged: () => void }) {
       const data = await res.json();
       if (res.ok) {
         setShowAdd(false);
-        setAddForm({ provinsi: "", periode: "", nama_brand: "", market_share_pct: 0, is_own_brand: false });
+        setAddForm({ provinsi: "", periode: "", nama_brand: "", market_share_pct: 0, is_own_brand: false, is_aggregate_others: null });
         fetchRows(); onDataChanged();
       } else { setAddError(data.detail ?? "Gagal menyimpan"); }
     } finally { setSaving(false); }
@@ -510,6 +544,7 @@ function MsDataTable({ onDataChanged }: { onDataChanged: () => void }) {
                 <th className="px-3 py-2.5 text-left font-semibold">Provinsi</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Periode</th>
                 <th className="px-3 py-2.5 text-left font-semibold">Brand</th>
+                <th className="px-3 py-2.5 text-left font-semibold">Tipe</th>
                 <th className="px-3 py-2.5 text-right font-semibold">Market Share %</th>
                 <th className="px-3 py-2.5 text-center font-semibold">Sendiri</th>
                 <th className="px-3 py-2.5 text-right font-semibold pr-3">Aksi</th>
@@ -519,13 +554,13 @@ function MsDataTable({ onDataChanged }: { onDataChanged: () => void }) {
               {loadingTable ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-b border-muted/50">
-                    {Array.from({ length: 6 }).map((_, j) => (
+                    {Array.from({ length: 7 }).map((_, j) => (
                       <td key={j} className="px-3 py-2.5"><Skeleton className="h-3.5 w-full rounded" /></td>
                     ))}
                   </tr>
                 ))
               ) : paged.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-muted-foreground">
                   Tidak ada data{search || filterPeriode ? " sesuai filter" : ""}
                 </td></tr>
               ) : paged.map(row => (
@@ -539,6 +574,42 @@ function MsDataTable({ onDataChanged }: { onDataChanged: () => void }) {
                     {row.nama_brand}
                     {row.is_own_brand && editId !== row.row_id && (
                       <span className="ml-1.5 text-[9px] bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded">Sendiri</span>
+                    )}
+                  </td>
+                  {/* Tipe badge + toggle */}
+                  <td className="px-3 py-2.5">
+                    {row.is_own_brand ? (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded border border-blue-300/60 dark:border-blue-700/40 text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/20">
+                        Brand Sendiri
+                      </span>
+                    ) : row.is_aggregate_others ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/30">
+                          Agregat/Lainnya
+                        </span>
+                        <button
+                          onClick={() => toggleAggregate(row.row_id, false)}
+                          disabled={togglingId === row.row_id}
+                          title="Ubah ke Brand Spesifik"
+                          className="text-[9px] text-muted-foreground hover:text-foreground disabled:opacity-40"
+                        >
+                          ↺
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] px-1.5 py-0.5 rounded border border-border text-muted-foreground bg-background">
+                          Brand Spesifik
+                        </span>
+                        <button
+                          onClick={() => toggleAggregate(row.row_id, true)}
+                          disabled={togglingId === row.row_id}
+                          title="Tandai sebagai Agregat"
+                          className="text-[9px] text-muted-foreground hover:text-foreground disabled:opacity-40"
+                        >
+                          ↺
+                        </button>
+                      </div>
                     )}
                   </td>
                   {editId === row.row_id ? (
@@ -695,6 +766,22 @@ function MsDataTable({ onDataChanged }: { onDataChanged: () => void }) {
                 />
                 <span className="text-sm">Brand Sendiri (Semen Elang / Badak)</span>
               </label>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={
+                    addForm.is_aggregate_others !== null
+                      ? addForm.is_aggregate_others
+                      : false
+                  }
+                  onChange={e => setAddForm(f => ({ ...f, is_aggregate_others: e.target.checked }))}
+                  className="h-4 w-4 accent-gray-600"
+                />
+                <span className="text-sm">Tandai sebagai Agregat/Lainnya</span>
+              </label>
+              <p className="text-[10px] text-muted-foreground -mt-1">
+                Dideteksi otomatis dari nama brand jika tidak dicentang secara manual
+              </p>
               {addError && <p className="text-xs text-red-600 dark:text-red-400">{addError}</p>}
             </div>
             <div className="flex gap-2">
@@ -995,15 +1082,16 @@ function SpDataTable({ onDataChanged }: { onDataChanged: () => void }) {
 export default function CompetitorPage() {
   const { isAdmin } = useAuth();
 
-  const [overview,  setOverview]  = useState<Overview | null>(null);
-  const [triList,   setTriList]   = useState<TriRow[]>([]);
-  const [loading,   setLoading]   = useState(true);
-  const [triLoading,setTL]        = useState(true);
-  const [activeTab, setActiveTab] = useState<"tri" | "rank" | "upload">("tri");
-  const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const [insight, setInsight] = useState<{ status: string; narasi: string | null; generated_at?: string; cached?: boolean } | null>(null);
-  const [insightLoading, setInsightLoading] = useState(true);
-  const [rankingData, setRankingData] = useState<RankRow[]>([]);
+  const [overview,        setOverview]        = useState<Overview | null>(null);
+  const [triList,         setTriList]         = useState<TriRow[]>([]);
+  const [loading,         setLoading]         = useState(true);
+  const [triLoading,      setTL]              = useState(true);
+  const [activeTab,       setActiveTab]       = useState<"tri" | "rank" | "upload">("tri");
+  const [expandedRow,     setExpandedRow]     = useState<string | null>(null);
+  const [insight,         setInsight]         = useState<{ status: string; narasi: string | null; generated_at?: string; cached?: boolean } | null>(null);
+  const [insightLoading,  setInsightLoading]  = useState(true);
+  const [rankingData,     setRankingData]     = useState<RankRow[]>([]);
+  const [aggregateOthers, setAggregateOthers] = useState<AggregateOthers | null>(null);
 
   const fetchOverview = useCallback(() => {
     setLoading(true);
@@ -1035,7 +1123,10 @@ export default function CompetitorPage() {
   const fetchRanking = useCallback(() => {
     fetch(`${API}/api/competitor/ranking`)
       .then((r) => r.json())
-      .then((r) => setRankingData(r.data ?? []))
+      .then((r) => {
+        setRankingData(r.data?.rankings ?? []);
+        setAggregateOthers(r.data?.aggregate_others ?? null);
+      })
       .catch(() => {});
   }, []);
 
@@ -1360,6 +1451,33 @@ export default function CompetitorPage() {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Aggregate others card */}
+                {aggregateOthers && (
+                  <div className="mt-3 border border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                          <span className="text-base leading-none">?</span>
+                          <span>{aggregateOthers.label}</span>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground/70 mt-1 leading-relaxed">
+                          Tidak dihitung dalam ranking individual karena merupakan gabungan banyak
+                          brand lokal/kecil yang tidak teridentifikasi secara spesifik di data ASPERSSI
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-xl font-bold tabular-nums">{aggregateOthers.avg_ms_pct.toFixed(1)}%</div>
+                        <div className={`text-xs font-semibold tabular-nums mt-0.5 ${TREND_CLS[aggregateOthers.trend_label]}`}>
+                          {aggregateOthers.avg_trend_pp > 0 ? "+" : ""}{aggregateOthers.avg_trend_pp.toFixed(2)}pp
+                        </div>
+                        <span className="text-[10px] text-muted-foreground px-1.5 py-0.5 border border-border rounded mt-1 inline-block">
+                          {aggregateOthers.trend_label}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

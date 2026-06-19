@@ -89,16 +89,22 @@ def _today() -> str:
 
 
 class AddMsRowBody(BaseModel):
-    provinsi:         str
-    periode:          str
-    nama_brand:       str
-    market_share_pct: float
-    is_own_brand:     bool = False
+    provinsi:             str
+    periode:              str
+    nama_brand:           str
+    market_share_pct:     float
+    is_own_brand:         bool = False
+    is_aggregate_others:  bool | None = None  # None = auto-detect from name
 
 
 class UpdateMsRowBody(BaseModel):
-    market_share_pct: float
-    is_own_brand:     bool
+    market_share_pct:    float
+    is_own_brand:        bool
+    is_aggregate_others: bool | None = None  # None = keep existing value
+
+
+class ToggleAggregateBody(BaseModel):
+    is_aggregate_others: bool
 
 
 class AddSpRowBody(BaseModel):
@@ -124,7 +130,7 @@ def competitor_insight() -> dict:
         tri = ce.triangulate_aegis_with_asperssi(store_crs, sp, ms)
 
     ranking = ce.get_competitor_ranking(ms)
-    result  = ie.generate_competitor_insight(tri, ranking)
+    result  = ie.generate_competitor_insight(tri, ranking["rankings"])
     return _ok(result)
 
 
@@ -362,11 +368,15 @@ async def upload_marketshare(
         if existing_brand:
             existing_brand["market_share_pct"] = ms
             existing_brand["is_own_brand"]      = is_own
+            # preserve existing is_aggregate_others; auto-detect only if missing
+            if "is_aggregate_others" not in existing_brand:
+                existing_brand["is_aggregate_others"] = ce.detect_is_aggregate(brand)
         else:
             entry["brands"].append({
-                "nama":             brand,
-                "market_share_pct": ms,
-                "is_own_brand":     is_own,
+                "nama":               brand,
+                "market_share_pct":   ms,
+                "is_own_brand":       is_own,
+                "is_aggregate_others": ce.detect_is_aggregate(brand),
             })
         processed += 1
 
@@ -413,12 +423,13 @@ def ms_list(provinsi: str = "", periode: str = "") -> dict:
             continue
         for brand in entry.get("brands", []):
             rows.append({
-                "row_id":           brand["row_id"],
-                "provinsi":         entry["provinsi"],
-                "periode":          entry["periode"],
-                "nama_brand":       brand["nama"],
-                "market_share_pct": brand["market_share_pct"],
-                "is_own_brand":     brand.get("is_own_brand", False),
+                "row_id":               brand["row_id"],
+                "provinsi":             entry["provinsi"],
+                "periode":              entry["periode"],
+                "nama_brand":           brand["nama"],
+                "market_share_pct":     brand["market_share_pct"],
+                "is_own_brand":         brand.get("is_own_brand", False),
+                "is_aggregate_others":  brand.get("is_aggregate_others", False),
             })
     return _ok(rows)
 
@@ -438,8 +449,17 @@ def ms_add_row(
         if entry["provinsi"] == prov and entry["periode"] == per:
             if any(b["nama"] == brand for b in entry.get("brands", [])):
                 raise HTTPException(400, f"Data {brand} – {prov} – {per} sudah ada")
+    is_aggregate = (
+        body.is_aggregate_others if body.is_aggregate_others is not None
+        else ce.detect_is_aggregate(brand)
+    )
     row_id    = f"MS-{int(time.time() * 1000)}-0"
-    new_brand = {"row_id": row_id, "nama": brand, "market_share_pct": body.market_share_pct, "is_own_brand": body.is_own_brand}
+    new_brand = {
+        "row_id": row_id, "nama": brand,
+        "market_share_pct": body.market_share_pct,
+        "is_own_brand": body.is_own_brand,
+        "is_aggregate_others": is_aggregate,
+    }
     existing_entry = next((e for e in payload.get("data", []) if e["provinsi"] == prov and e["periode"] == per), None)
     if existing_entry:
         existing_entry["brands"].append(new_brand)
@@ -447,7 +467,11 @@ def ms_add_row(
         payload.setdefault("data", []).append({"provinsi": prov, "periode": per, "brands": [new_brand], "tersedia": True})
     payload.setdefault("metadata", {}).update({"periode_tersedia": sorted({e["periode"] for e in payload["data"]}), "last_updated": _today()})
     ce.save_marketshare_brand(payload)
-    return _ok({"row_id": row_id, "provinsi": prov, "periode": per, "nama_brand": brand, "market_share_pct": body.market_share_pct, "is_own_brand": body.is_own_brand})
+    return _ok({
+        "row_id": row_id, "provinsi": prov, "periode": per, "nama_brand": brand,
+        "market_share_pct": body.market_share_pct, "is_own_brand": body.is_own_brand,
+        "is_aggregate_others": is_aggregate,
+    })
 
 
 @router.put("/asperssi/marketshare/{row_id}")
@@ -464,9 +488,19 @@ def ms_update_row(
             if brand.get("row_id") == row_id:
                 brand["market_share_pct"] = body.market_share_pct
                 brand["is_own_brand"]     = body.is_own_brand
+                if body.is_aggregate_others is not None:
+                    brand["is_aggregate_others"] = body.is_aggregate_others
+                elif "is_aggregate_others" not in brand:
+                    brand["is_aggregate_others"] = ce.detect_is_aggregate(brand["nama"])
                 payload.setdefault("metadata", {})["last_updated"] = _today()
                 ce.save_marketshare_brand(payload)
-                return _ok({"row_id": row_id, "provinsi": entry["provinsi"], "periode": entry["periode"], "nama_brand": brand["nama"], "market_share_pct": body.market_share_pct, "is_own_brand": body.is_own_brand})
+                return _ok({
+                    "row_id": row_id, "provinsi": entry["provinsi"],
+                    "periode": entry["periode"], "nama_brand": brand["nama"],
+                    "market_share_pct": body.market_share_pct,
+                    "is_own_brand": body.is_own_brand,
+                    "is_aggregate_others": brand["is_aggregate_others"],
+                })
     raise HTTPException(404, f"Row {row_id} tidak ditemukan")
 
 
@@ -486,6 +520,27 @@ def ms_delete_row(
                 payload.setdefault("metadata", {})["last_updated"] = _today()
                 ce.save_marketshare_brand(payload)
                 return _ok({"deleted_row_id": row_id})
+    raise HTTPException(404, f"Row {row_id} tidak ditemukan")
+
+
+@router.put("/asperssi/marketshare/{row_id}/toggle-aggregate")
+def ms_toggle_aggregate(
+    row_id: str,
+    body: ToggleAggregateBody,
+    _user: dict = Depends(get_current_admin_user),
+) -> dict:
+    payload = _load_ms_with_ids()
+    for entry in payload.get("data", []):
+        for brand in entry.get("brands", []):
+            if brand.get("row_id") == row_id:
+                brand["is_aggregate_others"] = body.is_aggregate_others
+                payload.setdefault("metadata", {})["last_updated"] = _today()
+                ce.save_marketshare_brand(payload)
+                return _ok({
+                    "row_id":              row_id,
+                    "nama_brand":          brand["nama"],
+                    "is_aggregate_others": brand["is_aggregate_others"],
+                })
     raise HTTPException(404, f"Row {row_id} tidak ditemukan")
 
 

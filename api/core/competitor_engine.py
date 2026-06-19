@@ -7,6 +7,13 @@ from typing import Any
 
 import pandas as pd
 
+AGGREGATE_KEYWORDS = ["other", "lainnya", "others", "lain-lain", "misc"]
+
+
+def detect_is_aggregate(nama_brand: str) -> bool:
+    n = nama_brand.lower().strip()
+    return any(k in n for k in AGGREGATE_KEYWORDS)
+
 # ── Data paths ────────────────────────────────────────────────────────────────
 
 _ASPERSSI_DIR  = Path("api/data/asperssi")
@@ -135,34 +142,60 @@ def triangulate_aegis_with_asperssi(
 
         # Market share trend per competitor brand
         top_competitor: dict | None = None
-        competitor_rising           = False
+        competitor_rising            = False
         ms_periode_label: str | None = None
-        brand_changes: list[dict]   = []
+        brand_changes: list[dict]    = []
+        aggregate_others_pct: float | None  = None
+        aggregate_others_trend: str | None  = None
+
         if ms_entries:
             ms_periode_label = (
                 f"{ms_entries[0]['periode']} - {ms_entries[-1]['periode']}"
                 if len(ms_entries) >= 2 else ms_entries[0]["periode"]
             )
+            # Capture aggregate_others_pct from latest period even with one entry
+            for b in ms_entries[-1].get("brands", []):
+                if not b.get("is_own_brand") and b.get("is_aggregate_others"):
+                    aggregate_others_pct = b["market_share_pct"]
+                    break
+
         if len(ms_entries) >= 2:
             first_brands = ms_entries[0].get("brands", [])
             last_brands  = ms_entries[-1].get("brands", [])
             for b_last in last_brands:
                 if b_last.get("is_own_brand"):
                     continue
+                is_aggregate = b_last.get("is_aggregate_others", False)
                 b_first = next(
                     (b for b in first_brands if b["nama"] == b_last["nama"]), None
                 )
-                if b_first:
-                    delta_ms = b_last["market_share_pct"] - b_first["market_share_pct"]
-                    brand_changes.append({
-                        "brand":         b_last["nama"],
-                        "ms_current_pct": b_last["market_share_pct"],
-                        "ms_change_pp":   round(delta_ms, 2),
-                        "trend": "Naik" if delta_ms > 0.5 else "Turun" if delta_ms < -0.5 else "Stabil",
-                    })
+                delta_ms = (
+                    b_last["market_share_pct"] - b_first["market_share_pct"]
+                ) if b_first else 0.0
+
+                if is_aggregate:
+                    aggregate_others_pct  = b_last["market_share_pct"]
+                    aggregate_others_trend = (
+                        "Naik" if delta_ms > 0.5 else "Turun" if delta_ms < -0.5 else "Stabil"
+                    )
+                else:
+                    if b_first:
+                        brand_changes.append({
+                            "brand":          b_last["nama"],
+                            "ms_current_pct": b_last["market_share_pct"],
+                            "ms_change_pp":   round(delta_ms, 2),
+                            "trend": "Naik" if delta_ms > 0.5 else "Turun" if delta_ms < -0.5 else "Stabil",
+                        })
+
             if brand_changes:
                 top_competitor    = max(brand_changes, key=lambda x: x["ms_change_pp"])
                 competitor_rising = top_competitor["ms_change_pp"] > 0.5
+
+        aggregate_pressure = (
+            aggregate_others_pct is not None
+            and aggregate_others_pct > 10.0
+            and aggregate_others_trend == "Naik"
+        )
 
         # Own brand MS for latest period
         own_brand_ms: float | None = None
@@ -185,6 +218,16 @@ def triangulate_aegis_with_asperssi(
                 f"+{top_competitor['ms_change_pp']}pp "
                 f"(ASPERSSI {ms_entries[0]['periode']} vs {ms_entries[-1]['periode']}). "
                 f"Tekanan kompetitor eksternal terbukti dari dua sumber berbeda."
+            )
+        elif has_aegis and has_ms_data and aggregate_pressure and not competitor_rising:
+            verdict = "WASPADA_AWAL"
+            insight = (
+                f"AEGIS mendeteksi {warning_pct:.1f}% toko warning. "
+                f"Market share gabungan brand kecil tidak teridentifikasi ('Lainnya') "
+                f"naik dan mencapai {aggregate_others_pct:.1f}% di provinsi ini. "
+                f"Tidak ada satu kompetitor dominan yang teridentifikasi — "
+                f"kemungkinan tekanan dari banyak pemain lokal kecil. "
+                f"Rekomendasikan validasi lapangan TSO untuk identifikasi spesifik."
             )
         elif has_aegis and has_ms_data and not competitor_rising:
             verdict = "INTERNAL_ATAU_SEASONAL"
@@ -209,6 +252,16 @@ def triangulate_aegis_with_asperssi(
                 f"meski AEGIS warning masih rendah ({warning_pct:.1f}%). "
                 f"Kompetitor mulai masuk tapi belum terasa di transaksi. "
                 f"Pantau ketat 1–2 bulan ke depan."
+            )
+        elif not has_aegis and has_ms_data and aggregate_pressure:
+            verdict = "WASPADA_AWAL"
+            insight = (
+                f"Market share gabungan brand kecil tidak teridentifikasi ('Lainnya') "
+                f"naik ke {aggregate_others_pct:.1f}% di data ASPERSSI, "
+                f"meski AEGIS warning masih rendah ({warning_pct:.1f}%). "
+                f"Tidak ada satu kompetitor dominan yang teridentifikasi — "
+                f"kemungkinan tekanan dari banyak pemain lokal kecil. "
+                f"Rekomendasikan validasi lapangan TSO untuk identifikasi spesifik."
             )
         else:
             verdict = "NORMAL"
@@ -242,6 +295,8 @@ def triangulate_aegis_with_asperssi(
             "own_brand_ms_pct":          own_brand_ms,
             "top_competitor":            top_competitor,
             "brand_changes":             brand_changes,
+            "aggregate_others_pct":      aggregate_others_pct,
+            "aggregate_others_trend":    aggregate_others_trend,
             "ms_brand_periode":          ms_periode_label,
             "verdict":                   verdict,
             "insight":                   insight,
@@ -254,28 +309,32 @@ def triangulate_aegis_with_asperssi(
 
 # ── Competitor ranking ────────────────────────────────────────────────────────
 
-def get_competitor_ranking(ms_brand_data: dict) -> list[dict]:
-    """Ranking kompetitor dari data ASPERSSI % saja."""
-    brand_summary: dict[str, Any] = {}
+def get_competitor_ranking(ms_brand_data: dict) -> dict[str, Any]:
+    """
+    Ranking kompetitor dari data ASPERSSI % saja.
+    Returns { "rankings": [...], "aggregate_others": {...} | None }
+    Brand dengan is_aggregate_others=True dipisah dari ranking utama.
+    """
+    brand_summary: dict[str, Any]     = {}
+    aggregate_summary: dict[str, Any] = {}
 
     for entry in ms_brand_data.get("data", []):
         for brand in entry.get("brands", []):
             if brand.get("is_own_brand"):
                 continue
-            nama = brand["nama"]
-            if nama not in brand_summary:
-                brand_summary[nama] = {"points": []}
-            brand_summary[nama]["points"].append({
+            nama        = brand["nama"]
+            is_agg      = brand.get("is_aggregate_others", False)
+            target_dict = aggregate_summary if is_agg else brand_summary
+            if nama not in target_dict:
+                target_dict[nama] = {"points": []}
+            target_dict[nama]["points"].append({
                 "provinsi": entry["provinsi"],
                 "periode":  entry["periode"],
                 "ms_pct":   brand["market_share_pct"],
             })
 
-    rankings: list[dict] = []
-    for brand, data in brand_summary.items():
-        points  = data["points"]
-        avg_ms  = sum(p["ms_pct"] for p in points) / len(points)
-
+    def _build_entry(brand: str, points: list[dict]) -> dict:
+        avg_ms       = sum(p["ms_pct"] for p in points) / len(points)
         provinsi_set = {p["provinsi"] for p in points}
         trends: list[float] = []
         for prov in provinsi_set:
@@ -285,25 +344,54 @@ def get_competitor_ranking(ms_brand_data: dict) -> list[dict]:
             )
             if len(prov_pts) >= 2:
                 trends.append(prov_pts[-1]["ms_pct"] - prov_pts[0]["ms_pct"])
-
         avg_trend = sum(trends) / len(trends) if trends else 0.0
-
-        rankings.append({
-            "brand":           brand,
-            "avg_ms_pct":      round(avg_ms, 2),
-            "avg_trend_pp":    round(avg_trend, 2),
-            "trend_label":     "Naik" if avg_trend > 0.5 else "Turun" if avg_trend < -0.5 else "Stabil",
-            "provinsi_hadir":  sorted(provinsi_set),
-            "provinsi_count":  len(provinsi_set),
-            "data_points":     len(points),
+        return {
+            "brand":          brand,
+            "avg_ms_pct":     round(avg_ms, 2),
+            "avg_trend_pp":   round(avg_trend, 2),
+            "trend_label":    "Naik" if avg_trend > 0.5 else "Turun" if avg_trend < -0.5 else "Stabil",
+            "provinsi_hadir": sorted(provinsi_set),
+            "provinsi_count": len(provinsi_set),
+            "data_points":    len(points),
             "catatan": (
                 "Tren dihitung dari "
-                + (f"{min(p['periode'] for p in points)} ke {max(p['periode'] for p in points)}")
+                + f"{min(p['periode'] for p in points)} ke {max(p['periode'] for p in points)}"
                 if points else "-"
             ),
-        })
+        }
 
-    return sorted(rankings, key=lambda x: x["avg_ms_pct"], reverse=True)
+    rankings = sorted(
+        [_build_entry(b, d["points"]) for b, d in brand_summary.items()],
+        key=lambda x: x["avg_ms_pct"],
+        reverse=True,
+    )
+
+    # Aggregate "Lainnya" — merge all aggregate brands into one summary entry
+    aggregate_others: dict | None = None
+    if aggregate_summary:
+        all_points = [p for d in aggregate_summary.values() for p in d["points"]]
+        avg_ms     = sum(p["ms_pct"] for p in all_points) / len(all_points)
+        provinsi_set = {p["provinsi"] for p in all_points}
+        trends: list[float] = []
+        for brand_name, d in aggregate_summary.items():
+            for prov in provinsi_set:
+                prov_pts = sorted(
+                    [p for p in d["points"] if p["provinsi"] == prov],
+                    key=lambda x: x["periode"],
+                )
+                if len(prov_pts) >= 2:
+                    trends.append(prov_pts[-1]["ms_pct"] - prov_pts[0]["ms_pct"])
+        avg_trend = sum(trends) / len(trends) if trends else 0.0
+        aggregate_others = {
+            "label":          "Lainnya (gabungan brand kecil tidak teridentifikasi)",
+            "avg_ms_pct":     round(avg_ms, 2),
+            "avg_trend_pp":   round(avg_trend, 2),
+            "trend_label":    "Naik" if avg_trend > 0.5 else "Turun" if avg_trend < -0.5 else "Stabil",
+            "provinsi_count": len(provinsi_set),
+            "is_aggregate":   True,
+        }
+
+    return {"rankings": rankings, "aggregate_others": aggregate_others}
 
 
 # ── CAD Intelligence ──────────────────────────────────────────────────────────
