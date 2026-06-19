@@ -26,6 +26,7 @@ from api.core.promo_engine import (
     get_daily_trend,
     get_promo_summary,
 )
+from api.core import promo_calculator as pc
 
 router = APIRouter(prefix="/api/promo", tags=["promo"])
 
@@ -159,8 +160,120 @@ class AddPesertaBody(BaseModel):
     catatan:       str          = ""
 
 
+# ── Multi-tier reward models ──────────────────────────────────────────────────
+
+class TierConfig(BaseModel):
+    tier_id:       int
+    label:         str
+    threshold_pct: float
+    multiplier:    float
+    keterangan:    str = ""
+
+
+class RewardConfigMultiTier(BaseModel):
+    type:                str        = "multi_tier_points"
+    tiers:               list[TierConfig]
+    reguler_multiplier:  float      = 1.0
+    overflow_multiplier: float      = 1.0
+    catatan:             str        = ""
+
+
+class CreatePromoBodyV2(BaseModel):
+    nama_promo:       str
+    deskripsi:        str               = ""
+    periode_mulai:    str
+    periode_selesai:  str
+    reward_config:    RewardConfigMultiTier
+    created_by:       str               = "admin"
+
+
+class UpdatePromoBodyV2(BaseModel):
+    nama_promo:      str | None               = None
+    deskripsi:       str | None               = None
+    periode_mulai:   str | None               = None
+    periode_selesai: str | None               = None
+    reward_config:   RewardConfigMultiTier | None = None
+
+
+class PreviewCalcBody(BaseModel):
+    volume_realisasi: float
+    volume_target:    float
+    brand:            str
+    tiers: list[TierConfig]
+    reguler_multiplier:  float = 1.0
+    overflow_multiplier: float = 1.0
+
+
+# ── POST /api/promo/preview-calc ─────────────────────────────────────────────
+# Static routes — must be registered before /{promo_id}
+
+@router.post("/preview-calc")
+def preview_calc(body: PreviewCalcBody) -> dict:
+    """Kalkulasi reward langsung dari tiers tanpa simpan ke DB (untuk form preview)."""
+    bpv = pc.get_brand_point_values()
+    reward_config = {
+        "tiers": [t.model_dump() for t in body.tiers],
+        "reguler_multiplier":  body.reguler_multiplier,
+        "overflow_multiplier": body.overflow_multiplier,
+    }
+    result = pc.calculate_tier_reward(
+        volume_realisasi   = body.volume_realisasi,
+        volume_target      = body.volume_target,
+        reward_config      = reward_config,
+        brand_name         = body.brand,
+        brand_point_values = bpv,
+    )
+    return {"status": "ok", "data": result, "meta": _meta()}
+
+
+# ── POST /api/promo/create-v2 (multi-tier reward) ─────────────────────────────
+
+@router.post("/create-v2", status_code=201)
+def create_promo_v2(body: CreatePromoBodyV2) -> dict:
+    """Buat program promo dengan reward_config multi-tier."""
+    rc_dict = body.reward_config.model_dump()
+
+    # Validate tiers ordering
+    tiers = sorted(rc_dict["tiers"], key=lambda x: x["threshold_pct"])
+    if not tiers:
+        raise HTTPException(400, "Minimal 1 tier harus didefinisikan")
+
+    thresholds   = [t["threshold_pct"] for t in tiers]
+    multipliers  = [t["multiplier"]    for t in tiers]
+
+    if len(set(thresholds)) != len(thresholds):
+        raise HTTPException(400, "threshold_pct harus unik, tidak boleh duplikat")
+    if any(t <= 0 for t in thresholds):
+        raise HTTPException(400, "threshold_pct harus lebih dari 0")
+    if any(m <= 1 for m in multipliers):
+        raise HTTPException(400, "multiplier setiap tier harus lebih dari 1")
+    if multipliers != sorted(multipliers):
+        raise HTTPException(400, "multiplier harus naik mengikuti urutan threshold tier")
+
+    with _LOCK:
+        promos = _rp(_PROMOS_PATH)
+        new_id = _generate_id(promos)
+        promo: dict = {
+            "id":             new_id,
+            "nama_promo":     body.nama_promo,
+            "deskripsi":      body.deskripsi,
+            "jenis_promo":    "multi_tier_points",
+            "status":         "Draft",
+            "periode_mulai":  body.periode_mulai,
+            "periode_selesai": body.periode_selesai,
+            "created_by":     body.created_by,
+            "created_at":     _now(),
+            "reward_config":  rc_dict,
+            "peserta":        [],
+            "summary_peserta": {"total_toko": 0, "per_cluster": {}, "estimasi_budget_total": 0},
+        }
+        promos.append(promo)
+        _wp(_PROMOS_PATH, promos)
+
+    return {"status": "ok", "data": promo}
+
+
 # ── GET /api/promo/template/peserta ──────────────────────────────────────────
-# Static route — must be registered before /{promo_id}
 
 @router.get("/template/peserta")
 def download_template() -> StreamingResponse:
@@ -538,13 +651,43 @@ def remove_peserta(promo_id: str, id_toko: str) -> dict:
         if len(promos[idx]["peserta"]) == before:
             raise HTTPException(404, detail=f"Toko {id_toko} tidak ditemukan di peserta")
 
-        promos[idx]["summary_peserta"] = _rebuild_summary(
-            promos[idx]["peserta"], promos[idx]["konfigurasi_promo"]
-        )
+        cfg = promos[idx].get("konfigurasi_promo", {})
+        promos[idx]["summary_peserta"] = _rebuild_summary(promos[idx]["peserta"], cfg)
         _wp(_PROMOS_PATH, promos)
         updated = promos[idx]["peserta"]
 
     return {"status": "ok", "data": updated}
+
+
+# ── GET /api/promo/{promo_id}/reward-preview ─────────────────────────────────
+
+@router.get("/{promo_id}/reward-preview")
+def reward_preview(
+    promo_id:         str,
+    volume_realisasi: float = 0.0,
+    volume_target:    float = 100.0,
+    brand:            str   = "Semen Elang",
+) -> dict:
+    """Preview kalkulasi reward menggunakan reward_config program yang tersimpan."""
+    with _LOCK:
+        promos = _rp(_PROMOS_PATH)
+    promo = next((p for p in promos if p["id"] == promo_id), None)
+    if not promo:
+        raise HTTPException(404, "Promo tidak ditemukan")
+
+    reward_config = promo.get("reward_config")
+    if not reward_config:
+        raise HTTPException(400, "Program ini menggunakan konfigurasi lama (non-multi-tier)")
+
+    bpv    = pc.get_brand_point_values()
+    result = pc.calculate_tier_reward(
+        volume_realisasi   = volume_realisasi,
+        volume_target      = volume_target,
+        reward_config      = reward_config,
+        brand_name         = brand,
+        brand_point_values = bpv,
+    )
+    return {"status": "ok", "data": result, "meta": _meta()}
 
 
 # ── GET /api/promo/{promo_id}/monitoring ─────────────────────────────────────
@@ -565,13 +708,39 @@ def get_monitoring(
 
     df_trx = load_data()
 
-    # For completed promos use cached final achievements
-    if promo["status"] == "Selesai" and "final_achievements" in promo:
-        ach_df = pd.DataFrame(promo["final_achievements"])
-    else:
-        ach_df = calculate_promo_achievement(promo, df_trx)
+    # Multi-tier program → use promo_calculator
+    is_multi_tier = bool(promo.get("reward_config"))
 
-    summary     = get_promo_summary(promo, ach_df)
+    if is_multi_tier:
+        loyalty_cfg = pc.load_loyalty_config()
+        mt_result   = pc.calculate_program_reward_summary(
+            promo         = promo,
+            peserta_data  = promo.get("peserta", []),
+            transaksi_df  = df_trx,
+            loyalty_config = loyalty_cfg,
+        )
+        return {
+            "status": "ok",
+            "data": {
+                "is_multi_tier":    True,
+                "program_id":       promo["id"],
+                "program_nama":     promo.get("nama_promo", ""),
+                "total_peserta":    mt_result["total_peserta"],
+                "total_poin":       mt_result["total_poin"],
+                "total_rupiah":     mt_result["total_rupiah"],
+                "tier_distribution": mt_result["tier_distribution"],
+                "peserta_detail":   mt_result["peserta_detail"],
+            },
+            "meta": _meta(),
+        }
+    else:
+        # Legacy konfigurasi_promo flow
+        if promo["status"] == "Selesai" and "final_achievements" in promo:
+            ach_df = pd.DataFrame(promo["final_achievements"])
+        else:
+            ach_df = calculate_promo_achievement(promo, df_trx)
+        summary = get_promo_summary(promo, ach_df)
+
     daily_trend = get_daily_trend(promo, df_trx)
     cluster_cmp = get_cluster_comparison(promo, df_trx) if promo["status"] == "Selesai" else []
 
@@ -616,6 +785,7 @@ def get_monitoring(
     return {
         "status": "ok",
         "data": {
+            "is_multi_tier":      False,
             "achievements":       ach_df.where(pd.notna(ach_df), None).to_dict("records") if not ach_df.empty else [],
             "summary":            summary,
             "daily_trend":        daily_trend,

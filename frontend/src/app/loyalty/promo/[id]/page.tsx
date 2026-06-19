@@ -16,8 +16,8 @@ import {
   Tabs, TabsContent, TabsList, TabsTrigger,
 } from "@/components/ui/tabs";
 import {
-  ComposedChart, BarChart, Bar, Area, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, ReferenceLine, Legend, Cell,
+  ComposedChart, BarChart, PieChart, Pie, Bar, Area, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Legend, Cell,
 } from "recharts";
 import {
   ChevronRight, Plus, Upload, Download, Trash2, Users, Zap, TrendingUp,
@@ -100,7 +100,39 @@ interface MonitoringData {
   distribution:       { label: string; count: number; color: string }[];
   cluster_comparison: { cluster: string; vol_promo: number; vol_before: number; delta: number; delta_pct: number }[];
   recommendations:    string[];
+  is_multi_tier?:     false;
 }
+
+interface MultiTierBreakdown {
+  segmen: string; volume_ton: number; multiplier: number; poin: number; keterangan: string;
+}
+
+interface MultiTierPesertaRow {
+  id_toko:           string;
+  nama_toko:         string;
+  cluster:           string;
+  target_ton:        number;
+  realisasi_ton:     number;
+  achievement_pct:   number;
+  tier_berlaku:      string;
+  multiplier_efektif: number;
+  total_poin:        number;
+  total_rupiah:      number;
+  breakdown:         MultiTierBreakdown[];
+}
+
+interface MultiTierMonData {
+  is_multi_tier:     true;
+  program_id:        string;
+  program_nama:      string;
+  total_peserta:     number;
+  total_poin:        number;
+  total_rupiah:      number;
+  tier_distribution: Record<string, number>;
+  peserta_detail:    MultiTierPesertaRow[];
+}
+
+type AnyMonData = MonitoringData | MultiTierMonData;
 
 // ── Badge components ──────────────────────────────────────────────────────────
 
@@ -131,6 +163,22 @@ const MON_STATUS_COLOR: Record<string, string> = {
 function MonStatusBadge({ status }: { status: string }) {
   const cls = MON_STATUS_COLOR[status] ?? "text-gray-600 bg-gray-50";
   return <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-medium ${cls}`}>{status}</span>;
+}
+
+const TIER_BADGE_COLORS: string[] = [
+  "bg-blue-100 text-blue-700",
+  "bg-green-100 text-green-700",
+  "bg-amber-100 text-amber-700",
+  "bg-orange-100 text-orange-700",
+  "bg-red-100 text-red-700",
+];
+
+function TierBadge({ tier }: { tier: string }) {
+  if (tier === "Reguler") return <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600">{tier}</span>;
+  if (tier.toLowerCase().includes("overflow")) return <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-700">{tier}</span>;
+  const tierNum = parseInt(tier.replace(/\D/g, ""), 10) || 0;
+  const cls = TIER_BADGE_COLORS[(tierNum - 1) % TIER_BADGE_COLORS.length] ?? TIER_BADGE_COLORS[0];
+  return <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-medium ${cls}`}>{tier}</span>;
 }
 
 // ── Modal wrapper ─────────────────────────────────────────────────────────────
@@ -398,6 +446,317 @@ function KonfigurasiSection({ cfg }: { cfg: KonfigurasiPromo }) {
   );
 }
 
+// ── Multi-tier Monitoring View ────────────────────────────────────────────────
+
+const TIER_PIE_COLORS = ["#9ca3af","#3b82f6","#22c55e","#f59e0b","#f97316","#ef4444","#6366f1"];
+
+function MultiTierMonitoringView({ data }: { data: MultiTierMonData }) {
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+
+  const tierEntries = Object.entries(data.tier_distribution);
+  const pieData = tierEntries.map(([name, count], i) => ({
+    name, value: count, fill: TIER_PIE_COLORS[i % TIER_PIE_COLORS.length],
+  }));
+
+  const highestTierReached = tierEntries
+    .filter(([name]) => name !== "Reguler" && !name.toLowerCase().includes("overflow"))
+    .sort((a, b) => b[1] - a[1])[0]?.[0] ?? "Reguler";
+
+  const sorted = [...data.peserta_detail].sort((a, b) => b.achievement_pct - a.achievement_pct);
+
+  return (
+    <div className="space-y-5">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          { label: "Total Peserta",       value: fmtNum(data.total_peserta),  sub: "terdaftar",         color: "#3b82f6" },
+          { label: "Total Poin",          value: fmtNum(data.total_poin),     sub: "akumulasi poin",    color: "#16a34a" },
+          { label: "Total Estimasi Rp",   value: fmtRp(data.total_rupiah),    sub: "estimasi reward",   color: "#7c3aed" },
+          { label: "Tier Tertinggi",      value: highestTierReached.split("(")[0].trim(), sub: "dicapai peserta", color: "#D97706" },
+        ].map(c => (
+          <Card key={c.label} className="shadow-sm" style={{ borderBottom: `3px solid ${c.color}` }}>
+            <CardContent className="p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">{c.label}</p>
+              <p className="text-base font-bold tabular-nums truncate" style={{ color: c.color }}>{c.value}</p>
+              <p className="text-[10px] text-muted-foreground">{c.sub}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Tier distribution donut */}
+      {pieData.length > 0 && (
+        <Card className="shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Distribusi Tier</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-6">
+              <div style={{ width: 160, height: 160 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={pieData} dataKey="value" innerRadius={45} outerRadius={70} paddingAngle={2}>
+                      {pieData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: unknown, name: unknown) => [`${v} toko`, String(name ?? "")]} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex-1 space-y-1.5">
+                {pieData.map((d, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: d.fill }} />
+                      <span className="truncate max-w-[160px]">{d.name}</span>
+                    </div>
+                    <span className="font-semibold ml-2">{d.value} toko</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Achievement table */}
+      <Card className="shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Achievement per Toko</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Toko</TableHead>
+                  <TableHead className="text-xs text-right">Target</TableHead>
+                  <TableHead className="text-xs text-right">Realisasi</TableHead>
+                  <TableHead className="text-xs text-right">Achievement</TableHead>
+                  <TableHead className="text-xs">Tier Berlaku</TableHead>
+                  <TableHead className="text-xs text-right">Total Poin</TableHead>
+                  <TableHead className="text-xs text-right">Estimasi Rp</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sorted.slice(0, 50).map(a => (
+                  <>
+                    <TableRow
+                      key={a.id_toko}
+                      className="cursor-pointer hover:bg-gray-50/70"
+                      onClick={() => setExpandedRow(expandedRow === a.id_toko ? null : a.id_toko)}
+                    >
+                      <TableCell>
+                        <p className="text-sm font-medium">{a.nama_toko}</p>
+                        <p className="text-[10px] text-muted-foreground font-mono">{a.id_toko}</p>
+                        <div className="w-full bg-gray-200 rounded-full h-1 mt-1.5">
+                          <div
+                            className={`h-1 rounded-full ${a.achievement_pct >= 100 ? "bg-green-500" : a.achievement_pct >= 80 ? "bg-amber-500" : "bg-red-400"}`}
+                            style={{ width: `${Math.min(100, a.achievement_pct)}%` }}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right text-sm">{fmtNum(a.target_ton)}</TableCell>
+                      <TableCell className="text-right text-sm font-medium">{fmtNum(a.realisasi_ton)}</TableCell>
+                      <TableCell className="text-right">
+                        <span className={`text-sm font-semibold ${a.achievement_pct >= 100 ? "text-green-600" : a.achievement_pct >= 80 ? "text-amber-600" : "text-red-600"}`}>
+                          {fmtPct(a.achievement_pct)}
+                        </span>
+                      </TableCell>
+                      <TableCell><TierBadge tier={a.tier_berlaku} /></TableCell>
+                      <TableCell className="text-right text-sm">{fmtNum(a.total_poin)}</TableCell>
+                      <TableCell className="text-right text-sm font-medium text-purple-700">{fmtRp(a.total_rupiah)}</TableCell>
+                    </TableRow>
+                    {expandedRow === a.id_toko && (
+                      <TableRow key={`${a.id_toko}-expanded`}>
+                        <TableCell colSpan={7} className="bg-purple-50/40 p-4">
+                          <p className="text-xs font-semibold mb-2">Rincian Breakdown</p>
+                          <div className="space-y-1">
+                            {a.breakdown.map((b, i) => (
+                              <div key={i} className="flex items-start justify-between text-xs py-1 border-b last:border-b-0">
+                                <div>
+                                  <span className="font-medium">{b.segmen}</span>
+                                  <span className="text-muted-foreground ml-2">{b.keterangan}</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="font-medium">{fmtNum(b.volume_ton)} ton &times; {b.multiplier}X</span>
+                                  <span className="text-purple-600 ml-3">{fmtNum(b.poin)} poin</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
+                ))}
+              </TableBody>
+            </Table>
+            {data.peserta_detail.length > 50 && (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                Menampilkan 50 dari {data.peserta_detail.length} toko.
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ── Legacy Monitoring View (old konfigurasi_promo programs) ───────────────────
+
+function LegacyMonitoringView({
+  monitoring, monSortBy, monOrder, setMonSortBy, setMonOrder, setMonLoaded,
+}: {
+  monitoring: MonitoringData;
+  monSortBy: string; monOrder: string;
+  setMonSortBy: (v: string) => void;
+  setMonOrder:  (v: string) => void;
+  setMonLoaded: (v: boolean) => void;
+}) {
+  return (
+    <div className="space-y-5">
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        {[
+          { label: "Total Peserta",    value: fmtNum(monitoring.summary.total_peserta),           sub: "terdaftar",         color: "#3b82f6" },
+          { label: "Bertransaksi",      value: fmtNum(monitoring.summary.peserta_aktif_transaksi), sub: "aktif transaksi",   color: "#16a34a" },
+          { label: "Overall Ach.",      value: fmtPct(monitoring.summary.overall_achievement_pct), sub: "realisasi/target",  color: monitoring.summary.overall_achievement_pct >= 100 ? "#16a34a" : monitoring.summary.overall_achievement_pct >= 80 ? "#D97706" : "#DC2626" },
+          { label: "Reward Earned",     value: fmtRp(monitoring.summary.total_reward_earned),     sub: "total reward",      color: "#7c3aed" },
+          { label: "Budget Sisa",       value: fmtRp(monitoring.summary.estimasi_budget_sisa),    sub: "sisa anggaran",     color: "#EA580C" },
+        ].map(c => (
+          <Card key={c.label} className="shadow-sm" style={{ borderBottom: `3px solid ${c.color}` }}>
+            <CardContent className="p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">{c.label}</p>
+              <p className="text-lg font-bold tabular-nums" style={{ color: c.color }}>{c.value}</p>
+              <p className="text-[10px] text-muted-foreground">{c.sub}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="flex gap-4 flex-wrap text-sm">
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" />{monitoring.summary.melampaui_count} Melampaui Target</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-green-500" />{monitoring.summary.mencapai_target_count} Mencapai Target</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-400" />{monitoring.summary.belum_mencapai_count} Belum Mencapai</span>
+      </div>
+
+      {monitoring.daily_trend.length > 0 && (
+        <Card className="shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Tren Kumulatif Realisasi vs Target</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div style={{ height: 240 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={monitoring.daily_trend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="tanggal" tick={{ fontSize: 10 }}
+                    tickFormatter={v => { const [,m,d] = v.split("-"); return `${d}/${m}`; }}
+                    interval={Math.floor(monitoring.daily_trend.length / 6)}
+                  />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
+                  <Tooltip
+                    formatter={(v: unknown, name: unknown) => [`${Number(v).toFixed(1)} ton`, String(name ?? "")]}
+                    labelFormatter={(l: unknown) => fmtDate(String(l ?? ""))}
+                  />
+                  <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+                  <Area type="monotone" dataKey="realisasi_kumulatif" name="Realisasi" fill="#ddd6fe" stroke="#7c3aed" strokeWidth={2} />
+                  <Line type="monotone" dataKey="target_kumulatif" name="Target" stroke="#f97316" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {monitoring.distribution.length > 0 && (
+        <Card className="shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Distribusi Achievement</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div style={{ height: 180 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monitoring.distribution} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                  <Tooltip formatter={(v: unknown) => [String(v), "Toko"]} />
+                  <Bar dataKey="count" name="Jumlah Toko" radius={[4,4,0,0]}>
+                    {monitoring.distribution.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card className="shadow-sm">
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="text-sm font-semibold">Achievement per Toko</CardTitle>
+            <div className="flex items-center gap-2">
+              <select className="border rounded px-2 py-1 text-xs" value={monSortBy} onChange={e => { setMonSortBy(e.target.value); setMonLoaded(false); }}>
+                <option value="achievement">Sort: Achievement</option>
+                <option value="realisasi">Sort: Realisasi</option>
+                <option value="reward">Sort: Reward</option>
+              </select>
+              <select className="border rounded px-2 py-1 text-xs" value={monOrder} onChange={e => { setMonOrder(e.target.value); setMonLoaded(false); }}>
+                <option value="desc">Turun</option>
+                <option value="asc">Naik</option>
+              </select>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Toko</TableHead>
+                  <TableHead className="text-xs">Cluster</TableHead>
+                  <TableHead className="text-xs text-right">Target</TableHead>
+                  <TableHead className="text-xs text-right">Realisasi</TableHead>
+                  <TableHead className="text-xs text-right">Achievement</TableHead>
+                  <TableHead className="text-xs text-right">Total Reward</TableHead>
+                  <TableHead className="text-xs">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {monitoring.achievements.slice(0, 50).map(a => (
+                  <TableRow key={a.id_toko}>
+                    <TableCell>
+                      <p className="text-sm font-medium">{a.nama_toko}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">{a.id_toko}</p>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{a.cluster}</TableCell>
+                    <TableCell className="text-right text-sm">{fmtNum(a.target_ton)}</TableCell>
+                    <TableCell className="text-right text-sm font-medium">{fmtNum(a.realisasi_ton)}</TableCell>
+                    <TableCell className="text-right">
+                      <span className={`text-sm font-semibold ${a.achievement_pct >= 100 ? "text-green-600" : a.achievement_pct >= 80 ? "text-amber-600" : "text-red-600"}`}>
+                        {fmtPct(a.achievement_pct)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right text-sm">{fmtRp(a.total_reward)}</TableCell>
+                    <TableCell><MonStatusBadge status={a.status} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {monitoring.achievements.length > 50 && (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                Menampilkan 50 dari {monitoring.achievements.length} toko. Export untuk data lengkap.
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function PromoDetailPage() {
@@ -406,7 +765,7 @@ export default function PromoDetailPage() {
   const promoId = params.id as string;
 
   const [promo,              setPromo]              = useState<PromoDetail | null>(null);
-  const [monitoring,         setMonitoring]         = useState<MonitoringData | null>(null);
+  const [monitoring,         setMonitoring]         = useState<AnyMonData | null>(null);
   const [promoLoading,       setPromoLoading]       = useState(true);
   const [monLoading,         setMonLoading]         = useState(false);
   const [monLoaded,          setMonLoaded]          = useState(false);
@@ -746,168 +1105,23 @@ export default function PromoDetailPage() {
               </div>
             ) : monLoading && !monitoring ? (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                  {Array.from({length: 5}).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  {Array.from({length: 4}).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
                 </div>
                 <Skeleton className="h-64 rounded-xl" />
                 <Skeleton className="h-48 rounded-xl" />
               </div>
-            ) : monitoring ? (
-              <>
-                {/* Summary cards */}
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                  {[
-                    { label: "Total Peserta",    value: fmtNum(monitoring.summary.total_peserta),           sub: "terdaftar",         color: "#3b82f6" },
-                    { label: "Bertransaksi",      value: fmtNum(monitoring.summary.peserta_aktif_transaksi), sub: "aktif transaksi",   color: "#16a34a" },
-                    { label: "Overall Ach.",      value: fmtPct(monitoring.summary.overall_achievement_pct), sub: "realisasi/target",  color: monitoring.summary.overall_achievement_pct >= 100 ? "#16a34a" : monitoring.summary.overall_achievement_pct >= 80 ? "#D97706" : "#DC2626" },
-                    { label: "Reward Earned",     value: fmtRp(monitoring.summary.total_reward_earned),     sub: "total reward",      color: "#7c3aed" },
-                    { label: "Budget Sisa",       value: fmtRp(monitoring.summary.estimasi_budget_sisa),    sub: "sisa anggaran",     color: "#EA580C" },
-                  ].map(c => (
-                    <Card key={c.label} className="shadow-sm" style={{ borderBottom: `3px solid ${c.color}` }}>
-                      <CardContent className="p-3">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">{c.label}</p>
-                        <p className="text-lg font-bold tabular-nums" style={{ color: c.color }}>{c.value}</p>
-                        <p className="text-[10px] text-muted-foreground">{c.sub}</p>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-
-                {/* Status counts */}
-                <div className="flex gap-4 flex-wrap text-sm">
-                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" />{monitoring.summary.melampaui_count} Melampaui Target</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-green-500" />{monitoring.summary.mencapai_target_count} Mencapai Target</span>
-                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-400" />{monitoring.summary.belum_mencapai_count} Belum Mencapai</span>
-                </div>
-
-                {/* Daily trend chart */}
-                {monitoring.daily_trend.length > 0 && (
-                  <Card className="shadow-sm">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-semibold">Tren Kumulatif Realisasi vs Target</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div style={{ height: 240 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <ComposedChart data={monitoring.daily_trend} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                            <XAxis dataKey="tanggal" tick={{ fontSize: 10 }}
-                              tickFormatter={v => { const [,m,d] = v.split("-"); return `${d}/${m}`; }}
-                              interval={Math.floor(monitoring.daily_trend.length / 6)}
-                            />
-                            <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
-                            <Tooltip
-                              formatter={(v: unknown, name: unknown) => [
-                                `${Number(v).toFixed(1)} ton`, String(name ?? "")
-                              ]}
-                              labelFormatter={(l: unknown) => fmtDate(String(l ?? ""))}
-                            />
-                            <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-                            <Area type="monotone" dataKey="realisasi_kumulatif" name="Realisasi" fill="#ddd6fe" stroke="#7c3aed" strokeWidth={2} />
-                            <Line type="monotone" dataKey="target_kumulatif" name="Target" stroke="#f97316" strokeWidth={2} strokeDasharray="5 5" dot={false} />
-                          </ComposedChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Distribution chart */}
-                {monitoring.distribution.length > 0 && (
-                  <Card className="shadow-sm">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-semibold">Distribusi Achievement</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div style={{ height: 180 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={monitoring.distribution} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                            <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                            <Tooltip formatter={(v: unknown) => [String(v), "Toko"]} />
-                            <Bar dataKey="count" name="Jumlah Toko" radius={[4,4,0,0]}>
-                              {monitoring.distribution.map((d, i) => (
-                                <Cell key={i} fill={d.color} />
-                              ))}
-                            </Bar>
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Achievement table */}
-                <Card className="shadow-sm">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <CardTitle className="text-sm font-semibold">Achievement per Toko</CardTitle>
-                      <div className="flex items-center gap-2">
-                        <select
-                          className="border rounded px-2 py-1 text-xs"
-                          value={monSortBy}
-                          onChange={e => { setMonSortBy(e.target.value); setMonLoaded(false); }}
-                        >
-                          <option value="achievement">Sort: Achievement</option>
-                          <option value="realisasi">Sort: Realisasi</option>
-                          <option value="reward">Sort: Reward</option>
-                        </select>
-                        <select
-                          className="border rounded px-2 py-1 text-xs"
-                          value={monOrder}
-                          onChange={e => { setMonOrder(e.target.value); setMonLoaded(false); }}
-                        >
-                          <option value="desc">Turun</option>
-                          <option value="asc">Naik</option>
-                        </select>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="text-xs">Toko</TableHead>
-                            <TableHead className="text-xs">Cluster</TableHead>
-                            <TableHead className="text-xs text-right">Target</TableHead>
-                            <TableHead className="text-xs text-right">Realisasi</TableHead>
-                            <TableHead className="text-xs text-right">Achievement</TableHead>
-                            <TableHead className="text-xs text-right">Total Reward</TableHead>
-                            <TableHead className="text-xs">Status</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {monitoring.achievements.slice(0, 50).map(a => (
-                            <TableRow key={a.id_toko}>
-                              <TableCell>
-                                <p className="text-sm font-medium">{a.nama_toko}</p>
-                                <p className="text-[10px] text-muted-foreground font-mono">{a.id_toko}</p>
-                              </TableCell>
-                              <TableCell className="text-xs text-muted-foreground">{a.cluster}</TableCell>
-                              <TableCell className="text-right text-sm">{fmtNum(a.target_ton)}</TableCell>
-                              <TableCell className="text-right text-sm font-medium">{fmtNum(a.realisasi_ton)}</TableCell>
-                              <TableCell className="text-right">
-                                <span className={`text-sm font-semibold ${a.achievement_pct >= 100 ? "text-green-600" : a.achievement_pct >= 80 ? "text-amber-600" : "text-red-600"}`}>
-                                  {fmtPct(a.achievement_pct)}
-                                </span>
-                              </TableCell>
-                              <TableCell className="text-right text-sm">{fmtRp(a.total_reward)}</TableCell>
-                              <TableCell><MonStatusBadge status={a.status} /></TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                      {monitoring.achievements.length > 50 && (
-                        <p className="text-xs text-muted-foreground text-center py-2">
-                          Menampilkan 50 dari {monitoring.achievements.length} toko. Export untuk data lengkap.
-                        </p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </>
+            ) : monitoring && monitoring.is_multi_tier ? (
+              <MultiTierMonitoringView data={monitoring} />
+            ) : monitoring && !monitoring.is_multi_tier ? (
+              <LegacyMonitoringView
+                monitoring={monitoring as MonitoringData}
+                monSortBy={monSortBy}
+                monOrder={monOrder}
+                setMonSortBy={setMonSortBy}
+                setMonOrder={setMonOrder}
+                setMonLoaded={setMonLoaded}
+              />
             ) : (
               <p className="text-sm text-muted-foreground">Gagal memuat data monitoring.</p>
             )}
@@ -921,112 +1135,111 @@ export default function PromoDetailPage() {
               </div>
             ) : !monitoring && monLoading ? (
               <Skeleton className="h-64 rounded-xl" />
-            ) : monitoring ? (
-              <>
-                {/* Cluster comparison chart */}
-                {monitoring.cluster_comparison.length > 0 && (
-                  <Card className="shadow-sm">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-semibold">Volume per Cluster: Sebelum vs Selama Promo</CardTitle>
-                      <p className="text-xs text-muted-foreground">Periode perbandingan: durasi yang sama sebelum promo dimulai</p>
-                    </CardHeader>
-                    <CardContent>
-                      <div style={{ height: 220 }}>
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={monitoring.cluster_comparison} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                            <XAxis dataKey="cluster" tick={{ fontSize: 10 }} />
-                            <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
-                            <Tooltip
-                              formatter={(v: unknown, name: unknown) => [`${Number(v).toFixed(1)} ton`, String(name ?? "")]}
-                            />
-                            <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
-                            <Bar dataKey="vol_before" name="Sebelum Promo" fill="#e5e7eb" radius={[3,3,0,0]} />
-                            <Bar dataKey="vol_promo"  name="Selama Promo"  fill="#7c3aed" radius={[3,3,0,0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                      {/* Delta table */}
-                      <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                        {monitoring.cluster_comparison.map(c => (
-                          <div key={c.cluster} className="bg-gray-50 rounded-lg p-3">
-                            <p className="text-xs font-semibold text-muted-foreground">{c.cluster}</p>
-                            <p className={`text-sm font-bold ${c.delta_pct > 0 ? "text-green-600" : c.delta_pct < 0 ? "text-red-600" : "text-gray-600"}`}>
-                              {c.delta_pct > 0 ? "+" : ""}{fmtPct(c.delta_pct)}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground">{c.delta > 0 ? "+" : ""}{fmtNum(c.delta)} ton</p>
+            ) : monitoring && !monitoring.is_multi_tier ? (
+              (() => {
+                const mon = monitoring as MonitoringData;
+                return (
+                  <>
+                    {mon.cluster_comparison.length > 0 && (
+                      <Card className="shadow-sm">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-semibold">Volume per Cluster: Sebelum vs Selama Promo</CardTitle>
+                          <p className="text-xs text-muted-foreground">Periode perbandingan: durasi yang sama sebelum promo dimulai</p>
+                        </CardHeader>
+                        <CardContent>
+                          <div style={{ height: 220 }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={mon.cluster_comparison} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                                <XAxis dataKey="cluster" tick={{ fontSize: 10 }} />
+                                <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `${(v/1000).toFixed(0)}k`} />
+                                <Tooltip formatter={(v: unknown, name: unknown) => [`${Number(v).toFixed(1)} ton`, String(name ?? "")]} />
+                                <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+                                <Bar dataKey="vol_before" name="Sebelum Promo" fill="#e5e7eb" radius={[3,3,0,0]} />
+                                <Bar dataKey="vol_promo"  name="Selama Promo"  fill="#7c3aed" radius={[3,3,0,0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
                           </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Top 5 / Bottom 5 */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <Card className="shadow-sm">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-semibold text-green-700">Top 5 Toko</CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <div className="space-y-2">
-                        {monitoring.summary.top_5_toko.map((t, i) => (
-                          <div key={t.id_toko} className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-muted-foreground w-5">{i+1}.</span>
-                              <div>
-                                <p className="text-xs font-medium leading-tight">{t.nama_toko}</p>
-                                <p className="text-[10px] text-muted-foreground">{t.cluster}</p>
+                          <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {mon.cluster_comparison.map(c => (
+                              <div key={c.cluster} className="bg-gray-50 rounded-lg p-3">
+                                <p className="text-xs font-semibold text-muted-foreground">{c.cluster}</p>
+                                <p className={`text-sm font-bold ${c.delta_pct > 0 ? "text-green-600" : c.delta_pct < 0 ? "text-red-600" : "text-gray-600"}`}>
+                                  {c.delta_pct > 0 ? "+" : ""}{fmtPct(c.delta_pct)}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground">{c.delta > 0 ? "+" : ""}{fmtNum(c.delta)} ton</p>
                               </div>
-                            </div>
-                            <span className="text-sm font-bold text-green-600">{fmtPct(t.achievement_pct)}</span>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card className="shadow-sm">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-semibold text-red-700">Bottom 5 Toko</CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <div className="space-y-2">
-                        {monitoring.summary.bottom_5_toko.map((t, i) => (
-                          <div key={t.id_toko} className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-muted-foreground w-5">{i+1}.</span>
-                              <div>
-                                <p className="text-xs font-medium leading-tight">{t.nama_toko}</p>
-                                <p className="text-[10px] text-muted-foreground">{t.cluster}</p>
-                              </div>
-                            </div>
-                            <span className="text-sm font-bold text-red-600">{fmtPct(t.achievement_pct)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
+                        </CardContent>
+                      </Card>
+                    )}
 
-                {/* Recommendations */}
-                {monitoring.recommendations.length > 0 && (
-                  <Card className="shadow-sm border-purple-200">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-semibold text-purple-700">Rekomendasi</CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <ul className="space-y-2">
-                        {monitoring.recommendations.map((r, i) => (
-                          <li key={i} className="flex items-start gap-2 text-sm">
-                            <span className="mt-0.5 w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0 mt-1.5" />
-                            {r}
-                          </li>
-                        ))}
-                      </ul>
-                    </CardContent>
-                  </Card>
-                )}
-              </>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <Card className="shadow-sm">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-semibold text-green-700">Top 5 Toko</CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                          <div className="space-y-2">
+                            {mon.summary.top_5_toko.map((t, i) => (
+                              <div key={t.id_toko} className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-muted-foreground w-5">{i+1}.</span>
+                                  <div>
+                                    <p className="text-xs font-medium leading-tight">{t.nama_toko}</p>
+                                    <p className="text-[10px] text-muted-foreground">{t.cluster}</p>
+                                  </div>
+                                </div>
+                                <span className="text-sm font-bold text-green-600">{fmtPct(t.achievement_pct)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card className="shadow-sm">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-semibold text-red-700">Bottom 5 Toko</CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                          <div className="space-y-2">
+                            {mon.summary.bottom_5_toko.map((t, i) => (
+                              <div key={t.id_toko} className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-muted-foreground w-5">{i+1}.</span>
+                                  <div>
+                                    <p className="text-xs font-medium leading-tight">{t.nama_toko}</p>
+                                    <p className="text-[10px] text-muted-foreground">{t.cluster}</p>
+                                  </div>
+                                </div>
+                                <span className="text-sm font-bold text-red-600">{fmtPct(t.achievement_pct)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {mon.recommendations.length > 0 && (
+                      <Card className="shadow-sm border-purple-200">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-semibold text-purple-700">Rekomendasi</CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                          <ul className="space-y-2">
+                            {mon.recommendations.map((r, i) => (
+                              <li key={i} className="flex items-start gap-2 text-sm">
+                                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 shrink-0 mt-1.5" />
+                                {r}
+                              </li>
+                            ))}
+                          </ul>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </>
+                );
+              })()
             ) : (
               <p className="text-sm text-muted-foreground">Data analisis tersedia setelah promo selesai.</p>
             )}

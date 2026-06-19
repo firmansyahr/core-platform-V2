@@ -1,0 +1,22 @@
+{
+  "w1": 0.6,
+  "w2": 0.4,
+  "min_pct_sp": 0.8,
+  "min_pct_platinum": 0.7,
+  "min_pct_gold": 0.6,
+  "min_pct_silver": 0.5,
+  "growth_rates": {
+    "default": {
+      "normal": 0.03,
+      "warning": 0.01,
+      "kritis": 0.0
+    },
+    "overrides": []
+  },
+  "brand_point_values": {
+    "Semen Elang": 5000,
+    "Semen Badak": 4000,
+    "Semen Banteng": 0
+  },
+  "default_point_value": 5000
+}

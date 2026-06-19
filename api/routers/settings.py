@@ -1,7 +1,10 @@
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from api.core.auth import UserInfo, get_current_admin_user
 from api.core.data_loader import load_data, DATA_PATH
@@ -18,6 +21,26 @@ from api.core.aegis_engine import (
 from api.core.ilp_engine import get_ilp_features, get_ilp_hierarchy
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+_CONFIG_PATH = Path("api/data/loyalty_config.json")
+
+
+def _load_config() -> dict:
+    if not _CONFIG_PATH.exists():
+        return {}
+    try:
+        return json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _save_config(cfg: dict) -> None:
+    _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _CONFIG_PATH.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+class BrandPointValuesBody(BaseModel):
+    brand_point_values: dict[str, int]
 
 
 @router.get("")
@@ -53,6 +76,40 @@ def get_settings() -> dict[str, Any]:
             },
             "data_source": data_source,
         },
+        "meta": {"generated_at": datetime.now(timezone.utc).isoformat()},
+    }
+
+
+@router.get("/brand-point-values")
+def get_brand_point_values() -> dict[str, Any]:
+    cfg = _load_config()
+    bpv = cfg.get("brand_point_values", {"Semen Elang": 5000, "Semen Badak": 4000, "Semen Banteng": 0})
+    return {
+        "status": "ok",
+        "data": {
+            "brand_point_values": bpv,
+            "default_point_value": cfg.get("default_point_value", 5000),
+        },
+        "meta": {"generated_at": datetime.now(timezone.utc).isoformat()},
+    }
+
+
+@router.put("/brand-point-values")
+def update_brand_point_values(
+    body: BrandPointValuesBody,
+    _user: UserInfo = Depends(get_current_admin_user),
+) -> dict[str, Any]:
+    for brand, val in body.brand_point_values.items():
+        if val < 0:
+            raise HTTPException(400, f"Nilai poin untuk '{brand}' tidak boleh negatif")
+
+    cfg = _load_config()
+    cfg["brand_point_values"] = body.brand_point_values
+    _save_config(cfg)
+
+    return {
+        "status": "ok",
+        "data": {"brand_point_values": body.brand_point_values},
         "meta": {"generated_at": datetime.now(timezone.utc).isoformat()},
     }
 

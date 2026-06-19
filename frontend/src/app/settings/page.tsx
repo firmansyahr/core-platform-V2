@@ -210,6 +210,11 @@ export default function SettingsPage() {
   const [healthData, setHealthData] = useState<HealthData | null>(null);
   const [reloading, setReloading] = useState(false);
   const [toast, setToast] = useState({ show: false, msg: "" });
+  const [brandPV, setBrandPV] = useState<Record<string, number>>({
+    "Semen Elang": 5000, "Semen Badak": 4000, "Semen Banteng": 0,
+  });
+  const [bpvSaving, setBpvSaving] = useState(false);
+  const [bpvMsg, setBpvMsg] = useState("");
 
   // Load from localStorage on mount
   useEffect(() => {
@@ -236,6 +241,13 @@ export default function SettingsPage() {
       .then((r) => r.json())
       .then((res) => {
         if (res.status === "ok") setHealthData(res as HealthData);
+      })
+      .catch(() => {});
+
+    fetch(`${API}/api/settings/brand-point-values`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.status === "ok") setBrandPV(res.data.brand_point_values as Record<string, number>);
       })
       .catch(() => {});
   }, []);
@@ -309,6 +321,25 @@ export default function SettingsPage() {
   }
 
   const fmt = (n: number) => new Intl.NumberFormat("id-ID").format(n);
+
+  async function handleSaveBrandPV() {
+    setBpvSaving(true); setBpvMsg("");
+    try {
+      const token = getToken() ?? "";
+      const r = await fetch(`${API}/api/settings/brand-point-values`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ brand_point_values: brandPV }),
+      });
+      const j = await r.json();
+      if (j.status === "ok") showToast("Nilai poin per brand berhasil disimpan");
+      else setBpvMsg(j.detail || "Gagal menyimpan");
+    } catch {
+      setBpvMsg("Koneksi gagal");
+    } finally {
+      setBpvSaving(false);
+    }
+  }
 
   // ── Render ───────────────────────────────────────────────────
   return (
@@ -554,6 +585,75 @@ export default function SettingsPage() {
             </div>
 
             <ErrorBox errors={ilpErrors} />
+          </section>
+
+          {/* ── Brand Point Values ──────────────────────────────── */}
+          <section className="rounded-xl border border-border bg-card p-6 space-y-5">
+            <div>
+              <h2 className="font-semibold text-base">Konfigurasi Nilai Poin per Brand</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Digunakan dalam kalkulasi reward multi-tier. 1 poin = nilai Rp yang ditentukan di sini.
+              </p>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800 space-y-1">
+              <p className="font-semibold">Catatan Penting</p>
+              <p>Perubahan nilai poin bersifat <span className="font-medium">tidak retroaktif</span> — hanya berlaku untuk kalkulasi monitoring yang dijalankan setelah perubahan disimpan. Program yang sudah selesai tidak terpengaruh.</p>
+            </div>
+
+            <div className="border rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-600">Brand</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-600">Nilai per Poin (Rp)</th>
+                    <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-600">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(brandPV).map(([brand, val]) => {
+                    const isDisabled = brand === "Semen Banteng" || !isAdmin;
+                    return (
+                      <tr key={brand} className="border-t">
+                        <td className="px-4 py-3 font-medium">{brand}</td>
+                        <td className="px-4 py-3 text-right">
+                          <input
+                            type="number"
+                            min={0}
+                            step={500}
+                            className={`w-32 border rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-purple-400 ${isDisabled ? "opacity-60 cursor-not-allowed bg-gray-100" : ""}`}
+                            value={val}
+                            disabled={isDisabled}
+                            onChange={e => setBrandPV(prev => ({ ...prev, [brand]: +e.target.value }))}
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          {brand === "Semen Banteng" ? (
+                            <span className="text-xs text-gray-500 italic">Fighting Brand — 0 poin</span>
+                          ) : (
+                            <span className="text-xs text-green-600 font-medium">Aktif</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {bpvMsg && <p className="text-xs text-red-600">{bpvMsg}</p>}
+
+            {isAdmin ? (
+              <button
+                onClick={handleSaveBrandPV}
+                disabled={bpvSaving}
+                className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {bpvSaving ? "Menyimpan..." : "Simpan Konfigurasi"}
+              </button>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">Hanya Admin yang dapat mengubah nilai poin.</p>
+            )}
           </section>
 
           {/* ── Data Source ─────────────────────────────────────── */}
