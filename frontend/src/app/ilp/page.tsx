@@ -84,11 +84,14 @@ interface ILPResult {
 }
 
 interface ILPMeta {
-  generated_at:           string;
-  method:                 string;
-  total_toko:             number;
-  total_cost:             number;
-  budget_utilization_pct: number;
+  generated_at:              string;
+  method:                    string;
+  total_toko:                number;
+  total_cost:                number;
+  budget_utilization_pct:    number;
+  exclude_existing_loyalty?: boolean;
+  toko_dikecualikan?:        number;
+  total_kandidat_dianalisis?: number;
 }
 
 interface ILPResponse {
@@ -442,6 +445,8 @@ export default function ILPPage() {
     Bronze:           "0",
   });
 
+  const [excludeLoyalty, setExcludeLoyalty] = useState(true);
+
   // Scoring weights (integers 0–100 representing %)
   const [wRatio,  setWRatio]  = useState(47);
   const [wTrx,    setWTrx]    = useState(43);
@@ -538,16 +543,17 @@ export default function ILPPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          budget_maks:          budgetVal,
-          maks_toko:            maxTokoVal,
+          budget_maks:               budgetVal,
+          maks_toko:                 maxTokoVal,
           cluster_constraints,
-          provinsi_filter:      selProvinsi,
-          ssm_filter:           selSSM,
-          asm_filter:           selASM,
-          tso_filter:           selTSO,
-          weight_ratio_cluster: wRatio  / 100,
-          weight_avg_trx:       wTrx    / 100,
-          weight_growth:        wGrowth / 100,
+          provinsi_filter:           selProvinsi,
+          ssm_filter:                selSSM,
+          asm_filter:                selASM,
+          tso_filter:                selTSO,
+          weight_ratio_cluster:      wRatio  / 100,
+          weight_avg_trx:            wTrx    / 100,
+          weight_growth:             wGrowth / 100,
+          exclude_existing_loyalty:  excludeLoyalty,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -560,7 +566,7 @@ export default function ILPPage() {
       setSolving(false);
     }
   }, [budget, maxToko, clusterPct, selProvinsi, selSSM, selASM, selTSO,
-      wRatio, wTrx, wGrowth, weightsValid, scenarios.length]);
+      wRatio, wTrx, wGrowth, weightsValid, excludeLoyalty, scenarios.length]);
 
   const sortedData = useMemo(() => {
     if (!result) return [];
@@ -806,6 +812,31 @@ export default function ILPPage() {
               </div>
             </div>
 
+            {/* Exclude existing loyalty members */}
+            <label
+              className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors select-none
+                ${excludeLoyalty
+                  ? "border-blue-500/40 bg-blue-500/5"
+                  : "border-border bg-muted/20 hover:bg-muted/40"
+                } ${!isAdmin ? "opacity-60 cursor-not-allowed" : ""}`}
+            >
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-blue-600 cursor-pointer"
+                checked={excludeLoyalty}
+                disabled={!isAdmin}
+                onChange={(e) => setExcludeLoyalty(e.target.checked)}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium leading-tight">
+                  Kecualikan toko yang sudah aktif di Loyalty Program
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Fokus optimasi pada kandidat baru — hindari rekomendasi ulang toko yang sudah terdaftar
+                </p>
+              </div>
+            </label>
+
             {/* ── Bobot Scoring Kriteria ───────────────────────────── */}
             <div className="border border-border rounded-lg p-4 space-y-4">
               <div className="flex items-center justify-between">
@@ -1042,6 +1073,17 @@ export default function ILPPage() {
         {/* ── Results ──────────────────────────────────────────────────── */}
         {result && !solving && (
           <>
+            {/* Exclude-loyalty info badge */}
+            {result.meta.exclude_existing_loyalty && (result.meta.toko_dikecualikan ?? 0) > 0 && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/30 bg-blue-500/5 text-xs text-blue-700 dark:text-blue-400">
+                <HugeiconsIcon icon={toIcon(InformationCircleIcon)} size={13} />
+                <span>
+                  <strong>{result.meta.toko_dikecualikan}</strong> toko dikecualikan karena sudah aktif di Loyalty Program.
+                  Total <strong>{result.meta.total_kandidat_dianalisis}</strong> toko dianalisis oleh solver.
+                </span>
+              </div>
+            )}
+
             {/* Summary cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <SummaryCard

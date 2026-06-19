@@ -1,4 +1,6 @@
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -17,6 +19,16 @@ from api.core.ilp_engine import (
 )
 
 router = APIRouter(prefix="/api/ilp", tags=["ilp"])
+
+_MEMBERS_PATH = Path(__file__).parent.parent / "data" / "loyalty_members.json"
+
+
+def _read_active_loyalty_ids() -> set[str]:
+    if not _MEMBERS_PATH.exists():
+        return set()
+    with open(_MEMBERS_PATH, encoding="utf-8") as f:
+        members: list[dict] = json.load(f)
+    return {str(m["id_toko"]) for m in members if m.get("status") == "Aktif"}
 
 
 class ClusterConstraints(BaseModel):
@@ -37,16 +49,17 @@ class ClusterConstraints(BaseModel):
 
 
 class ILPRequest(BaseModel):
-    budget_maks:          float = Field(gt=0)
-    maks_toko:            int   = Field(gt=0)
-    cluster_constraints:  ClusterConstraints = Field(default_factory=ClusterConstraints)
-    provinsi_filter:      list[str] = Field(default_factory=list)
-    ssm_filter:           list[str] = Field(default_factory=list)
-    asm_filter:           list[str] = Field(default_factory=list)
-    tso_filter:           list[str] = Field(default_factory=list)
-    weight_ratio_cluster: float = Field(default=W_RATIO_DEFAULT,  ge=0.0, le=1.0)
-    weight_avg_trx:       float = Field(default=W_TRX_DEFAULT,    ge=0.0, le=1.0)
-    weight_growth:        float = Field(default=W_GROWTH_DEFAULT,  ge=0.0, le=1.0)
+    budget_maks:               float = Field(gt=0)
+    maks_toko:                 int   = Field(gt=0)
+    cluster_constraints:       ClusterConstraints = Field(default_factory=ClusterConstraints)
+    provinsi_filter:           list[str] = Field(default_factory=list)
+    ssm_filter:                list[str] = Field(default_factory=list)
+    asm_filter:                list[str] = Field(default_factory=list)
+    tso_filter:                list[str] = Field(default_factory=list)
+    weight_ratio_cluster:      float = Field(default=W_RATIO_DEFAULT,  ge=0.0, le=1.0)
+    weight_avg_trx:            float = Field(default=W_TRX_DEFAULT,    ge=0.0, le=1.0)
+    weight_growth:             float = Field(default=W_GROWTH_DEFAULT,  ge=0.0, le=1.0)
+    exclude_existing_loyalty:  bool  = False
 
 
 class SelectedStore(BaseModel):
@@ -107,6 +120,19 @@ def run_ilp(
         weight_growth=req.weight_growth,
     )
 
+    toko_dikecualikan = 0
+    total_kandidat = len(scored_df)
+    if req.exclude_existing_loyalty:
+        active_ids = _read_active_loyalty_ids()
+        before = len(scored_df)
+        scored_df = scored_df[~scored_df["ID Toko"].isin(active_ids)].copy()
+        toko_dikecualikan = before - len(scored_df)
+        total_kandidat = len(scored_df)
+        print(
+            f"[ILP] Exclude existing loyalty: {before} → {total_kandidat} kandidat "
+            f"({toko_dikecualikan} toko di-exclude)"
+        )
+
     selected, method = solve_ilp(
         scored_df,
         budget=req.budget_maks,
@@ -157,6 +183,9 @@ def run_ilp(
             "budget_utilization_pct": (
                 round(total_cost / req.budget_maks * 100, 2) if req.budget_maks > 0 else 0.0
             ),
+            "exclude_existing_loyalty":  req.exclude_existing_loyalty,
+            "toko_dikecualikan":         toko_dikecualikan,
+            "total_kandidat_dianalisis": total_kandidat,
             "weights": {
                 "ratio_cluster": req.weight_ratio_cluster,
                 "avg_trx":       req.weight_avg_trx,
