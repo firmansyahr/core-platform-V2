@@ -160,6 +160,22 @@ class AddPesertaBody(BaseModel):
     catatan:       str          = ""
 
 
+class AddPesertaMonBody(BaseModel):
+    """Add peserta from Monitoring tab — works for Draft and Aktif programs."""
+    id_toko:     str
+    nama_toko:   str | None = None
+    cluster:     str | None = None
+    target_ton:  float      = 0.0
+    brand_utama: str | None = None
+    catatan:     str        = ""
+
+
+class UpdatePesertaBody(BaseModel):
+    target_ton:  float | None = None
+    brand_utama: str | None   = None
+    catatan:     str | None   = None
+
+
 # ── Multi-tier reward models ──────────────────────────────────────────────────
 
 class TierConfig(BaseModel):
@@ -731,6 +747,130 @@ def upload_peserta(promo_id: str, file: UploadFile = File(...)) -> dict:
     }
 
 
+# ── GET /api/promo/{promo_id}/peserta/search-toko ────────────────────────────
+
+@router.get("/{promo_id}/peserta/search-toko")
+def search_toko_for_promo(
+    promo_id: str,
+    q: str = Query("", min_length=0),
+) -> dict:
+    """Cari toko yang belum jadi peserta program ini."""
+    with _LOCK:
+        promos = _rp(_PROMOS_PATH)
+    promo = next((p for p in promos if p["id"] == promo_id), None)
+    if not promo:
+        raise HTTPException(404, detail="Promo tidak ditemukan")
+
+    existing_ids = {str(p["id_toko"]) for p in promo.get("peserta", [])}
+    members_raw  = _rp(_MEMBERS_PATH)
+    q_lower      = q.lower().strip()
+
+    results: list[dict] = []
+    for m in members_raw:
+        if m.get("status") != "Aktif":
+            continue
+        id_t = str(m.get("id_toko", ""))
+        if id_t in existing_ids:
+            continue
+        nama = str(m.get("nama_toko", "")).lower()
+        if q_lower and q_lower not in id_t.lower() and q_lower not in nama:
+            continue
+        results.append({
+            "id_toko":        id_t,
+            "nama_toko":      str(m.get("nama_toko", "")),
+            "cluster_pareto": str(m.get("cluster_pareto", "Bronze")),
+            "brand_utama":    str(m.get("brand_utama", "")),
+        })
+        if len(results) >= 20:
+            break
+
+    return {"status": "ok", "data": results, "meta": _meta()}
+
+
+# ── POST /api/promo/{promo_id}/peserta/add ────────────────────────────────────
+
+@router.post("/{promo_id}/peserta/add")
+def add_peserta_mon(promo_id: str, body: AddPesertaMonBody) -> dict:
+    """Tambah peserta (Draft atau Aktif)."""
+    nama_toko = body.nama_toko
+    cluster   = body.cluster
+
+    if not nama_toko or not cluster:
+        members_raw = _rp(_MEMBERS_PATH)
+        member = next((m for m in members_raw if str(m.get("id_toko", "")) == body.id_toko), None)
+        if member:
+            nama_toko = nama_toko or str(member["nama_toko"])
+            cluster   = cluster   or str(member["cluster_pareto"])
+        else:
+            crs     = get_store_crs()
+            crs_row = crs[crs["ID Toko"].astype(str) == body.id_toko]
+            if crs_row.empty:
+                raise HTTPException(404, detail=f"Toko {body.id_toko} tidak ditemukan")
+            row       = crs_row.iloc[0]
+            nama_toko = nama_toko or str(row.get("Nama Toko", ""))
+            cluster   = cluster   or str(row.get("Cluster Pareto", "Bronze"))
+
+    with _LOCK:
+        promos = _rp(_PROMOS_PATH)
+        idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
+        if idx is None:
+            raise HTTPException(404, detail="Promo tidak ditemukan")
+        if promos[idx]["status"] in ("Selesai", "Dibatalkan"):
+            raise HTTPException(400, detail="Tidak bisa menambah peserta ke program yang sudah Selesai atau Dibatalkan")
+
+        if any(str(p["id_toko"]) == body.id_toko for p in promos[idx]["peserta"]):
+            raise HTTPException(409, detail=f"Toko {body.id_toko} sudah terdaftar dalam program ini")
+
+        new_p = {
+            "id_toko":     body.id_toko,
+            "nama_toko":   nama_toko or "",
+            "cluster":     cluster or "Bronze",
+            "target_ton":  body.target_ton,
+            "brand_utama": body.brand_utama or "",
+            "catatan":     body.catatan,
+        }
+        promos[idx]["peserta"].append(new_p)
+        promos[idx]["summary_peserta"] = _rebuild_summary(
+            promos[idx]["peserta"], promos[idx].get("konfigurasi_promo", {})
+        )
+        _wp(_PROMOS_PATH, promos)
+
+    return {"status": "ok", "data": new_p, "meta": _meta()}
+
+
+# ── PUT /api/promo/{promo_id}/peserta/{id_toko} ───────────────────────────────
+
+@router.put("/{promo_id}/peserta/{id_toko}")
+def update_peserta(promo_id: str, id_toko: str, body: UpdatePesertaBody) -> dict:
+    """Update data peserta spesifik."""
+    with _LOCK:
+        promos = _rp(_PROMOS_PATH)
+        idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
+        if idx is None:
+            raise HTTPException(404, detail="Promo tidak ditemukan")
+        if promos[idx]["status"] in ("Selesai", "Dibatalkan"):
+            raise HTTPException(400, detail="Tidak bisa mengubah peserta di program yang sudah Selesai atau Dibatalkan")
+
+        pidx = next(
+            (j for j, p in enumerate(promos[idx]["peserta"]) if str(p["id_toko"]) == id_toko),
+            None,
+        )
+        if pidx is None:
+            raise HTTPException(404, detail=f"Toko {id_toko} tidak ditemukan dalam program")
+
+        if body.target_ton  is not None: promos[idx]["peserta"][pidx]["target_ton"]  = body.target_ton
+        if body.brand_utama is not None: promos[idx]["peserta"][pidx]["brand_utama"] = body.brand_utama
+        if body.catatan     is not None: promos[idx]["peserta"][pidx]["catatan"]     = body.catatan
+
+        updated = promos[idx]["peserta"][pidx]
+        promos[idx]["summary_peserta"] = _rebuild_summary(
+            promos[idx]["peserta"], promos[idx].get("konfigurasi_promo", {})
+        )
+        _wp(_PROMOS_PATH, promos)
+
+    return {"status": "ok", "data": updated, "meta": _meta()}
+
+
 # ── DELETE /api/promo/{promo_id}/peserta/{id_toko} ───────────────────────────
 
 @router.delete("/{promo_id}/peserta/{id_toko}")
@@ -740,8 +880,8 @@ def remove_peserta(promo_id: str, id_toko: str) -> dict:
         idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
         if idx is None:
             raise HTTPException(404, detail="Promo tidak ditemukan")
-        if promos[idx]["status"] != "Draft":
-            raise HTTPException(400, detail="Peserta hanya bisa dihapus saat status Draft")
+        if promos[idx]["status"] in ("Selesai", "Dibatalkan"):
+            raise HTTPException(400, detail="Tidak bisa menghapus peserta dari program yang sudah Selesai atau Dibatalkan")
 
         before = len(promos[idx]["peserta"])
         promos[idx]["peserta"] = [p for p in promos[idx]["peserta"] if str(p["id_toko"]) != id_toko]

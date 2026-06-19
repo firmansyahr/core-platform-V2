@@ -22,7 +22,7 @@ import {
 } from "recharts";
 import {
   ChevronRight, Plus, Upload, Download, Trash2, Users, Zap, TrendingUp,
-  AlertCircle, Check, X, Search, BarChart2, FileDown, Trophy, RefreshCw,
+  AlertCircle, Check, X, Search, BarChart2, FileDown, Trophy, RefreshCw, Pencil,
 } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -192,6 +192,30 @@ interface LeaderboardMonData {
 }
 
 type AnyMonData = MonitoringData | MultiTierMonData | FlatMultiplierMonData | LeaderboardMonData;
+
+interface TokoSearchResult {
+  id_toko:        string;
+  nama_toko:      string;
+  cluster_pareto: string;
+  brand_utama:    string;
+}
+
+interface MonEditTarget {
+  id_toko:     string;
+  nama_toko:   string;
+  target_ton:  number;
+}
+
+interface MonRemoveTarget {
+  id_toko:   string;
+  nama_toko: string;
+}
+
+interface MonParticipantActions {
+  searchTerm: string;
+  onRemove:   (p: MonRemoveTarget) => void;
+  onEdit?:    (p: MonEditTarget) => void;
+}
 
 // ── Badge components ──────────────────────────────────────────────────────────
 
@@ -429,6 +453,211 @@ function UploadExcelModal({
   );
 }
 
+// ── AddPesertaMonModal (Monitoring tab — works for Draft + Aktif) ─────────────
+
+function AddPesertaMonModal({
+  promoId, tipeProgram, open, onClose, onAdded,
+}: {
+  promoId: string;
+  tipeProgram: string;
+  open: boolean;
+  onClose: () => void;
+  onAdded: (idToko: string, namaToko: string, cluster: string, targetTon: number, brandUtama: string) => Promise<void>;
+}) {
+  const [q,          setQ]          = useState("");
+  const [results,    setResults]    = useState<TokoSearchResult[]>([]);
+  const [searching,  setSearching]  = useState(false);
+  const [selected,   setSelected]   = useState<TokoSearchResult | null>(null);
+  const [targetTon,  setTargetTon]  = useState("");
+  const [saving,     setSaving]     = useState(false);
+  const [err,        setErr]        = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    if (!q.trim()) { setResults([]); return; }
+    const timer = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const r = await fetch(`${API}/api/promo/${promoId}/peserta/search-toko?q=${encodeURIComponent(q)}`);
+        const j = await r.json();
+        setResults(j.data ?? []);
+      } catch { /* ignore */ } finally { setSearching(false); }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [q, promoId, open]);
+
+  function reset() {
+    setQ(""); setResults([]); setSelected(null); setTargetTon(""); setErr("");
+  }
+
+  async function handleSubmit() {
+    if (!selected) return;
+    const needsTarget = tipeProgram === "multi_tier";
+    const ton = parseFloat(targetTon);
+    if (needsTarget && (!targetTon || isNaN(ton) || ton <= 0)) {
+      setErr("Target Volume wajib diisi dan harus lebih dari 0");
+      return;
+    }
+    setSaving(true); setErr("");
+    try {
+      await onAdded(selected.id_toko, selected.nama_toko, selected.cluster_pareto, needsTarget ? ton : 0, selected.brand_utama);
+      reset(); onClose();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Gagal menambah peserta");
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <Modal open={open} onClose={() => { reset(); onClose(); }} title="Tambah Peserta ke Program">
+      <div className="px-5 py-4 space-y-4">
+        {!selected ? (
+          <>
+            <div>
+              <label className="block text-xs font-medium mb-1">Cari Toko</label>
+              <div className="relative">
+                <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  className="w-full border rounded-lg pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  placeholder="Ketik ID atau nama toko..."
+                  value={q}
+                  autoFocus
+                  onChange={e => setQ(e.target.value)}
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Toko yang sudah terdaftar tidak akan muncul</p>
+            </div>
+            {searching && <p className="text-xs text-muted-foreground">Mencari...</p>}
+            {results.length > 0 && (
+              <div className="border rounded-lg divide-y max-h-60 overflow-y-auto">
+                {results.map(r => (
+                  <button
+                    key={r.id_toko}
+                    className="w-full text-left px-4 py-2.5 hover:bg-purple-50 transition-colors"
+                    onClick={() => setSelected(r)}
+                  >
+                    <p className="text-sm font-medium">{r.nama_toko}</p>
+                    <p className="text-xs text-muted-foreground">{r.id_toko} · {r.cluster_pareto} · {r.brand_utama}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+            {q.trim() && !searching && results.length === 0 && (
+              <p className="text-xs text-muted-foreground">Tidak ada toko yang cocok atau semua sudah terdaftar</p>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="bg-purple-50 border border-purple-200 rounded-lg px-4 py-3 flex items-start justify-between">
+              <div>
+                <p className="text-sm font-semibold">{selected.nama_toko}</p>
+                <p className="text-xs text-muted-foreground">{selected.id_toko} · {selected.cluster_pareto}</p>
+              </div>
+              <button onClick={() => setSelected(null)} className="text-xs text-purple-600 hover:underline ml-2">Ganti</button>
+            </div>
+            {tipeProgram === "multi_tier" && (
+              <div>
+                <label className="block text-xs font-medium mb-1">Target Volume (ton) <span className="text-red-500">*</span></label>
+                <input
+                  type="number" min={1} step={0.1}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  placeholder="mis. 100"
+                  value={targetTon}
+                  onChange={e => setTargetTon(e.target.value)}
+                />
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-muted-foreground mb-0.5">Brand Utama</p>
+                <p className="font-medium">{selected.brand_utama || "–"}</p>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-muted-foreground mb-0.5">Cluster</p>
+                <p className="font-medium">{selected.cluster_pareto}</p>
+              </div>
+            </div>
+            {err && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{err}</p>}
+          </>
+        )}
+      </div>
+      <div className="flex items-center justify-between px-5 py-4 border-t">
+        <Button variant="outline" size="sm" onClick={() => { reset(); onClose(); }}>Batal</Button>
+        {selected && (
+          <Button size="sm" className="bg-purple-600 hover:bg-purple-700" disabled={saving} onClick={handleSubmit}>
+            {saving ? "Menambahkan..." : "Tambah ke Program"}
+          </Button>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ── EditPesertaMonModal ───────────────────────────────────────────────────────
+
+function EditPesertaMonModal({
+  promoId, target, open, onClose, onSaved,
+}: {
+  promoId:  string;
+  target:   MonEditTarget | null;
+  open:     boolean;
+  onClose:  () => void;
+  onSaved:  (idToko: string, targetTon: number) => Promise<void>;
+}) {
+  const [targetTon, setTargetTon] = useState("");
+  const [saving,    setSaving]    = useState(false);
+  const [err,       setErr]       = useState("");
+
+  useEffect(() => {
+    if (target) { setTargetTon(String(target.target_ton || "")); setErr(""); }
+  }, [target]);
+
+  async function handleSave() {
+    if (!target) return;
+    const ton = parseFloat(targetTon);
+    if (!targetTon || isNaN(ton) || ton <= 0) {
+      setErr("Target Volume harus lebih dari 0");
+      return;
+    }
+    setSaving(true); setErr("");
+    try {
+      await onSaved(target.id_toko, ton);
+      onClose();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Gagal menyimpan");
+    } finally { setSaving(false); }
+  }
+
+  if (!target) return null;
+
+  return (
+    <Modal open={open} onClose={onClose} title="Edit Target Peserta">
+      <div className="px-5 py-4 space-y-4">
+        <div className="bg-gray-50 rounded-lg px-4 py-3">
+          <p className="text-sm font-semibold">{target.nama_toko}</p>
+          <p className="text-xs text-muted-foreground font-mono">{target.id_toko}</p>
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1">Target Volume (ton) <span className="text-red-500">*</span></label>
+          <input
+            type="number" min={1} step={0.1}
+            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400"
+            value={targetTon}
+            autoFocus
+            onChange={e => setTargetTon(e.target.value)}
+          />
+        </div>
+        {err && <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{err}</p>}
+      </div>
+      <div className="flex items-center justify-between px-5 py-4 border-t">
+        <Button variant="outline" size="sm" onClick={onClose}>Batal</Button>
+        <Button size="sm" className="bg-purple-600 hover:bg-purple-700" disabled={saving} onClick={handleSave}>
+          {saving ? "Menyimpan..." : "Simpan Perubahan"}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Confirm overlay ───────────────────────────────────────────────────────────
 
 function Confirm({
@@ -509,7 +738,7 @@ function KonfigurasiSection({ cfg }: { cfg: KonfigurasiPromo }) {
 
 const TIER_PIE_COLORS = ["#9ca3af","#3b82f6","#22c55e","#f59e0b","#f97316","#ef4444","#6366f1"];
 
-function MultiTierMonitoringView({ data }: { data: MultiTierMonData }) {
+function MultiTierMonitoringView({ data, searchTerm, onEdit, onRemove }: { data: MultiTierMonData } & MonParticipantActions) {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   const tierEntries = Object.entries(data.tier_distribution);
@@ -521,7 +750,10 @@ function MultiTierMonitoringView({ data }: { data: MultiTierMonData }) {
     .filter(([name]) => name !== "Reguler" && !name.toLowerCase().includes("overflow"))
     .sort((a, b) => b[1] - a[1])[0]?.[0] ?? "Reguler";
 
-  const sorted = [...data.peserta_detail].sort((a, b) => b.achievement_pct - a.achievement_pct);
+  const q = searchTerm.toLowerCase();
+  const sorted = [...data.peserta_detail]
+    .sort((a, b) => b.achievement_pct - a.achievement_pct)
+    .filter(a => !q || a.nama_toko.toLowerCase().includes(q) || a.id_toko.toLowerCase().includes(q));
 
   return (
     <div className="space-y-5">
@@ -594,6 +826,7 @@ function MultiTierMonitoringView({ data }: { data: MultiTierMonData }) {
                   <TableHead className="text-xs">Tier Berlaku</TableHead>
                   <TableHead className="text-xs text-right">Total Poin</TableHead>
                   <TableHead className="text-xs text-right">Estimasi Rp</TableHead>
+                  <TableHead className="text-xs w-16" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -624,10 +857,22 @@ function MultiTierMonitoringView({ data }: { data: MultiTierMonData }) {
                       <TableCell><TierBadge tier={a.tier_berlaku} /></TableCell>
                       <TableCell className="text-right text-sm">{fmtNum(a.total_poin)}</TableCell>
                       <TableCell className="text-right text-sm font-medium text-purple-700">{fmtRp(a.total_rupiah)}</TableCell>
+                      <TableCell onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center gap-1 justify-end">
+                          <button className="p-1 rounded hover:bg-gray-100 text-muted-foreground hover:text-foreground" title="Edit target"
+                            onClick={() => onEdit?.({ id_toko: a.id_toko, nama_toko: a.nama_toko, target_ton: a.target_ton })}>
+                            <Pencil size={12} />
+                          </button>
+                          <button className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600" title="Hapus peserta"
+                            onClick={() => onRemove({ id_toko: a.id_toko, nama_toko: a.nama_toko })}>
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                     {expandedRow === a.id_toko && (
                       <TableRow key={`${a.id_toko}-expanded`}>
-                        <TableCell colSpan={7} className="bg-purple-50/40 p-4">
+                        <TableCell colSpan={8} className="bg-purple-50/40 p-4">
                           <p className="text-xs font-semibold mb-2">Rincian Breakdown</p>
                           <div className="space-y-1">
                             {a.breakdown.map((b, i) => (
@@ -666,13 +911,14 @@ function MultiTierMonitoringView({ data }: { data: MultiTierMonData }) {
 
 function LegacyMonitoringView({
   monitoring, monSortBy, monOrder, setMonSortBy, setMonOrder, setMonLoaded,
+  searchTerm, onEdit, onRemove,
 }: {
   monitoring: MonitoringData;
   monSortBy: string; monOrder: string;
   setMonSortBy: (v: string) => void;
   setMonOrder:  (v: string) => void;
   setMonLoaded: (v: boolean) => void;
-}) {
+} & MonParticipantActions) {
   return (
     <div className="space-y-5">
       {/* Summary cards */}
@@ -781,10 +1027,13 @@ function LegacyMonitoringView({
                   <TableHead className="text-xs text-right">Achievement</TableHead>
                   <TableHead className="text-xs text-right">Total Reward</TableHead>
                   <TableHead className="text-xs">Status</TableHead>
+                  <TableHead className="text-xs w-16" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {monitoring.achievements.slice(0, 50).map(a => (
+                {monitoring.achievements
+                  .filter(a => !searchTerm || a.nama_toko.toLowerCase().includes(searchTerm.toLowerCase()) || a.id_toko.toLowerCase().includes(searchTerm.toLowerCase()))
+                  .slice(0, 50).map(a => (
                   <TableRow key={a.id_toko}>
                     <TableCell>
                       <p className="text-sm font-medium">{a.nama_toko}</p>
@@ -800,6 +1049,18 @@ function LegacyMonitoringView({
                     </TableCell>
                     <TableCell className="text-right text-sm">{fmtRp(a.total_reward)}</TableCell>
                     <TableCell><MonStatusBadge status={a.status} /></TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1 justify-end">
+                        <button className="p-1 rounded hover:bg-gray-100 text-muted-foreground hover:text-foreground" title="Edit target"
+                          onClick={() => onEdit?.({ id_toko: a.id_toko, nama_toko: a.nama_toko, target_ton: a.target_ton })}>
+                          <Pencil size={12} />
+                        </button>
+                        <button className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600" title="Hapus peserta"
+                          onClick={() => onRemove({ id_toko: a.id_toko, nama_toko: a.nama_toko })}>
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -818,7 +1079,7 @@ function LegacyMonitoringView({
 
 // ── Flat Multiplier Monitoring View ──────────────────────────────────────────
 
-function FlatMultiplierMonitoringView({ data }: { data: FlatMultiplierMonData }) {
+function FlatMultiplierMonitoringView({ data, searchTerm, onRemove }: { data: FlatMultiplierMonData } & Pick<MonParticipantActions, "searchTerm" | "onRemove">) {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -861,10 +1122,14 @@ function FlatMultiplierMonitoringView({ data }: { data: FlatMultiplierMonData })
                   <TableHead className="text-xs text-right">Multiplier</TableHead>
                   <TableHead className="text-xs text-right">Total Poin</TableHead>
                   <TableHead className="text-xs text-right">Estimasi Rp</TableHead>
+                  <TableHead className="text-xs w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {[...data.peserta_detail].sort((a, b) => b.total_poin - a.total_poin).slice(0, 50).map(p => (
+                {[...data.peserta_detail]
+                  .sort((a, b) => b.total_poin - a.total_poin)
+                  .filter(p => !searchTerm || p.nama_toko.toLowerCase().includes(searchTerm.toLowerCase()) || p.id_toko.toLowerCase().includes(searchTerm.toLowerCase()))
+                  .slice(0, 50).map(p => (
                   <TableRow key={p.id_toko}>
                     <TableCell>
                       <p className="text-sm font-medium">{p.nama_toko}</p>
@@ -878,6 +1143,12 @@ function FlatMultiplierMonitoringView({ data }: { data: FlatMultiplierMonData })
                     </TableCell>
                     <TableCell className="text-right text-sm font-medium">{fmtNum(p.total_poin)}</TableCell>
                     <TableCell className="text-right text-sm font-medium text-purple-700">{fmtRp(p.total_rupiah)}</TableCell>
+                    <TableCell>
+                      <button className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600" title="Hapus peserta"
+                        onClick={() => onRemove({ id_toko: p.id_toko, nama_toko: p.nama_toko })}>
+                        <Trash2 size={12} />
+                      </button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -896,7 +1167,7 @@ function FlatMultiplierMonitoringView({ data }: { data: FlatMultiplierMonData })
 
 // ── Leaderboard View ─────────────────────────────────────────────────────────
 
-function LeaderboardView({ data, onRefresh }: { data: LeaderboardMonData; onRefresh: () => void }) {
+function LeaderboardView({ data, onRefresh, searchTerm, onRemove }: { data: LeaderboardMonData; onRefresh: () => void } & Pick<MonParticipantActions, "searchTerm" | "onRemove">) {
   const [activeCluster, setActiveCluster] = useState<string>("all");
 
   const clusters = data.grouped_standings ? Object.keys(data.grouped_standings) : [];
@@ -904,7 +1175,9 @@ function LeaderboardView({ data, onRefresh }: { data: LeaderboardMonData; onRefr
     data.scope === "per_cluster" && data.grouped_standings && activeCluster !== "all"
       ? data.grouped_standings[activeCluster] ?? []
       : data.standings
-  ).slice(0, 100);
+  )
+    .filter(s => !searchTerm || s.nama_toko.toLowerCase().includes(searchTerm.toLowerCase()) || s.id_toko.toLowerCase().includes(searchTerm.toLowerCase()))
+    .slice(0, 100);
 
   const top3 = displayStandings.slice(0, 3);
 
@@ -1026,6 +1299,7 @@ function LeaderboardView({ data, onRefresh }: { data: LeaderboardMonData; onRefr
                   <TableHead className="text-xs text-right">Transaksi</TableHead>
                   <TableHead className="text-xs">Reward</TableHead>
                   <TableHead className="text-xs text-right">Nilai Reward</TableHead>
+                  <TableHead className="text-xs w-10" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1048,6 +1322,12 @@ function LeaderboardView({ data, onRefresh }: { data: LeaderboardMonData; onRefr
                     <TableCell className="text-xs text-muted-foreground">{s.reward_label}</TableCell>
                     <TableCell className="text-right text-sm font-medium text-purple-700">
                       {s.reward_rupiah > 0 ? fmtRp(s.reward_rupiah) : "–"}
+                    </TableCell>
+                    <TableCell>
+                      <button className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600" title="Hapus peserta"
+                        onClick={() => onRemove({ id_toko: s.id_toko, nama_toko: s.nama_toko })}>
+                        <Trash2 size={12} />
+                      </button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1101,6 +1381,12 @@ export default function PromoDetailPage() {
   const [monSortBy,          setMonSortBy]          = useState("achievement");
   const [monOrder,           setMonOrder]           = useState("desc");
   const [actionLoading,      setActionLoading]      = useState(false);
+  const [monSearch,          setMonSearch]          = useState("");
+  const [showAddPesertaMon,  setShowAddPesertaMon]  = useState(false);
+  const [editPesertaMon,     setEditPesertaMon]     = useState<MonEditTarget | null>(null);
+  const [removePesertaMon,   setRemovePesertaMon]   = useState<MonRemoveTarget | null>(null);
+  const [removeMonLoading,   setRemoveMonLoading]   = useState(false);
+  const [monToast,           setMonToast]           = useState<string | null>(null);
 
   const fetchPromo = useCallback(async () => {
     setPromoLoading(true);
@@ -1182,6 +1468,50 @@ export default function PromoDetailPage() {
     }, "Batalkan promo ini? Tindakan ini tidak bisa diurungkan.");
   }
 
+  function showMonToast(msg: string) {
+    setMonToast(msg);
+    setTimeout(() => setMonToast(null), 3000);
+  }
+
+  async function handleAddPesertaMon(idToko: string, namaToko: string, cluster: string, targetTon: number, brandUtama: string) {
+    const r = await fetch(`${API}/api/promo/${promoId}/peserta/add`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id_toko: idToko, nama_toko: namaToko, cluster, target_ton: targetTon, brand_utama: brandUtama }),
+    });
+    if (!r.ok) { const j = await r.json(); throw new Error(j.detail || "Gagal menambah peserta"); }
+    showMonToast("Peserta berhasil ditambahkan");
+    await fetchPromo();
+    setMonLoaded(false);
+    if (activeTab === "monitoring") fetchMonitoring();
+  }
+
+  async function handleEditPesertaMon(idToko: string, targetTon: number) {
+    const r = await fetch(`${API}/api/promo/${promoId}/peserta/${idToko}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_ton: targetTon }),
+    });
+    if (!r.ok) { const j = await r.json(); throw new Error(j.detail || "Gagal menyimpan perubahan"); }
+    showMonToast("Target berhasil diupdate");
+    setMonLoaded(false);
+    fetchMonitoring();
+  }
+
+  async function confirmRemovePesertaMon() {
+    if (!removePesertaMon) return;
+    setRemoveMonLoading(true);
+    try {
+      const r = await fetch(`${API}/api/promo/${promoId}/peserta/${removePesertaMon.id_toko}`, { method: "DELETE" });
+      if (!r.ok) { const j = await r.json(); throw new Error(j.detail); }
+      showMonToast("Peserta berhasil dikeluarkan dari program");
+      setRemovePesertaMon(null);
+      await fetchPromo();
+      setMonLoaded(false);
+      fetchMonitoring();
+    } catch { /* ignore */ } finally { setRemoveMonLoading(false); }
+  }
+
   async function handleRemovePeserta(idToko: string) {
     setActionLoading(true);
     try {
@@ -1236,6 +1566,37 @@ export default function PromoDetailPage() {
           onClose={() => setShowUpload(false)}
           onUploaded={() => fetchPromo()}
         />
+      )}
+      {showAddPesertaMon && (
+        <AddPesertaMonModal
+          promoId={promoId}
+          tipeProgram={promo.tipe_program ?? "legacy"}
+          open={showAddPesertaMon}
+          onClose={() => setShowAddPesertaMon(false)}
+          onAdded={handleAddPesertaMon}
+        />
+      )}
+      {editPesertaMon && (
+        <EditPesertaMonModal
+          promoId={promoId}
+          target={editPesertaMon}
+          open={!!editPesertaMon}
+          onClose={() => setEditPesertaMon(null)}
+          onSaved={handleEditPesertaMon}
+        />
+      )}
+      {removePesertaMon && (
+        <Confirm
+          message={`Hapus ${removePesertaMon.nama_toko} dari program ini?`}
+          onConfirm={confirmRemovePesertaMon}
+          onCancel={() => setRemovePesertaMon(null)}
+          loading={removeMonLoading}
+        />
+      )}
+      {monToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-green-600 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2">
+          <Check size={14} />{monToast}
+        </div>
       )}
 
       <main className="pt-16 max-w-7xl mx-auto px-6 py-8 space-y-6">
@@ -1432,31 +1793,70 @@ export default function PromoDetailPage() {
               <div className="text-center py-12 text-muted-foreground">
                 Monitoring tersedia setelah program diaktifkan
               </div>
-            ) : monLoading && !monitoring ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  {Array.from({length: 4}).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
-                </div>
-                <Skeleton className="h-64 rounded-xl" />
-                <Skeleton className="h-48 rounded-xl" />
-              </div>
-            ) : monitoring?.tipe_program === "flat_multiplier" ? (
-              <FlatMultiplierMonitoringView data={monitoring} />
-            ) : monitoring?.tipe_program === "multi_tier" || (monitoring as MultiTierMonData | null)?.is_multi_tier ? (
-              <MultiTierMonitoringView data={monitoring as MultiTierMonData} />
-            ) : monitoring?.tipe_program === "leaderboard" ? (
-              <LeaderboardView data={monitoring} onRefresh={() => { setMonLoaded(false); fetchMonitoring(); }} />
-            ) : monitoring ? (
-              <LegacyMonitoringView
-                monitoring={monitoring as MonitoringData}
-                monSortBy={monSortBy}
-                monOrder={monOrder}
-                setMonSortBy={setMonSortBy}
-                setMonOrder={setMonOrder}
-                setMonLoaded={setMonLoaded}
-              />
             ) : (
-              <p className="text-sm text-muted-foreground">Gagal memuat data monitoring.</p>
+              <>
+                {/* Toolbar: search + add */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="relative flex-1 min-w-[180px] max-w-xs">
+                    <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      className="w-full border rounded-lg pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400"
+                      placeholder="Cari toko di tabel..."
+                      value={monSearch}
+                      onChange={e => setMonSearch(e.target.value)}
+                    />
+                  </div>
+                  {!isSelesai && (
+                    <Button size="sm" className="gap-1.5 h-8 text-xs bg-purple-600 hover:bg-purple-700" onClick={() => setShowAddPesertaMon(true)}>
+                      <Plus size={12} />Tambah Peserta
+                    </Button>
+                  )}
+                </div>
+
+                {monLoading && !monitoring ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      {Array.from({length: 4}).map((_, i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
+                    </div>
+                    <Skeleton className="h-64 rounded-xl" />
+                    <Skeleton className="h-48 rounded-xl" />
+                  </div>
+                ) : monitoring?.tipe_program === "flat_multiplier" ? (
+                  <FlatMultiplierMonitoringView
+                    data={monitoring}
+                    searchTerm={monSearch}
+                    onRemove={p => setRemovePesertaMon(p)}
+                  />
+                ) : monitoring?.tipe_program === "multi_tier" || (monitoring as MultiTierMonData | null)?.is_multi_tier ? (
+                  <MultiTierMonitoringView
+                    data={monitoring as MultiTierMonData}
+                    searchTerm={monSearch}
+                    onEdit={p => setEditPesertaMon(p)}
+                    onRemove={p => setRemovePesertaMon(p)}
+                  />
+                ) : monitoring?.tipe_program === "leaderboard" ? (
+                  <LeaderboardView
+                    data={monitoring}
+                    onRefresh={() => { setMonLoaded(false); fetchMonitoring(); }}
+                    searchTerm={monSearch}
+                    onRemove={p => setRemovePesertaMon(p)}
+                  />
+                ) : monitoring ? (
+                  <LegacyMonitoringView
+                    monitoring={monitoring as MonitoringData}
+                    monSortBy={monSortBy}
+                    monOrder={monOrder}
+                    setMonSortBy={setMonSortBy}
+                    setMonOrder={setMonOrder}
+                    setMonLoaded={setMonLoaded}
+                    searchTerm={monSearch}
+                    onEdit={p => setEditPesertaMon(p)}
+                    onRemove={p => setRemovePesertaMon(p)}
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground">Gagal memuat data monitoring.</p>
+                )}
+              </>
             )}
           </TabsContent>
 
