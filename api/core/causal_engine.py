@@ -479,7 +479,20 @@ def get_store_causal_effect(id_toko: str, causal_result: dict) -> dict:
     per_toko = causal_result.get("cate_per_toko", {})
     entry    = per_toko.get(id_toko)
     if entry is None:
-        return {"status": "not_found", "id_toko": id_toko}
+        # Toko ini valid (mungkin aktif di production), tapi model dilatih dari
+        # snapshot 300 toko hasil regenerasi (lihat api/data/models/README.md) —
+        # bukan dari member production yang live. Bukan error, jadi bukan 404.
+        return {
+            "status": "not_in_training_sample",
+            "id_toko": id_toko,
+            "message": (
+                "Toko ini tidak termasuk dalam sampel training Causal ML "
+                "(model dilatih dari 300 toko dataset regenerasi, bukan "
+                "seluruh member production aktif saat ini). Estimasi ATE "
+                "keseluruhan platform tetap berlaku sebagai acuan umum."
+            ),
+            "ate_overall_pct": causal_result.get("ate_pct"),
+        }
 
     cate_log   = entry["cate_log"]
     cate_level = entry["cate_level"]

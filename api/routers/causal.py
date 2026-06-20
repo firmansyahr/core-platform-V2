@@ -5,6 +5,10 @@ Causal ML endpoints.
   GET  /api/causal/summary         — ATE + refutation + distribusi CATE
   GET  /api/causal/store/{id_toko} — CATE toko spesifik
 
+Catatan sumber data training vs production: lihat api/data/models/README.md
+— model dilatih dari snapshot loyalty_members.json yang diregenerasi khusus
+(300 toko), TERPISAH dari member production live di Railway Volume.
+
 ── Training Policy ─────────────────────────────────────────────────────────────
 
 Training (POST /train) HANYA dijalankan secara lokal/CLI dengan dataset penuh
@@ -128,7 +132,9 @@ def summary() -> dict:
 def store_effect(id_toko: str) -> dict:
     """
     CATE (Conditional Average Treatment Effect) untuk satu toko.
-    Load dari cache.
+    Load dari cache. Jika id_toko tidak ada di 300 sampel training (lihat
+    api/data/models/README.md), tetap 200 dengan status "not_in_training_sample"
+    — bukan 404, karena toko itu sendiri valid, hanya di luar sampel.
     """
     result = ce.load_causal_results()
     if result is None:
@@ -139,13 +145,10 @@ def store_effect(id_toko: str) -> dict:
 
     status = ce.get_store_causal_effect(id_toko, result)
 
-    if status.get("status") == "not_found":
-        raise HTTPException(
-            404,
-            f"Toko '{id_toko}' tidak ditemukan dalam hasil causal model. "
-            "Toko mungkin tidak aktif pada periode analisis.",
-        )
     if status.get("status") == "not_available":
         raise HTTPException(503, "Cache causal model tidak tersedia")
 
+    # "not_in_training_sample" bukan error — toko valid, hanya tidak termasuk
+    # 300 sampel training (lihat api/data/models/README.md). Tetap 200 dengan
+    # payload informatif, bukan 404.
     return _ok(status)
