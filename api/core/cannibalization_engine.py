@@ -384,6 +384,7 @@ def get_store_cannibalization_status(id_toko: str, training_result: dict) -> dic
         "status":            "ok",
         "id_toko":           id_toko,
         "cluster_label":     interp["label"],
+        "category":          interp["category"],
         "risk_level":        interp["risk_level"],
         "confidence":        round(float(store_data.get(f"prob_cluster_{cluster_id}", 0)), 3),
         "all_probabilities": all_probs,

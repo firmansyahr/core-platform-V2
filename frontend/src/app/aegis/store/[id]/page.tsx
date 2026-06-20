@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, RefreshCw, Plus } from "lucide-react";
+import { Sparkles, RefreshCw, Plus, GitBranch } from "lucide-react";
 import StoreJourneyModal from "@/components/StoreJourneyModal";
 import {
   ComposedChart,
@@ -1090,6 +1090,45 @@ function VolTooltip({
   );
 }
 
+// ─── GMM Cannibalization ──────────────────────────────────────────────────────
+
+interface CannibalizationStatus {
+  status: string;
+  id_toko: string;
+  cluster_label: string;
+  category: string;
+  risk_level: string;
+  confidence: number;
+  all_probabilities: Record<string, number>;
+}
+
+const CATEGORY_COLORS: Record<string, string> = {
+  kanibalisasi:                   "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  de_kanibalisasi:                "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+  tekanan_eksternal:              "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+  fighting_brand_shift:           "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
+  perlu_investigasi:              "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+  campuran:                       "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+  stabil:                         "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
+  kanibalisasi_sebagian_eksternal:"bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+};
+
+const CATEGORY_EXPLANATIONS: Record<string, string> = {
+  kanibalisasi:
+    "Penurunan Elang di toko ini terkompensasi oleh kenaikan Badak SERBAGUNA — volume total relatif stabil. Ini pergeseran internal, bukan kehilangan revenue ke kompetitor.",
+  de_kanibalisasi:
+    "Toko ini menunjukkan pemulihan — porsi Elang naik kembali sementara Badak menurun. Sinyal positif bagi margin.",
+  tekanan_eksternal:
+    "Elang menurun TANPA kompensasi dari Badak, dan volume total turut menurun. Indikasi kuat kehilangan transaksi ke kompetitor eksternal — disarankan validasi TSO segera.",
+  fighting_brand_shift:
+    "Toko bergeser ke Semen Banteng (Fighting Brand) — margin tertekan meski transaksi tetap berjalan.",
+  perlu_investigasi:
+    "Pola perubahan tidak mengikuti kategori standar — disarankan tinjau langsung untuk memahami penyebabnya.",
+  kanibalisasi_sebagian_eksternal:
+    "Toko mengalami pergeseran brand internal sekaligus tekanan eksternal — volume menurun lebih dari sekadar substitusi Elang ke Badak.",
+  stabil: "Tidak ada pergeseran brand-shift signifikan terdeteksi pada toko ini.",
+};
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function StoreDetailPage() {
@@ -1148,6 +1187,8 @@ export default function StoreDetailPage() {
     insight:            string;
   }
   const [compContext,   setCompContext]   = useState<CompTriRow | null>(null);
+  const [cannData,      setCannData]      = useState<CannibalizationStatus | null>(null);
+  const [cannLoad,      setCannLoad]      = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -1245,6 +1286,16 @@ export default function StoreDetailPage() {
         .catch(() => {});
     }
   }, [loading, data]);
+
+  useEffect(() => {
+    if (!id || loading || !data) return;
+    setCannLoad(true);
+    fetch(`${API}/api/cannibalization/store/${encodeURIComponent(id)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => { if (r?.data) setCannData(r.data as CannibalizationStatus); })
+      .catch(() => {})
+      .finally(() => setCannLoad(false));
+  }, [id, loading, data]);
 
   if (loading) return <LoadingSkeleton />;
   if (error || !data) return <ErrorState error={error ?? "Data tidak ditemukan"} />;
@@ -1690,6 +1741,74 @@ export default function StoreDetailPage() {
           cachedAt={predictCachedAt}
           onRefresh={fetchPrediction}
         />
+
+        {/* ── Analisis Pergeseran Brand (GMM) ─────────────────────── */}
+        {(cannLoad || cannData) && (
+          <Card>
+            <CardHeader className="border-b border-border pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <GitBranch className="h-4 w-4 text-purple-500" />
+                Analisis Pergeseran Brand
+                <Badge variant="outline" className="text-[10px] ml-1">GMM Clustering</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-4">
+              {cannLoad ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-6 w-48 rounded-full" />
+                  <Skeleton className="h-16 w-full rounded-lg" />
+                </div>
+              ) : cannData && cannData.status === "ok" && (
+                <>
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <Badge className={CATEGORY_COLORS[cannData.category] ?? "bg-muted text-muted-foreground"}>
+                        {cannData.cluster_label}
+                      </Badge>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Confidence: {(cannData.confidence * 100).toFixed(0)}%
+                        <span className="ml-2 text-muted-foreground/60">· Risiko: {cannData.risk_level}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-lg leading-relaxed">
+                    {CATEGORY_EXPLANATIONS[cannData.category] ??
+                      "Tidak ada pola brand-shift signifikan terdeteksi pada toko ini."}
+                  </div>
+
+                  <details className="mt-3">
+                    <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none">
+                      Lihat detail probabilitas cluster lain
+                    </summary>
+                    <div className="mt-2 space-y-1.5">
+                      {Object.entries(cannData.all_probabilities)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([label, prob]) => (
+                          <div key={label} className="flex items-center justify-between text-xs">
+                            <span className="truncate mr-2 max-w-[220px] text-muted-foreground" title={label}>
+                              {label}
+                            </span>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-primary rounded-full transition-all"
+                                  style={{ width: `${prob * 100}%` }}
+                                />
+                              </div>
+                              <span className="w-10 text-right tabular-nums text-muted-foreground">
+                                {(prob * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </details>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* ── FBSI / HE trend chart ────────────────────────────────── */}
         <Card>

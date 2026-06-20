@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { ChevronRight, Sparkles, RefreshCw, FileText, Gift, AlertTriangle, Swords, TrendingUp } from "lucide-react";
+import { ChevronRight, Sparkles, RefreshCw, FileText, Gift, AlertTriangle, Swords, TrendingUp, GitBranch } from "lucide-react";
 import AegisMap from "@/components/aegis/AegisMap";
 import type { RegionMapData } from "@/components/aegis/AegisMap";
 import { apiFetch } from "@/lib/fetch";
@@ -158,6 +158,11 @@ interface PerfOverview {
   stabil: number;
   perlu_perhatian: number;
   dalam_pemantauan: number;
+}
+
+interface GmmSummary {
+  total_toko: number;
+  summary_by_risk_level: Record<string, { jumlah_toko: number; clusters: string[] }>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -366,6 +371,8 @@ export default function HomePage() {
   const [promosLoad,     setPromosLoad]     = useState(true);
   const [perfData,       setPerfData]       = useState<PerfOverview | null>(null);
   const [perfLoad,       setPerfLoad]       = useState(true);
+  const [gmmData,        setGmmData]        = useState<GmmSummary | null>(null);
+  const [gmmLoad,        setGmmLoad]        = useState(true);
 
   useEffect(() => {
     Promise.all([
@@ -409,14 +416,16 @@ export default function HomePage() {
       fetch(`${API}/api/aegis/cad-history/summary`).then((r) => r.json()),
       fetch(`${API}/api/competitor/triangulation`).then((r) => r.json()),
       fetch(`${API}/api/promo?status=Aktif`).then((r) => r.json()),
+      fetch(`${API}/api/cannibalization/summary`).then((r) => r.json()),
     ])
-      .then(([cad, tri, promo]) => {
+      .then(([cad, tri, promo, gmm]) => {
         setCadSummary(cad.data ?? null);
         setTriData(Array.isArray(tri.data) ? tri.data : []);
         setActivePromos(Array.isArray(promo.data) ? promo.data : []);
+        setGmmData(gmm.data ?? null);
       })
       .catch(() => {})
-      .finally(() => { setTriLoad(false); setPromosLoad(false); });
+      .finally(() => { setTriLoad(false); setPromosLoad(false); setGmmLoad(false); });
 
     // Performance overview — requires auth, hide gracefully on 401
     apiFetch(`${API}/api/performance/overview`)
@@ -625,8 +634,8 @@ export default function HomePage() {
             </Card>
           )}
 
-          {/* ── Competitor Intelligence + Program Promo ─────────────────── */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* ── Competitor Intelligence + Program Promo + Brand-Shift ────── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 
             {/* Competitor Intelligence */}
             <Card className="shadow-sm">
@@ -733,6 +742,53 @@ export default function HomePage() {
                       </p>
                     )}
                   </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Analisis Brand-Shift (GMM) */}
+            <Card className="shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <GitBranch className="h-4 w-4 text-purple-500" />
+                  Analisis Brand-Shift
+                </CardTitle>
+                <Link href="/ilp" className="text-xs text-primary hover:underline">
+                  Lihat ILP →
+                </Link>
+              </CardHeader>
+              <CardContent>
+                {gmmLoad ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <Skeleton className="h-16 rounded-lg" />
+                    <Skeleton className="h-16 rounded-lg" />
+                  </div>
+                ) : gmmData ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="text-center p-2 rounded-lg bg-blue-50 dark:bg-blue-950/20">
+                        <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                          {gmmData.summary_by_risk_level?.["Rendah"]?.jumlah_toko ?? 0}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">Kanibalisasi Internal</div>
+                      </div>
+                      <div className="text-center p-2 rounded-lg bg-red-50 dark:bg-red-950/20">
+                        <div className="text-xl font-bold text-red-600 dark:text-red-400">
+                          {gmmData.summary_by_risk_level?.["Tinggi"]?.jumlah_toko ?? 0}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">Tekanan Eksternal</div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-3">
+                      Dari {gmmData.total_toko.toLocaleString("id-ID")} toko dianalisis menggunakan
+                      unsupervised clustering (GMM) untuk membedakan pergeseran brand internal dari
+                      tekanan kompetitor eksternal.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-6">
+                    Model GMM belum tersedia
+                  </p>
                 )}
               </CardContent>
             </Card>

@@ -14,7 +14,7 @@ import {
 const HERO_BADGES = [
   "Python", "FastAPI", "Next.js 14", "TypeScript",
   "XGBoost", "Prophet", "SHAP", "ILP/PuLP",
-  "scikit-learn", "Recharts", "Claude API",
+  "scikit-learn", "GMM", "Recharts", "Claude API",
 ];
 
 const MODULES = [
@@ -179,6 +179,14 @@ const AI_CAPS = [
     detail: "Volume delta · FBSI delta · Verdict otomatis · Journey reconstruction",
     color: "text-purple-600 dark:text-purple-400",
     bg: "bg-purple-50 dark:bg-purple-950/20",
+  },
+  {
+    icon: ShieldCheck,
+    title: "GMM Cannibalization Detector",
+    desc: "Membedakan kanibalisasi internal dari tekanan kompetitor eksternal",
+    detail: "Gaussian Mixture Model · BIC-optimal k · 4 brand-shift features · Digunakan ILP & Smart Promotion Engine",
+    color: "text-indigo-600 dark:text-indigo-400",
+    bg: "bg-indigo-50 dark:bg-indigo-950/20",
   },
 ];
 
