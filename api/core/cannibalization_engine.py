@@ -391,25 +391,78 @@ def get_store_cannibalization_status(id_toko: str, training_result: dict) -> dic
     }
 
 
-def get_all_stores_cannibalization_summary(training_result: dict) -> dict:
-    interpretations = training_result["cluster_interpretations"]
+def get_all_stores_cannibalization_summary(
+    training_result: dict,
+    current_store_ids: set[str] | None = None,
+) -> dict:
+    """
+    Model GMM dilatih OFFLINE dari data FULL (training_result mencakup
+    semua toko yang pernah dianalisis, mis. 17.588) — itu tetap dipakai
+    apa adanya untuk akurasi clustering, TIDAK diubah di sini.
 
+    current_store_ids (kalau diberikan) membatasi angka yang DITAMPILKAN
+    ke user agar konteksnya cocok dengan skala data production yang
+    sedang live (mis. 5.248 toko sample) — bukan skala dataset training.
+    Karakteristik cluster (label/category/risk_level/avg_*) tetap sama;
+    hanya jumlah_toko per cluster, validation_summary, dan total_toko
+    yang dihitung ulang dari subset yang relevan.
+    """
+    interpretations  = training_result["cluster_interpretations"]
+    all_assignments  = training_result.get("store_assignments", [])
+
+    if current_store_ids is not None:
+        relevant_assignments = [
+            s for s in all_assignments if s["ID Toko"] in current_store_ids
+        ]
+    else:
+        relevant_assignments = all_assignments
+
+    cluster_count: dict[str, int] = {}
+    for s in relevant_assignments:
+        cid = str(s["cluster"])
+        cluster_count[cid] = cluster_count.get(cid, 0) + 1
+
+    cluster_details: list[dict] = []
     summary_by_risk: dict[str, dict] = {}
-    for interp in interpretations.values():
+    for cid, interp in interpretations.items():
+        jumlah = cluster_count.get(cid, 0)
+        cluster_details.append({**interp, "jumlah_toko": jumlah})
+
         risk = interp["risk_level"]
         if risk not in summary_by_risk:
             summary_by_risk[risk] = {"jumlah_toko": 0, "clusters": []}
-        summary_by_risk[risk]["jumlah_toko"] += interp["jumlah_toko"]
-        summary_by_risk[risk]["clusters"].append(interp["label"])
+        summary_by_risk[risk]["jumlah_toko"] += jumlah
+        if jumlah > 0:
+            summary_by_risk[risk]["clusters"].append(interp["label"])
+
+    def _toko_sum(keys: list[str]) -> int:
+        return sum(cluster_count.get(c, 0) for c in keys)
+
+    kani_clusters   = [c for c, i in interpretations.items() if i["category"] == "kanibalisasi"]
+    dekani_clusters = [c for c, i in interpretations.items() if i["category"] == "de_kanibalisasi"]
+    ext_clusters    = [c for c, i in interpretations.items() if i["category"] == "tekanan_eksternal"]
+    fb_clusters     = [c for c, i in interpretations.items() if i["category"] == "fighting_brand_shift"]
+
+    validation_summary = {
+        "kanibalisasi_clusters_found":       len(kani_clusters),
+        "kanibalisasi_total_toko":           _toko_sum(kani_clusters),
+        "de_kanibalisasi_clusters_found":    len(dekani_clusters),
+        "de_kanibalisasi_total_toko":        _toko_sum(dekani_clusters),
+        "tekanan_eksternal_clusters_found":  len(ext_clusters),
+        "tekanan_eksternal_total_toko":      _toko_sum(ext_clusters),
+        "fighting_brand_clusters_found":     len(fb_clusters),
+        "fighting_brand_total_toko":         _toko_sum(fb_clusters),
+    }
 
     return {
-        "total_toko":             training_result["total_toko_dianalisis"],
-        "jumlah_cluster":         training_result["optimal_k"],
-        "periode_akhir":          training_result.get("periode_akhir", ""),
-        "trained_at":             training_result.get("trained_at", ""),
-        "validation_summary":     training_result.get("validation_summary", {}),
-        "summary_by_risk_level":  summary_by_risk,
-        "cluster_details":        list(interpretations.values()),
-        "gmm_features_used":      training_result.get("gmm_features_used", CANNIBALIZATION_FEATURES),
-        "descriptive_features":   training_result.get("descriptive_features", DESCRIPTIVE_FEATURES),
+        "total_toko":               len(relevant_assignments),
+        "total_toko_model_training": len(all_assignments),
+        "jumlah_cluster":           training_result["optimal_k"],
+        "periode_akhir":            training_result.get("periode_akhir", ""),
+        "trained_at":               training_result.get("trained_at", ""),
+        "validation_summary":       validation_summary,
+        "summary_by_risk_level":    summary_by_risk,
+        "cluster_details":          cluster_details,
+        "gmm_features_used":        training_result.get("gmm_features_used", CANNIBALIZATION_FEATURES),
+        "descriptive_features":     training_result.get("descriptive_features", DESCRIPTIVE_FEATURES),
     }

@@ -161,8 +161,14 @@ interface PerfOverview {
 }
 
 interface GmmSummary {
-  total_toko: number;
-  summary_by_risk_level: Record<string, { jumlah_toko: number; clusters: string[] }>;
+  total_toko: number;              // cross-checked terhadap data production yang live, BUKAN skala training
+  total_toko_model_training: number; // skala dataset training penuh — transparansi teknis, tidak dirender
+  validation_summary: {
+    kanibalisasi_total_toko: number;
+    de_kanibalisasi_total_toko: number;
+    fighting_brand_total_toko: number;
+    tekanan_eksternal_total_toko: number;
+  };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -765,25 +771,51 @@ export default function HomePage() {
                   </div>
                 ) : gmmData ? (
                   <>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="text-center p-2 rounded-lg bg-blue-50 dark:bg-blue-950/20">
-                        <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
-                          {gmmData.summary_by_risk_level?.["Rendah"]?.jumlah_toko ?? 0}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">Kanibalisasi Internal</div>
-                      </div>
-                      <div className="text-center p-2 rounded-lg bg-red-50 dark:bg-red-950/20">
-                        <div className="text-xl font-bold text-red-600 dark:text-red-400">
-                          {gmmData.summary_by_risk_level?.["Tinggi"]?.jumlah_toko ?? 0}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">Tekanan Eksternal</div>
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-3">
-                      Dari {gmmData.total_toko.toLocaleString("id-ID")} toko dianalisis menggunakan
-                      unsupervised clustering (GMM) untuk membedakan pergeseran brand internal dari
-                      tekanan kompetitor eksternal.
-                    </p>
+                    {(() => {
+                      const v = gmmData.validation_summary;
+                      const kanibalisasi    = v?.kanibalisasi_total_toko ?? 0;
+                      const deKanibalisasi  = v?.de_kanibalisasi_total_toko ?? 0;
+                      const fightingBrand   = v?.fighting_brand_total_toko ?? 0;
+                      const tekananEksternal = v?.tekanan_eksternal_total_toko ?? 0;
+                      const total   = gmmData.total_toko ?? 0;
+                      const stabil  = Math.max(total - (kanibalisasi + deKanibalisasi + fightingBrand + tekananEksternal), 0);
+                      const stabilPct = total > 0 ? ((stabil / total) * 100).toFixed(0) : "0";
+
+                      return (
+                        <>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="text-center p-2 rounded-lg bg-blue-50 dark:bg-blue-950/20">
+                              <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                                {kanibalisasi.toLocaleString("id-ID")}
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-0.5">Kanibalisasi Internal</div>
+                            </div>
+                            <div className="text-center p-2 rounded-lg bg-green-50 dark:bg-green-950/20">
+                              <div className="text-lg font-bold text-green-600 dark:text-green-400">
+                                {deKanibalisasi.toLocaleString("id-ID")}
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-0.5">De-Kanibalisasi</div>
+                            </div>
+                            <div className="text-center p-2 rounded-lg bg-orange-50 dark:bg-orange-950/20">
+                              <div className="text-lg font-bold text-orange-600 dark:text-orange-400">
+                                {fightingBrand.toLocaleString("id-ID")}
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-0.5">Fighting Brand</div>
+                            </div>
+                            <div className="text-center p-2 rounded-lg bg-red-50 dark:bg-red-950/20">
+                              <div className="text-lg font-bold text-red-600 dark:text-red-400">
+                                {tekananEksternal.toLocaleString("id-ID")}
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-0.5">Tekanan Eksternal</div>
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-3 pt-3 border-t">
+                            Dari {total.toLocaleString("id-ID")} toko dianalisis ({stabil.toLocaleString("id-ID")} toko /{" "}
+                            {stabilPct}% berstatus stabil/normal, tidak ditampilkan di atas).
+                          </p>
+                        </>
+                      );
+                    })()}
                   </>
                 ) : (
                   <p className="text-sm text-muted-foreground text-center py-6">

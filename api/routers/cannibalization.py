@@ -71,13 +71,23 @@ def train(
 
 @router.get("/summary")
 def summary() -> dict:
-    """Cluster distribution summary. Auto-trains on first call if cache absent."""
+    """
+    Cluster distribution summary. Auto-trains on first call if cache absent.
+
+    Model GMM dilatih offline dari dataset penuh (lihat
+    api/scripts/train_causal_model.py-sejenis untuk pola yang sama), tapi
+    angka yang ditampilkan di sini di-cross-check terhadap current_store_ids
+    (toko yang benar-benar ada di data production yang sedang live) agar
+    konteksnya cocok dengan skala yang dilihat user di seluruh platform —
+    lihat docstring get_all_stores_cannibalization_summary().
+    """
     df = get_data()
     if df is None or df.empty:
         raise HTTPException(503, "Data belum dimuat")
 
     result = _require_cached_or_train(df)
-    return _ok(ce.get_all_stores_cannibalization_summary(result))
+    current_store_ids = set(df["ID Toko"].unique())
+    return _ok(ce.get_all_stores_cannibalization_summary(result, current_store_ids))
 
 
 @router.get("/store/{id_toko}")
