@@ -6,7 +6,19 @@ __pycache__/
 *.parquet
 frontend/node_modules/
 frontend/.next/
+# CATATAN SEMENTARA (2026-06-20): loyalty_members.json di-force-add ke git
+# (git add -f) meski baris ignore di bawah ini tetap ada, karena data ini
+# dibutuhkan SAMA antara training Causal ML lokal dan production Railway,
+# dan saat ini TIDAK ADA persistent volume di Railway (api/data/ = production
+# path langsung dari repo). Konsekuensi: perubahan loyalty_members.json di
+# PRODUCTION (misal admin tambah peserta lewat UI) akan HILANG saat redeploy
+# berikutnya, kembali ke versi yang ter-commit di git — sama seperti masalah
+# yang sudah terjadi sebelumnya pada marketshare_brand.json. Trade-off sadar
+# untuk mendukung Causal ML training yang konsisten, BUKAN solusi permanen.
+# Migrasi ke SQLite + Railway Volume akan menyelesaikan ini secara mendasar.
 api/data/loyalty_members.json
 api/data/promos.json
 api/data/cad_history.json
-api/data/models/
+api/data/models/*
+!api/data/models/causal_training_result.json
+!api/data/models/gmm_training_result.json
