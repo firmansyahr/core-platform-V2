@@ -126,10 +126,21 @@ def get_takeout_recommendations(
     )
 
 
+def _get_gmm_info(id_toko: str, gmm_lookup: dict, interps: dict) -> dict:
+    s = gmm_lookup.get(str(id_toko))
+    if s is None:
+        return {"category": None, "label": None, "confidence": None}
+    cl_id = str(s["cluster"])
+    interp = interps.get(cl_id, {})
+    conf   = float(s.get(f"prob_cluster_{cl_id}", 0.5))
+    return {"category": interp.get("category"), "label": interp.get("label"), "confidence": round(conf, 3)}
+
+
 def get_smart_promotions(
     members_df: pd.DataFrame,
     df_transaksi: pd.DataFrame,
     store_crs: pd.DataFrame,
+    gmm_result: dict | None = None,
 ) -> pd.DataFrame:
     """
     Determine recommended promo type per active member:
@@ -137,7 +148,10 @@ def get_smart_promotions(
       Retention Boost : Oranye + Pola A → 10 000/ton, 2 months
       Loyalty Reward  : Pola D + vol +10% → 10 000/ton, 3 months
       Standard        : else             →  5 000/ton
-    Returns member rows with tipe_promo, rate, est_budget, est_roi.
+    When gmm_result is provided, kanibalisasi stores are downgraded and
+    tekanan_eksternal / fighting_brand_shift stores are upgraded.
+    Returns member rows with tipe_promo, rate, est_budget, est_roi,
+    plus gmm_category, override_reason, original_recommendation.
     """
     active = members_df[members_df["status"] == "Aktif"].copy()
     if active.empty:
@@ -154,6 +168,13 @@ def get_smart_promotions(
         if "ID Toko" in store_crs.columns
         else pd.DataFrame()
     )
+
+    # Build GMM lookup once for O(1) per-store access
+    gmm_lookup: dict = {}
+    gmm_interps: dict = {}
+    if gmm_result:
+        gmm_lookup  = {str(s["ID Toko"]): s for s in gmm_result.get("store_assignments", [])}
+        gmm_interps = gmm_result.get("cluster_interpretations", {})
 
     results: list[dict] = []
     for _, m in active.iterrows():
@@ -173,6 +194,7 @@ def get_smart_promotions(
             if prior_vol > 0 else 0.0
         )
 
+        # Base AEGIS recommendation
         if level == "Merah" and pola_kode == "B":
             tipe_promo = "Emergency Boost"; durasi = 1
         elif level == "Oranye" and pola_kode == "A":
@@ -181,6 +203,39 @@ def get_smart_promotions(
             tipe_promo = "Loyalty Reward";  durasi = 3
         else:
             tipe_promo = "Standard";        durasi = 0
+
+        # GMM override/modifier
+        original_recommendation: str | None = None
+        override_reason:         str | None = None
+        gmm_category:            str | None = None
+        gmm_label:               str | None = None
+        gmm_confidence:          float | None = None
+
+        if gmm_result:
+            g = _get_gmm_info(id_toko, gmm_lookup, gmm_interps)
+            gmm_category   = g["category"]
+            gmm_label      = g["label"]
+            gmm_confidence = g["confidence"]
+
+            if gmm_category == "kanibalisasi" and tipe_promo in ("Emergency Boost", "Retention Boost"):
+                original_recommendation = tipe_promo
+                tipe_promo = "Standard"
+                durasi = 0
+                override_reason = (
+                    f"AEGIS mendeteksi pola {pola_kode} (level {level}), namun analisis "
+                    f"brand-shift menunjukkan ini pola Kanibalisasi Internal "
+                    f"(Elang→Badak, volume stabil) — bukan kehilangan revenue nyata. "
+                    f"Reward diturunkan ke Standard untuk efisiensi budget."
+                )
+            elif gmm_category in ("tekanan_eksternal", "fighting_brand_shift") and tipe_promo == "Standard":
+                original_recommendation = tipe_promo
+                tipe_promo = "Retention Boost"
+                durasi = 2
+                override_reason = (
+                    f"Analisis brand-shift menunjukkan indikasi {gmm_label} "
+                    f"meski AEGIS belum menaikkan level warning. Rekomendasi reward "
+                    f"dinaikkan sebagai tindakan pencegahan dini."
+                )
 
         rate       = REWARD_RATES[tipe_promo]
         avg_ton    = recent_vol if recent_vol > 0 else prior_vol
@@ -205,6 +260,11 @@ def get_smart_promotions(
             "durasi":        durasi,
             "est_budget":    round(est_budget),
             "est_roi":       est_roi,
+            "gmm_category":            gmm_category,
+            "gmm_label":               gmm_label,
+            "gmm_confidence":          gmm_confidence,
+            "override_reason":         override_reason,
+            "original_recommendation": original_recommendation,
         })
 
     return pd.DataFrame(results).reset_index(drop=True) if results else pd.DataFrame()

@@ -145,12 +145,19 @@ def coverage() -> dict:
 
 @router.get("/triangulation")
 def triangulation() -> dict:
+    from api.core.cannibalization_engine import load_cached_result
+
     store_crs = _get_crs_by_provinsi()
     if store_crs.empty:
         raise HTTPException(503, "Data AEGIS tidak tersedia")
     sp  = ce.load_share_provinsi()
     ms  = ce.load_marketshare_brand()
     res = ce.triangulate_aegis_with_asperssi(store_crs, sp, ms)
+
+    gmm_result = load_cached_result()
+    if gmm_result:
+        res = ce.cross_check_gmm_with_triangulation(res, gmm_result, store_crs)
+
     return _ok(res)
 
 

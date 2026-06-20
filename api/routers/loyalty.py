@@ -523,6 +523,8 @@ def get_takeout_recs() -> dict:
 
 @router.get("/smart-promotions")
 def get_smart_promos() -> dict:
+    from api.core.cannibalization_engine import load_cached_result
+
     with _LOCK:
         members = _rj(_MEMBERS_PATH)
 
@@ -530,10 +532,15 @@ def get_smart_promos() -> dict:
     if not active:
         return {"status": "ok", "data": [], "meta": _meta(total=0)}
 
-    crs    = get_store_crs()
-    promos = get_smart_promotions(pd.DataFrame(active), load_data(), crs)
-    data   = promos.to_dict("records") if not promos.empty else []
-    return {"status": "ok", "data": data, "meta": _meta(total=len(data))}
+    crs        = get_store_crs()
+    gmm_result = load_cached_result()  # None if model not yet trained
+    promos     = get_smart_promotions(pd.DataFrame(active), load_data(), crs, gmm_result=gmm_result)
+    data       = promos.to_dict("records") if not promos.empty else []
+    return {
+        "status": "ok",
+        "data":   data,
+        "meta":   _meta(total=len(data), gmm_adjustment_active=gmm_result is not None),
+    }
 
 
 # ── GET /api/loyalty/ilp-recommendations ─────────────────────────────────────

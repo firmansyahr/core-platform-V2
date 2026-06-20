@@ -68,6 +68,11 @@ interface SmartPromo {
   aegis_score: number; level: string;
   promo_aktif: string; tipe_promo: string; rate: number;
   durasi: number; est_budget: number; est_roi: number;
+  gmm_category:            string | null;
+  gmm_label:               string | null;
+  gmm_confidence:          number | null;
+  override_reason:         string | null;
+  original_recommendation: string | null;
 }
 interface ILPRec {
   id_toko: string; nama_toko: string; kabupaten: string;
@@ -2113,7 +2118,19 @@ function LoyaltyContent() {
                                 ) : <span className="text-xs text-muted-foreground">–</span>}
                               </TableCell>
                               <TableCell><RewardBadge type={p.promo_aktif} /></TableCell>
-                              <TableCell><RewardBadge type={p.tipe_promo} /></TableCell>
+                              <TableCell>
+                                <div className="space-y-1 min-w-[120px]">
+                                  <RewardBadge type={p.tipe_promo} />
+                                  {p.override_reason && (
+                                    <div className="p-1.5 bg-blue-50 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-800/50 rounded text-[10px]">
+                                      <span className="text-blue-700 dark:text-blue-400 font-semibold block mb-0.5">
+                                        Disesuaikan dari {p.original_recommendation}
+                                      </span>
+                                      <p className="text-muted-foreground leading-snug">{p.override_reason}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </TableCell>
                               <TableCell className="text-xs tabular-nums whitespace-nowrap">{fmtRp(p.est_budget)}</TableCell>
                               <TableCell className="text-xs tabular-nums text-muted-foreground">{p.est_roi.toFixed(1)}×</TableCell>
                               <TableCell className="pr-3">

@@ -17,6 +17,15 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface GmmCrossCheck {
+  category_distribution:  Record<string, number>;
+  kanibalisasi_pct:        number;
+  eksternal_pct:           number;
+  total_toko_dianalisis:   number;
+  catatan:                 string | null;
+  gmm_tersedia:            boolean;
+}
+
 interface TriRow {
   provinsi:                 string;
   aegis_warning_pct:        number;
@@ -41,6 +50,7 @@ interface TriRow {
   insight:          string;
   data_completeness: string;
   catatan_data:      string;
+  gmm_cross_check?: GmmCrossCheck;
 }
 
 interface RankRow {
@@ -250,6 +260,36 @@ function ExpandedRow({ row }: { row: TriRow }) {
               kecil/lokal yang tidak teridentifikasi secara individual
               {row.aggregate_others_trend ? ` (${row.aggregate_others_trend})` : ""}.
             </p>
+          </div>
+        )}
+        {row.gmm_cross_check?.gmm_tersedia && (
+          <div className="mt-3 pt-3 border-t border-border">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+              Cross-Check Analisis Brand-Shift (GMM)
+            </p>
+            <div className="grid grid-cols-2 gap-2 text-xs mb-2">
+              <div>
+                Kanibalisasi internal:{" "}
+                <strong className="text-blue-600 dark:text-blue-400">
+                  {row.gmm_cross_check.kanibalisasi_pct}%
+                </strong>
+              </div>
+              <div>
+                Tekanan eksternal:{" "}
+                <strong className="text-red-600 dark:text-red-400">
+                  {row.gmm_cross_check.eksternal_pct}%
+                </strong>
+              </div>
+            </div>
+            {row.gmm_cross_check.catatan && (
+              <div className={`p-2 rounded text-[10px] leading-snug ${
+                row.gmm_cross_check.catatan.startsWith("PERHATIAN")
+                  ? "bg-yellow-50 dark:bg-yellow-950/20 text-yellow-700 dark:text-yellow-400 border border-yellow-200/60 dark:border-yellow-800/50"
+                  : "bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 border border-green-200/60 dark:border-green-800/50"
+              }`}>
+                {row.gmm_cross_check.catatan}
+              </div>
+            )}
           </div>
         )}
         <div className="rounded-lg bg-muted/40 p-2.5 space-y-1">

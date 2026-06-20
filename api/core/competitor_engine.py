@@ -307,6 +307,72 @@ def triangulate_aegis_with_asperssi(
     return sorted(results, key=lambda x: x["aegis_warning_pct"], reverse=True)
 
 
+# ── GMM cross-check ──────────────────────────────────────────────────────────
+
+def cross_check_gmm_with_triangulation(
+    triangulation_results: list[dict],
+    gmm_result: dict,
+    store_crs_df: pd.DataFrame,
+) -> list[dict]:
+    """
+    Enrich each triangulation result with GMM category distribution per province.
+    Adds 'gmm_cross_check' key to each result dict (in-place mutation + return).
+    """
+    assignments = gmm_result.get("store_assignments", [])
+    interps     = gmm_result.get("cluster_interpretations", {})
+    if not assignments or store_crs_df.empty:
+        return triangulation_results
+
+    store_to_category: dict[str, str] = {
+        str(s["ID Toko"]): interps.get(str(s["cluster"]), {}).get("category", "tidak_ada_data")
+        for s in assignments
+    }
+
+    provinsi_to_ids: dict[str, list[str]] = {}
+    if "Provinsi Toko" in store_crs_df.columns and "ID Toko" in store_crs_df.columns:
+        for prov, grp in store_crs_df.groupby("Provinsi Toko")["ID Toko"]:
+            provinsi_to_ids[str(prov)] = grp.astype(str).tolist()
+
+    for result in triangulation_results:
+        ids   = provinsi_to_ids.get(result["provinsi"], [])
+        counts: dict[str, int] = {}
+        for id_toko in ids:
+            cat = store_to_category.get(id_toko, "tidak_ada_data")
+            counts[cat] = counts.get(cat, 0) + 1
+
+        total = sum(counts.values())
+        kani_n = counts.get("kanibalisasi", 0) + counts.get("kanibalisasi_sebagian_eksternal", 0)
+        ext_n  = counts.get("tekanan_eksternal", 0) + counts.get("fighting_brand_shift", 0)
+        kani_pct = round(kani_n / total * 100, 1) if total else 0.0
+        ext_pct  = round(ext_n  / total * 100, 1) if total else 0.0
+
+        catatan: str | None = None
+        if result.get("verdict") == "KONFIRMASI_KOMPETITOR":
+            if kani_pct > ext_pct:
+                catatan = (
+                    f"PERHATIAN: Triangulasi ASPERSSI menunjukkan tekanan kompetitor, "
+                    f"namun {kani_pct}% toko di provinsi ini justru menunjukkan "
+                    f"pola kanibalisasi internal. Disarankan validasi lebih lanjut "
+                    f"sebelum eskalasi besar-besaran."
+                )
+            else:
+                catatan = (
+                    f"KONSISTEN: {ext_pct}% toko menunjukkan sinyal tekanan "
+                    f"eksternal, sejalan dengan hasil triangulasi ASPERSSI."
+                )
+
+        result["gmm_cross_check"] = {
+            "category_distribution":  counts,
+            "kanibalisasi_pct":        kani_pct,
+            "eksternal_pct":           ext_pct,
+            "total_toko_dianalisis":   total,
+            "catatan":                 catatan,
+            "gmm_tersedia":            True,
+        }
+
+    return triangulation_results
+
+
 # ── Competitor ranking ────────────────────────────────────────────────────────
 
 def get_competitor_ranking(ms_brand_data: dict) -> dict[str, Any]:
