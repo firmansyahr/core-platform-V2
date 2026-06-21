@@ -5,7 +5,7 @@ import {
   AlertTriangle, BarChart2, Users, TrendingUp,
   Brain, Cpu, Target, Zap, Layers, GitBranch,
   ShieldCheck, Activity, Swords, Bot, Sparkles,
-  CheckCircle2, XCircle,
+  CheckCircle2, XCircle, Scale,
   ExternalLink, Map, FileText, Award,
 } from "lucide-react";
 
@@ -187,6 +187,14 @@ const AI_CAPS = [
     detail: "Gaussian Mixture Model · BIC-optimal k · 4 brand-shift features · Digunakan ILP & Smart Promotion Engine",
     color: "text-indigo-600 dark:text-indigo-400",
     bg: "bg-indigo-50 dark:bg-indigo-950/20",
+  },
+  {
+    icon: Scale,
+    title: "Causal Impact Estimator",
+    desc: "Mengkuantifikasi besaran dampak program loyalty terhadap volume toko",
+    detail: "DoWhy + EconML · Panel Diff-in-Diff · Causal Forest (CATE per toko) · Refutation test",
+    color: "text-teal-600 dark:text-teal-400",
+    bg: "bg-teal-50 dark:bg-teal-950/20",
   },
 ];
 

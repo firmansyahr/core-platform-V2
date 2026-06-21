@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { ChevronRight, Sparkles, RefreshCw, FileText, Gift, AlertTriangle, Swords, TrendingUp, GitBranch } from "lucide-react";
+import { ChevronRight, Sparkles, RefreshCw, FileText, Gift, AlertTriangle, Swords, TrendingUp, GitBranch, Scale, CheckCircle, AlertCircle } from "lucide-react";
 import AegisMap from "@/components/aegis/AegisMap";
 import type { RegionMapData } from "@/components/aegis/AegisMap";
 import { apiFetch } from "@/lib/fetch";
@@ -169,6 +169,14 @@ interface GmmSummary {
     fighting_brand_total_toko: number;
     tekanan_eksternal_total_toko: number;
   };
+}
+
+interface CausalSummary {
+  status: string;
+  ate_pct: number;
+  att_naive_pct: number;
+  refutation_passed: boolean;
+  n_treated: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -379,6 +387,8 @@ export default function HomePage() {
   const [perfLoad,       setPerfLoad]       = useState(true);
   const [gmmData,        setGmmData]        = useState<GmmSummary | null>(null);
   const [gmmLoad,        setGmmLoad]        = useState(true);
+  const [causalData,     setCausalData]     = useState<CausalSummary | null>(null);
+  const [causalLoad,     setCausalLoad]     = useState(true);
 
   useEffect(() => {
     Promise.all([
@@ -423,15 +433,17 @@ export default function HomePage() {
       fetch(`${API}/api/competitor/triangulation`).then((r) => r.json()),
       fetch(`${API}/api/promo?status=Aktif`).then((r) => r.json()),
       fetch(`${API}/api/cannibalization/summary`).then((r) => r.json()),
+      fetch(`${API}/api/causal/summary`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
     ])
-      .then(([cad, tri, promo, gmm]) => {
+      .then(([cad, tri, promo, gmm, causal]) => {
         setCadSummary(cad.data ?? null);
         setTriData(Array.isArray(tri.data) ? tri.data : []);
         setActivePromos(Array.isArray(promo.data) ? promo.data : []);
         setGmmData(gmm.data ?? null);
+        setCausalData(causal?.data ?? null);
       })
       .catch(() => {})
-      .finally(() => { setTriLoad(false); setPromosLoad(false); setGmmLoad(false); });
+      .finally(() => { setTriLoad(false); setPromosLoad(false); setGmmLoad(false); setCausalLoad(false); });
 
     // Performance overview — requires auth, hide gracefully on 401
     apiFetch(`${API}/api/performance/overview`)
@@ -821,6 +833,83 @@ export default function HomePage() {
                   <p className="text-sm text-muted-foreground text-center py-6">
                     Model GMM belum tersedia
                   </p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Dampak Kausal Program Loyalty (DoWhy + EconML) */}
+            <Card className="shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Scale className="h-4 w-4 text-indigo-500" />
+                  Dampak Kausal Program Loyalty
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {causalLoad ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-8 w-32 rounded-lg" />
+                    <Skeleton className="h-12 w-full rounded-lg" />
+                  </div>
+                ) : causalData && causalData.status === "ok" ? (
+                  <>
+                    <div className="flex items-baseline gap-2 mb-2">
+                      <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+                        {causalData.ate_pct > 0 ? "+" : ""}{causalData.ate_pct}%
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        efek rata-rata (Conditional DiD)
+                      </span>
+                    </div>
+
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      Setelah mengontrol baseline volume, cluster, dan aktivitas toko, program
+                      loyalty diestimasi {causalData.ate_pct >= 0 ? "meningkatkan" : "menurunkan"}{" "}
+                      volume SEMEN ELANG sebesar {Math.abs(causalData.ate_pct)}% dibanding kondisi
+                      toko sebelum masuk program.
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Naive DiD (tanpa adjustment)</span>
+                        <div className="font-semibold">
+                          {causalData.att_naive_pct > 0 ? "+" : ""}{causalData.att_naive_pct}%
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Refutation Test</span>
+                        <div className="font-semibold flex items-center gap-1">
+                          {causalData.refutation_passed ? (
+                            <><CheckCircle className="h-3 w-3 text-green-600" /> Passed</>
+                          ) : (
+                            <><AlertCircle className="h-3 w-3 text-yellow-600" /> Perlu Review</>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <details className="mt-3">
+                      <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none">
+                        Apa bedanya Naive vs Conditional?
+                      </summary>
+                      <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+                        Naive DiD ({causalData.att_naive_pct > 0 ? "+" : ""}{causalData.att_naive_pct}%) hanya
+                        membandingkan volume sebelum/sesudah tanpa mengontrol faktor lain — sering menyesatkan
+                        karena toko bermasalah cenderung lebih dulu masuk program. Conditional DiD ({causalData.ate_pct > 0 ? "+" : ""}{causalData.ate_pct}%)
+                        mengontrol cluster, baseline volume, dan aktivitas toko, memberikan estimasi dampak
+                        yang lebih akurat.
+                      </p>
+                    </details>
+
+                    <p className="text-xs text-muted-foreground mt-2 italic">
+                      Estimasi berbasis {causalData.n_treated.toLocaleString("id-ID")} toko peserta dengan
+                      variasi waktu masuk program yang representatif.
+                    </p>
+                  </>
+                ) : (
+                  <div className="text-sm text-muted-foreground text-center py-4">
+                    Data dampak kausal belum tersedia
+                  </div>
                 )}
               </CardContent>
             </Card>

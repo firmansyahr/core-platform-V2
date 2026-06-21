@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, RefreshCw, Plus, GitBranch } from "lucide-react";
+import { Sparkles, RefreshCw, Plus, GitBranch, Scale, Info } from "lucide-react";
 import StoreJourneyModal from "@/components/StoreJourneyModal";
 import {
   ComposedChart,
@@ -1102,6 +1102,18 @@ interface CannibalizationStatus {
   all_probabilities: Record<string, number>;
 }
 
+interface CausalStoreStatus {
+  status: string; // "ok" | "not_in_training_sample" | "not_found" | "not_available"
+  id_toko?: string;
+  cate_pct?: number;
+  cate_level_ton?: number;
+  ate_pct_platform?: number;
+  vs_average?: string;
+  interpretation?: string;
+  message?: string;
+  ate_overall_pct?: number;
+}
+
 const CATEGORY_COLORS: Record<string, string> = {
   kanibalisasi:                   "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
   de_kanibalisasi:                "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
@@ -1189,6 +1201,8 @@ export default function StoreDetailPage() {
   const [compContext,   setCompContext]   = useState<CompTriRow | null>(null);
   const [cannData,      setCannData]      = useState<CannibalizationStatus | null>(null);
   const [cannLoad,      setCannLoad]      = useState(false);
+  const [causalData,    setCausalData]    = useState<CausalStoreStatus | null>(null);
+  const [causalLoad,    setCausalLoad]    = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -1296,6 +1310,20 @@ export default function StoreDetailPage() {
       .catch(() => {})
       .finally(() => setCannLoad(false));
   }, [id, loading, data]);
+
+  // Hanya relevan untuk toko yang sedang/pernah jadi member loyalty —
+  // toko yang tidak pernah ikut program tidak punya estimasi dampak apa pun.
+  const everEnrolled = !!perfData?.loyalty;
+
+  useEffect(() => {
+    if (!id || loading || !data || !everEnrolled) return;
+    setCausalLoad(true);
+    fetch(`${API}/api/causal/store/${encodeURIComponent(id)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => { if (r?.data) setCausalData(r.data as CausalStoreStatus); })
+      .catch(() => {})
+      .finally(() => setCausalLoad(false));
+  }, [id, loading, data, everEnrolled]);
 
   if (loading) return <LoadingSkeleton />;
   if (error || !data) return <ErrorState error={error ?? "Data tidak ditemukan"} />;
@@ -1805,6 +1833,70 @@ export default function StoreDetailPage() {
                     </div>
                   </details>
                 </>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Estimasi Dampak Kausal Program Loyalty (DoWhy + EconML) ──
+            Hanya muncul untuk toko yang sedang/pernah jadi member loyalty —
+            tidak relevan untuk toko yang tidak pernah ikut program. ──── */}
+        {everEnrolled && (causalLoad || causalData) && (
+          <Card>
+            <CardHeader className="border-b border-border pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Scale className="h-4 w-4 text-indigo-500" />
+                Estimasi Dampak Program Loyalty
+                <Badge variant="outline" className="text-[10px] ml-1">Causal ML</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-4">
+              {causalLoad ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-8 w-32 rounded-lg" />
+                  <Skeleton className="h-16 w-full rounded-lg" />
+                </div>
+              ) : causalData && causalData.status === "ok" ? (
+                <>
+                  <div className="flex items-baseline gap-2 mb-2">
+                    <span
+                      className={`text-2xl font-bold ${
+                        (causalData.cate_level_ton ?? 0) >= 0 ? "text-green-600" : "text-red-600"
+                      }`}
+                    >
+                      {(causalData.cate_level_ton ?? 0) > 0 ? "+" : ""}
+                      {causalData.cate_level_ton} ton/bulan
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      ({causalData.cate_pct! > 0 ? "+" : ""}{causalData.cate_pct}%)
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {causalData.interpretation}
+                  </p>
+                </>
+              ) : causalData && causalData.status === "not_in_training_sample" ? (
+                <div className="bg-muted/30 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">
+                        {causalData.message}
+                      </p>
+                      {causalData.ate_overall_pct !== undefined && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Sebagai acuan umum: rata-rata platform menunjukkan dampak{" "}
+                          {causalData.ate_overall_pct > 0 ? "+" : ""}
+                          {causalData.ate_overall_pct}% dari program loyalty.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground text-center py-4">
+                  Estimasi dampak kausal tidak tersedia untuk toko ini
+                </div>
               )}
             </CardContent>
           </Card>
