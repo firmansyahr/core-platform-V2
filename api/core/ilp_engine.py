@@ -5,6 +5,12 @@ from pathlib import Path
 import pandas as pd
 
 from api.core.data_loader import load_data
+from api.core.aegis_engine import get_store_crs
+from api.core.competitor_engine import (
+    load_marketshare_brand,
+    load_share_provinsi,
+    triangulate_aegis_with_asperssi,
+)
 
 REWARD: dict[str, int] = {"SEMEN ELANG": 5_000, "SEMEN BADAK": 2_500}
 ILP_MONTHS = 6
@@ -91,6 +97,126 @@ def apply_cannibalization_adjustment(
     df["cannibalization_confidence"] = confidences
     df["adjustment_factor"]          = factors
     df["score_adjusted"]             = (df["score"] * df["adjustment_factor"]).round(4)
+    return df
+
+
+# ── Competitor Intelligence adjustment — layer KEDUA setelah GMM ───────────────
+
+# Score multiplier per verdict triangulasi ASPERSSI (level provinsi)
+COMPETITOR_VERDICT_ADJUSTMENTS: dict[str, float] = {
+    "KONFIRMASI_KOMPETITOR":  1.30,
+    "WASPADA_AWAL":           1.15,
+    "INTERNAL_ATAU_SEASONAL": 1.00,
+    "TIDAK_CUKUP_DATA":       1.00,
+    "NORMAL":                 1.00,
+}
+
+# Kategori GMM (level toko) dengan bukti AKTIF pola internal — BUKAN
+# "stabil" (yang cuma berarti tidak ada sinyal brand-shift menonjol, bukan
+# klaim aktif "ini internal"). Kontradiksi sejati hanya terjadi kalau GMM
+# punya bukti aktif ke arah internal yang berlawanan dengan bukti eksternal
+# dari triangulasi provinsi — ini dianggap sinyal bertentangan (bukan
+# auto-resolve).
+_GMM_INTERNAL_CATEGORIES   = {"kanibalisasi", "de_kanibalisasi"}
+_COMPETITOR_EXTERNAL_VERDICTS = {"KONFIRMASI_KOMPETITOR", "WASPADA_AWAL"}
+
+
+def load_competitor_triangulation() -> list[dict] | None:
+    """
+    Triangulasi AEGIS + ASPERSSI per provinsi (lihat competitor_engine.py).
+    Tidak ada cache file terpisah untuk hasil triangulasi itu sendiri — tapi
+    store_crs di baliknya sudah ter-cache via aegis_engine.get_store_crs()
+    (lru_cache), jadi pemanggilan berulang dari /api/ilp/run tetap cepat
+    setelah panggilan pertama. Return None kalau data AEGIS belum tersedia.
+    """
+    store_crs = get_store_crs()
+    if store_crs is None or store_crs.empty:
+        return None
+    sp = load_share_provinsi()
+    ms = load_marketshare_brand()
+    return triangulate_aegis_with_asperssi(store_crs, sp, ms)
+
+
+def apply_competitor_adjustment(
+    scored_df: pd.DataFrame,
+    triangulation_results: list[dict] | None,
+) -> pd.DataFrame:
+    """
+    Layer KEDUA setelah GMM (apply_cannibalization_adjustment harus dipanggil
+    lebih dulu — fungsi ini butuh kolom cannibalization_category, score,
+    adjustment_factor, score_adjusted yang sudah ada).
+
+    Pendekatan human-in-the-loop: kalau sinyal GMM (level toko, "internal")
+    dan Competitor Intel (level provinsi, "eksternal") bertentangan untuk
+    toko yang sama, JANGAN auto-resolve dengan mengalikan kedua faktor —
+    combined_adjustment_factor di-set netral (1.0, kembali ke skor dasar)
+    dan toko ditandai sinyal_bertentangan=True dengan conflict_note untuk
+    validasi manual TSO/ASM.
+
+    Menambah kolom: competitor_verdict, competitor_top_brand,
+    competitor_factor, sinyal_bertentangan, conflict_note,
+    combined_adjustment_factor, score_final.
+
+    Kalau triangulation_results None (data tidak tersedia atau toggle off):
+    combined_adjustment_factor = adjustment_factor (GMM saja), score_final =
+    score_adjusted — perilaku identik dengan sebelum Competitor Intel ada.
+    """
+    df = scored_df.copy()
+
+    if triangulation_results is None:
+        df["competitor_verdict"]         = None
+        df["competitor_top_brand"]       = None
+        df["competitor_factor"]          = 1.0
+        df["sinyal_bertentangan"]        = False
+        df["conflict_note"]              = None
+        df["combined_adjustment_factor"] = df["adjustment_factor"]
+        df["score_final"]                = df["score_adjusted"]
+        return df
+
+    by_provinsi = {t["provinsi"]: t for t in triangulation_results}
+
+    verdict_map     = {p: t["verdict"] for p, t in by_provinsi.items()}
+    top_brand_map   = {
+        p: (t.get("top_competitor") or {}).get("brand") for p, t in by_provinsi.items()
+    }
+
+    # NB: unmatched provinsi → NaN (float) here, not None — pandas coerces
+    # None back to NaN for object/string columns built via .map(), so the
+    # NaN→None normalization for API output happens at the router boundary
+    # (api/routers/ilp.py::_safe_str), not here.
+    df["competitor_verdict"]   = df["Provinsi Toko"].map(verdict_map)
+    df["competitor_top_brand"] = df["Provinsi Toko"].map(top_brand_map)
+    df["competitor_factor"] = (
+        df["competitor_verdict"].map(COMPETITOR_VERDICT_ADJUSTMENTS).fillna(1.0)
+    )
+
+    df["sinyal_bertentangan"] = (
+        df["cannibalization_category"].isin(_GMM_INTERNAL_CATEGORIES)
+        & df["competitor_verdict"].isin(_COMPETITOR_EXTERNAL_VERDICTS)
+    )
+
+    df["combined_adjustment_factor"] = (df["adjustment_factor"] * df["competitor_factor"]).round(3)
+    df["score_final"] = (df["score"] * df["combined_adjustment_factor"]).round(4)
+
+    # Konflik → netral (kembali ke skor dasar), bukan auto-resolve
+    df.loc[df["sinyal_bertentangan"], "combined_adjustment_factor"] = 1.0
+    df.loc[df["sinyal_bertentangan"], "score_final"] = df.loc[df["sinyal_bertentangan"], "score"].round(4)
+
+    def _conflict_note(row: pd.Series) -> str | None:
+        if not row["sinyal_bertentangan"]:
+            return None
+        brand = row["competitor_top_brand"]
+        brand_txt = f" (kompetitor: {brand})" if pd.notna(brand) else ""
+        label = row["cannibalization_label"] or row["cannibalization_category"]
+        return (
+            f"Sinyal bertentangan: analisis brand-shift toko ini menunjukkan "
+            f"'{label}' (pola internal), namun provinsi toko terindikasi "
+            f"'{row['competitor_verdict']}' dari triangulasi ASPERSSI{brand_txt}. "
+            f"Skor dikembalikan ke nilai dasar — disarankan validasi lapangan "
+            f"TSO sebelum menentukan prioritas program."
+        )
+
+    df["conflict_note"] = df.apply(_conflict_note, axis=1)
     return df
 
 

@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
@@ -13,14 +14,23 @@ from api.core.ilp_engine import (
     W_RATIO_DEFAULT,
     W_TRX_DEFAULT,
     apply_cannibalization_adjustment,
+    apply_competitor_adjustment,
     apply_ilp_scoring,
     get_ilp_features,
     get_ilp_hierarchy,
     load_cannibalization_results,
+    load_competitor_triangulation,
     solve_ilp,
 )
 
 router = APIRouter(prefix="/api/ilp", tags=["ilp"])
+
+
+def _safe_str(v: Any) -> str | None:
+    """pandas .map()/.where() can leave missing values as float NaN instead
+    of None depending on column dtype — Pydantic rejects NaN for str | None,
+    so normalize explicitly at this DataFrame→API boundary."""
+    return v if pd.notna(v) else None
 
 _MEMBERS_PATH = Path(__file__).parent.parent / "data" / "loyalty_members.json"
 
@@ -63,6 +73,7 @@ class ILPRequest(BaseModel):
     weight_growth:                  float = Field(default=W_GROWTH_DEFAULT,  ge=0.0, le=1.0)
     exclude_existing_loyalty:       bool  = False
     use_cannibalization_adjustment: bool  = True
+    use_competitor_adjustment:      bool  = True
 
 
 class SelectedStore(BaseModel):
@@ -87,6 +98,12 @@ class SelectedStore(BaseModel):
     adjustment_factor:           float        = 1.0
     cannibalization_category:    str | None   = None
     cannibalization_label:       str | None   = None
+    score_final:                 float        = 0.0
+    combined_adjustment_factor:  float        = 1.0
+    competitor_verdict:          str | None   = None
+    competitor_top_brand:        str | None   = None
+    sinyal_bertentangan:         bool         = False
+    conflict_note:               str | None   = None
 
 
 class ILPResponse(BaseModel):
@@ -140,19 +157,31 @@ def run_ilp(
             f"({toko_dikecualikan} toko di-exclude)"
         )
 
-    # Apply GMM cannibalization adjustment
+    # Layer 1 — GMM cannibalization adjustment
     gmm_result = (
         load_cannibalization_results() if req.use_cannibalization_adjustment else None
     )
     scored_df  = apply_cannibalization_adjustment(scored_df, gmm_result)
     gmm_active = gmm_result is not None
 
-    # Build the DataFrame passed to the ILP solver:
-    # when GMM is active, overwrite "score" with "score_adjusted" so the CBC
-    # objective reflects the GMM-adjusted priority.
+    # Layer 2 — Competitor Intelligence adjustment (triangulasi ASPERSSI).
+    # Sinyal bertentangan dengan GMM ditandai untuk validasi manual TSO,
+    # bukan auto-resolve — lihat apply_competitor_adjustment().
+    triangulation_results = (
+        load_competitor_triangulation() if req.use_competitor_adjustment else None
+    )
+    scored_df         = apply_competitor_adjustment(scored_df, triangulation_results)
+    competitor_active = triangulation_results is not None
+    n_conflicting      = int(scored_df["sinyal_bertentangan"].sum())
+    print(
+        f"[ILP] Competitor Intel adjustment {'applied' if competitor_active else 'skipped (data tidak tersedia atau toggle off)'}"
+    )
+    print(f"[ILP] Sinyal bertentangan ditemukan: {n_conflicting} toko")
+
+    # Solver objective = score_final, yang sudah merangkum GMM + Competitor
+    # Intel (atau degradasi ke score_adjusted / score saat layer nonaktif).
     solver_df = scored_df.copy()
-    if gmm_active:
-        solver_df["score"] = solver_df["score_adjusted"]
+    solver_df["score"] = solver_df["score_final"]
 
     selected, method = solve_ilp(
         solver_df,
@@ -170,7 +199,8 @@ def run_ilp(
         cost         = float(row["estimated_cost"])
         score_orig   = round(float(row.get("score_original", row["score"])), 4)
         score_adj    = round(float(row.get("score_adjusted", row["score"])), 4)
-        eff_score    = score_adj if gmm_active else score_orig
+        score_final  = round(float(row.get("score_final", score_adj)), 4)
+        eff_score    = score_final
         data.append(
             SelectedStore(
                 id_toko=str(row["ID Toko"]),
@@ -192,8 +222,14 @@ def run_ilp(
                 trx_score=round(float(row["trx_score"]), 2),
                 growth_score=round(float(row["growth_score"]), 2),
                 adjustment_factor=round(float(row.get("adjustment_factor", 1.0)), 3),
-                cannibalization_category=row.get("cannibalization_category") or None,
-                cannibalization_label=row.get("cannibalization_label") or None,
+                cannibalization_category=_safe_str(row.get("cannibalization_category")),
+                cannibalization_label=_safe_str(row.get("cannibalization_label")),
+                score_final=score_final,
+                combined_adjustment_factor=round(float(row.get("combined_adjustment_factor", 1.0)), 3),
+                competitor_verdict=_safe_str(row.get("competitor_verdict")),
+                competitor_top_brand=_safe_str(row.get("competitor_top_brand")),
+                sinyal_bertentangan=bool(row.get("sinyal_bertentangan", False)),
+                conflict_note=_safe_str(row.get("conflict_note")),
             )
         )
 
@@ -214,6 +250,8 @@ def run_ilp(
             "toko_dikecualikan":               toko_dikecualikan,
             "total_kandidat_dianalisis":       total_kandidat,
             "cannibalization_adjustment_used": gmm_active,
+            "competitor_adjustment_used":      competitor_active,
+            "n_sinyal_bertentangan":           sum(1 for s in data if s.sinyal_bertentangan),
             "weights": {
                 "ratio_cluster": req.weight_ratio_cluster,
                 "avg_trx":       req.weight_avg_trx,

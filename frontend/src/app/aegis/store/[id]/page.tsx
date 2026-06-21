@@ -1204,6 +1204,26 @@ export default function StoreDetailPage() {
   const [causalData,    setCausalData]    = useState<CausalStoreStatus | null>(null);
   const [causalLoad,    setCausalLoad]    = useState(false);
 
+  // Sinyal bertentangan dari hasil ILP terakhir (kalau toko ini pernah
+  // muncul di sana dalam sesi browser yang sama) — lihat src/app/ilp/page.tsx
+  // yang menulis ke sessionStorage. Best-effort, bukan persistensi backend.
+  const [ilpConflict, setIlpConflict] = useState<{ conflict_note: string | null; competitor_verdict: string | null } | null>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    try {
+      const raw = sessionStorage.getItem("ilp_last_conflicts");
+      if (!raw) return;
+      const conflicts = JSON.parse(raw) as Record<string, { sinyal_bertentangan: boolean; conflict_note: string | null; competitor_verdict: string | null }>;
+      const entry = conflicts[id];
+      if (entry?.sinyal_bertentangan) {
+        setIlpConflict({ conflict_note: entry.conflict_note, competitor_verdict: entry.competitor_verdict });
+      }
+    } catch {
+      // sessionStorage tidak tersedia atau data korup — abaikan, tidak kritikal
+    }
+  }, [id]);
+
   useEffect(() => {
     if (!id) return;
     fetch(`${API}/api/aegis/store/${encodeURIComponent(id)}`)
@@ -1439,6 +1459,18 @@ export default function StoreDetailPage() {
                 <p className="text-[9px] text-muted-foreground/50 mt-2 text-center">
                   Risiko Produk×50% + Anomali×20% + Risiko Beralih×30%
                 </p>
+                {ilpConflict && (
+                  <span
+                    className="mt-2 text-[10px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap cursor-help"
+                    style={{ color: "#EA580C", backgroundColor: "#EA580C1A", border: "1px solid #EA580C40" }}
+                    title={
+                      ilpConflict.conflict_note
+                        ?? "Toko ini ditandai sinyal bertentangan (GMM vs Competitor Intelligence) pada hasil ILP terakhir."
+                    }
+                  >
+                    ⚠ Sinyal Bertentangan (ILP)
+                  </span>
+                )}
               </div>
             </div>
           </CardContent>

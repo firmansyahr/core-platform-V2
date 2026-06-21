@@ -34,6 +34,7 @@ import {
   ChevronUpIcon,
   ChevronRightIcon,
   InformationCircleIcon,
+  AlertCircleIcon,
 } from "@hugeicons/core-free-icons";
 import {
   BarChart,
@@ -85,6 +86,12 @@ interface ILPResult {
   adjustment_factor:        number;
   cannibalization_category: string | null;
   cannibalization_label:    string | null;
+  score_final:                number;
+  combined_adjustment_factor: number;
+  competitor_verdict:         string | null;
+  competitor_top_brand:       string | null;
+  sinyal_bertentangan:        boolean;
+  conflict_note:              string | null;
 }
 
 const GMM_BADGE: Record<string, { label: string; color: string }> = {
@@ -98,6 +105,11 @@ const GMM_BADGE: Record<string, { label: string; color: string }> = {
   campuran:                        { label: "Campuran",          color: "#6b7280" },
 };
 
+const COMPETITOR_BADGE: Record<string, { label: string; color: string }> = {
+  KONFIRMASI_KOMPETITOR: { label: "Terkonfirmasi", color: "#DC2626" },
+  WASPADA_AWAL:          { label: "Waspada",       color: "#CA8A04" },
+};
+
 interface ILPMeta {
   generated_at:                    string;
   method:                          string;
@@ -108,6 +120,8 @@ interface ILPMeta {
   toko_dikecualikan?:              number;
   total_kandidat_dianalisis?:      number;
   cannibalization_adjustment_used?: boolean;
+  competitor_adjustment_used?:      boolean;
+  n_sinyal_bertentangan?:           number;
 }
 
 interface ILPResponse {
@@ -378,8 +392,8 @@ function ScenarioCompare({ a, b }: { a: Scenario; b: Scenario }) {
     },
     {
       label: "Avg Score",
-      va: a.result.data.reduce((s, r) => s + (r.score_adjusted ?? r.score), 0) / (a.result.data.length || 1),
-      vb: b.result.data.reduce((s, r) => s + (r.score_adjusted ?? r.score), 0) / (b.result.data.length || 1),
+      va: a.result.data.reduce((s, r) => s + (r.score_final ?? r.score_adjusted ?? r.score), 0) / (a.result.data.length || 1),
+      vb: b.result.data.reduce((s, r) => s + (r.score_final ?? r.score_adjusted ?? r.score), 0) / (b.result.data.length || 1),
       fmt: (v: number) => v.toFixed(2),
     },
     {
@@ -463,6 +477,7 @@ export default function ILPPage() {
 
   const [excludeLoyalty, setExcludeLoyalty] = useState(true);
   const [useGmmAdjust, setUseGmmAdjust]   = useState(true);
+  const [useCompetitorAdjust, setUseCompetitorAdjust] = useState(true);
 
   // Scoring weights (integers 0–100 representing %)
   const [wRatio,  setWRatio]  = useState(47);
@@ -572,6 +587,7 @@ export default function ILPPage() {
           weight_growth:                  wGrowth / 100,
           exclude_existing_loyalty:       excludeLoyalty,
           use_cannibalization_adjustment: useGmmAdjust,
+          use_competitor_adjustment:      useCompetitorAdjust,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -584,7 +600,7 @@ export default function ILPPage() {
       setSolving(false);
     }
   }, [budget, maxToko, clusterPct, selProvinsi, selSSM, selASM, selTSO,
-      wRatio, wTrx, wGrowth, weightsValid, excludeLoyalty, useGmmAdjust, scenarios.length]);
+      wRatio, wTrx, wGrowth, weightsValid, excludeLoyalty, useGmmAdjust, useCompetitorAdjust, scenarios.length]);
 
   const sortedData = useMemo(() => {
     if (!result) return [];
@@ -594,6 +610,32 @@ export default function ILPPage() {
       return sortAsc ? av - bv : bv - av;
     });
   }, [result, sortKey, sortAsc]);
+
+  const conflictCount = useMemo(
+    () => result?.data.filter((r) => r.sinyal_bertentangan).length ?? 0,
+    [result]
+  );
+
+  // Simpan sinyal konflik per toko ke sessionStorage — dibaca opsional oleh
+  // Store Detail Page kalau toko itu pernah muncul di hasil ILP terakhir
+  // (lihat src/app/aegis/store/[id]/page.tsx). Best-effort, bukan persistensi
+  // backend, jadi hanya relevan dalam sesi browser yang sama.
+  useEffect(() => {
+    if (!result) return;
+    const conflicts: Record<string, { sinyal_bertentangan: boolean; conflict_note: string | null; competitor_verdict: string | null }> = {};
+    result.data.forEach((r) => {
+      conflicts[r.id_toko] = {
+        sinyal_bertentangan: r.sinyal_bertentangan,
+        conflict_note: r.conflict_note,
+        competitor_verdict: r.competitor_verdict,
+      };
+    });
+    try {
+      sessionStorage.setItem("ilp_last_conflicts", JSON.stringify(conflicts));
+    } catch {
+      // sessionStorage tidak tersedia (private mode dll) — abaikan, tidak kritikal
+    }
+  }, [result]);
 
   const handleSort = (key: keyof ILPResult) => {
     if (sortKey === key) setSortAsc((p) => !p);
@@ -643,7 +685,7 @@ export default function ILPPage() {
   }, [result]);
 
   const avgScore = result
-    ? result.data.reduce((s, r) => s + (r.score_adjusted ?? r.score), 0) / (result.data.length || 1)
+    ? result.data.reduce((s, r) => s + (r.score_final ?? r.score_adjusted ?? r.score), 0) / (result.data.length || 1)
     : 0;
 
   const saveScenario = () => {
@@ -678,7 +720,8 @@ export default function ILPPage() {
     const headers = [
       "ID Toko","Nama Toko","Kabupaten","Provinsi","Cluster","SSM","ASM","TSO",
       "Score ILP","Score GMM","Faktor Adj","Ratio Score","Trx Score","Growth Score",
-      "Est Cost (Rp)","Brand","Avg TON","TON Growth %","Efficiency (pt/jt)","Sinyal GMM"
+      "Est Cost (Rp)","Brand","Avg TON","TON Growth %","Efficiency (pt/jt)","Sinyal GMM",
+      "Score Final","Faktor Adj Gabungan","Verdict Kompetitor","Sinyal Bertentangan","Catatan Konflik"
     ];
     const rows = sortedData.map((r) =>
       [
@@ -690,6 +733,11 @@ export default function ILPPage() {
         r.growth_score.toFixed(1), r.estimated_cost, r.brand_category,
         r.avg_ton.toFixed(2), r.ton_growth.toFixed(2), r.efficiency.toFixed(4),
         r.cannibalization_category ?? "—",
+        (r.score_final ?? r.score_adjusted ?? r.score).toFixed(2),
+        (r.combined_adjustment_factor ?? 1).toFixed(3),
+        r.competitor_verdict ?? "—",
+        r.sinyal_bertentangan ? "Ya" : "Tidak",
+        r.conflict_note ?? "",
       ]
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
         .join(",")
@@ -880,6 +928,32 @@ export default function ILPPage() {
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Sesuaikan ILP score berdasarkan sinyal GMM — kanibalisasi internal de-prioritas (×0.7),
                   tekanan eksternal diprioritaskan (×1.3)
+                </p>
+              </div>
+            </label>
+
+            {/* Competitor Intelligence Adjustment toggle */}
+            <label
+              className={`flex items-start gap-3 p-3 border rounded-lg cursor-pointer transition-colors select-none
+                ${useCompetitorAdjust
+                  ? "border-orange-500/40 bg-orange-500/5"
+                  : "border-border bg-muted/20 hover:bg-muted/40"
+                } ${!isAdmin ? "opacity-60 cursor-not-allowed" : ""}`}
+            >
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-orange-600 cursor-pointer"
+                checked={useCompetitorAdjust}
+                disabled={!isAdmin}
+                onChange={(e) => setUseCompetitorAdjust(e.target.checked)}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium leading-tight">
+                  Sesuaikan prioritas berdasarkan triangulasi kompetitor (ASPERSSI)
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Toko di provinsi terkonfirmasi tekanan kompetitor eksternal mendapat prioritas lebih
+                  tinggi — sinyal yang bertentangan dengan GMM ditandai untuk validasi TSO, bukan auto-resolve
                 </p>
               </div>
             </label>
@@ -1142,6 +1216,29 @@ export default function ILPPage() {
               </div>
             )}
 
+            {/* Competitor Intelligence adjustment active badge */}
+            {result.meta.competitor_adjustment_used && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-orange-500/30 bg-orange-500/5 text-xs text-orange-700 dark:text-orange-400">
+                <HugeiconsIcon icon={toIcon(InformationCircleIcon)} size={13} />
+                <span>
+                  Competitor Intelligence Adjustment aktif — score disesuaikan berdasarkan triangulasi ASPERSSI.
+                  Kolom <strong>Verdict Kompetitor</strong> menampilkan status provinsi tiap toko.
+                </span>
+              </div>
+            )}
+
+            {/* Conflicting signal warning */}
+            {conflictCount > 0 && (
+              <div className="flex items-center gap-2 p-3 bg-orange-50 dark:bg-orange-950/20 rounded-lg text-sm">
+                <HugeiconsIcon icon={toIcon(AlertCircleIcon)} size={16} className="text-orange-600 shrink-0" />
+                <span>
+                  <strong>{conflictCount} toko</strong> menunjukkan sinyal bertentangan antara analisis
+                  brand-shift dan triangulasi kompetitor — skor dikembalikan ke nilai dasar, disarankan
+                  validasi lapangan sebelum finalisasi program.
+                </span>
+              </div>
+            )}
+
             {/* Summary cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <SummaryCard
@@ -1386,7 +1483,7 @@ export default function ILPPage() {
                       <TableHead className="text-xs uppercase tracking-wider">Kabupaten</TableHead>
                       <TableHead className="text-xs uppercase tracking-wider">Cluster</TableHead>
                       <TableHead className="text-xs uppercase tracking-wider">Avg TON</TableHead>
-                      <SortHeader colKey="score_adjusted">Score</SortHeader>
+                      <SortHeader colKey="score_final">Score</SortHeader>
                       <SortHeader colKey="ratio_score">
                         <Tooltip text="Ratio vs Cluster (MinMax 0–100): volume toko relatif terhadap median cluster-nya">
                           <span>Ratio</span>
@@ -1406,6 +1503,8 @@ export default function ILPPage() {
                       <SortHeader colKey="efficiency">Efisiensi</SortHeader>
                       <TableHead className="text-xs uppercase tracking-wider">Brand</TableHead>
                       <TableHead className="text-xs uppercase tracking-wider">Sinyal GMM</TableHead>
+                      <TableHead className="text-xs uppercase tracking-wider">Verdict Kompetitor</TableHead>
+                      <TableHead className="text-xs uppercase tracking-wider">Konflik Sinyal</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1434,8 +1533,11 @@ export default function ILPPage() {
                           <TableCell className="tabular-nums text-muted-foreground">
                             {fmtNum(row.avg_ton)}
                           </TableCell>
-                          <TableCell className="tabular-nums font-semibold" title={`ILP score: ${row.score.toFixed(1)}`}>
-                            {(row.score_adjusted ?? row.score).toFixed(1)}
+                          <TableCell
+                            className="tabular-nums font-semibold"
+                            title={`Score dasar: ${row.score.toFixed(1)} · Setelah GMM: ${(row.score_adjusted ?? row.score).toFixed(1)}`}
+                          >
+                            {(row.score_final ?? row.score_adjusted ?? row.score).toFixed(1)}
                           </TableCell>
                           <TableCell className="tabular-nums text-right text-muted-foreground text-[11px]">
                             {row.ratio_score.toFixed(1)}
@@ -1474,6 +1576,34 @@ export default function ILPPage() {
                                 </span>
                               );
                             })() : <span className="text-[10px] text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell>
+                            {row.competitor_verdict && COMPETITOR_BADGE[row.competitor_verdict] ? (() => {
+                              const b = COMPETITOR_BADGE[row.competitor_verdict];
+                              return (
+                                <span
+                                  className="text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap"
+                                  style={{ color: b.color, backgroundColor: `${b.color}14`, border: `1px solid ${b.color}28` }}
+                                  title={row.competitor_top_brand ? `Kompetitor: ${row.competitor_top_brand}` : undefined}
+                                >
+                                  {b.label}
+                                </span>
+                              );
+                            })() : <span className="text-[10px] text-muted-foreground">—</span>}
+                          </TableCell>
+                          <TableCell>
+                            {row.sinyal_bertentangan ? (
+                              <Tooltip text={row.conflict_note ?? "Sinyal bertentangan terdeteksi"}>
+                                <span
+                                  className="text-[10px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap cursor-help"
+                                  style={{ color: "#EA580C", backgroundColor: "#EA580C1A", border: "1px solid #EA580C40" }}
+                                >
+                                  ⚠ Perlu Validasi
+                                </span>
+                              </Tooltip>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground">—</span>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
