@@ -68,3 +68,6 @@ typing_extensions==4.15.0
 uvicorn==0.49.0
 wrapt==2.2.1
 xgboost==3.2.0
+dowhy>=0.11
+econml>=0.15
+sqlalchemy>=2.0.0

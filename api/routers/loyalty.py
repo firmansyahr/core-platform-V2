@@ -32,8 +32,17 @@ from api.core.loyalty_engine import (
     get_takeout_recommendations,
     get_target_triggers,
 )
+from api.database import DB_PATH, SessionLocal
+from api.models import LoyaltyConfig as LoyaltyConfigRow
+from api.models import LoyaltyHistory as LoyaltyHistoryRow
+from api.models import LoyaltyMember as LoyaltyMemberRow
 
 router = APIRouter(prefix="/api/loyalty", tags=["loyalty"])
+
+# Feature flag — Tahap 4 rollout. Default false = perilaku identik dengan
+# sebelumnya (JSON). Set USE_SQLITE_STORAGE=true di env untuk pakai SQLite.
+# Lihat fungsi _get_members()/_add_member()/dst. di bawah untuk abstraksinya.
+USE_SQLITE = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
 
 _LOCK = threading.Lock()
 
@@ -75,15 +84,282 @@ def _wj(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _log(event: dict) -> None:
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ── Storage abstraction (JSON / SQLite) ────────────────────────────────────────
+#
+# Setiap fungsi di bawah punya DUA cabang (USE_SQLITE True/False) yang
+# mengembalikan/menerima bentuk dict YANG SAMA PERSIS dengan JSON asli, supaya
+# endpoint di bawahnya (dan frontend) tidak perlu tahu/berubah sama sekali.
+# Cabang JSON adalah logic lama, TIDAK diubah — hanya dipindah ke dalam fungsi.
+
+def _member_to_dict(m: LoyaltyMemberRow) -> dict:
+    return {
+        "id":             m.id,
+        "id_toko":        m.id_toko,
+        "nama_toko":      m.nama_toko,
+        "kabupaten":      m.kabupaten,
+        "cluster_pareto": m.cluster_pareto,
+        "tso":            m.tso,
+        "reward_type":    m.reward_type,
+        "catatan":        m.catatan or "",
+        "status":         m.status,
+        "tgl_masuk":      m.tgl_masuk.isoformat() if m.tgl_masuk else None,
+        "tgl_keluar":     m.tgl_keluar.isoformat() if m.tgl_keluar else None,
+        "alasan_keluar":  m.alasan_keluar,
+    }
+
+
+def _get_members() -> list[dict]:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            return [_member_to_dict(m) for m in db.query(LoyaltyMemberRow).all()]
+        finally:
+            db.close()
+    with _LOCK:
+        return _rj(_MEMBERS_PATH)
+
+
+def _get_member_by_id(member_id: str) -> dict | None:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            row = db.query(LoyaltyMemberRow).filter_by(id=member_id).first()
+            return _member_to_dict(row) if row else None
+        finally:
+            db.close()
+    members = _get_members()
+    return next((m for m in members if m.get("id") == member_id), None)
+
+
+def _get_active_ids() -> set[str]:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            rows = db.query(LoyaltyMemberRow.id_toko).filter_by(status="Aktif").all()
+            return {r[0] for r in rows}
+        finally:
+            db.close()
+    members = _get_members()
+    return {m["id_toko"] for m in members if m.get("status") == "Aktif"}
+
+
+def _is_id_toko_active(id_toko: str) -> bool:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            return db.query(LoyaltyMemberRow).filter_by(id_toko=id_toko, status="Aktif").first() is not None
+        finally:
+            db.close()
+    members = _get_members()
+    return any(m["id_toko"] == id_toko and m.get("status") == "Aktif" for m in members)
+
+
+def _add_member(new_member: dict) -> None:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            db.add(LoyaltyMemberRow(
+                id=new_member["id"], id_toko=new_member["id_toko"],
+                nama_toko=new_member["nama_toko"], kabupaten=new_member["kabupaten"],
+                cluster_pareto=new_member["cluster_pareto"], tso=new_member["tso"],
+                reward_type=new_member["reward_type"], catatan=new_member.get("catatan") or "",
+                status=new_member["status"], tgl_masuk=date.fromisoformat(new_member["tgl_masuk"]),
+                tgl_keluar=None, alasan_keluar=None,
+            ))
+            db.commit()
+        finally:
+            db.close()
+        return
+    with _LOCK:
+        members = _rj(_MEMBERS_PATH)
+        members.append(new_member)
+        _wj(_MEMBERS_PATH, members)
+
+
+def _add_member_if_not_duplicate(new_member: dict) -> bool:
+    """Insert toko baru HANYA kalau id_toko belum aktif — check+insert atomic
+    dalam satu critical section per mode (sama seperti logic asli add_one_member,
+    yang menahan _LOCK untuk seluruh check+append+write). Return False kalau
+    sudah ada toko aktif dengan id_toko itu (caller raise 409)."""
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            exists = db.query(LoyaltyMemberRow).filter_by(
+                id_toko=new_member["id_toko"], status="Aktif"
+            ).first()
+            if exists:
+                return False
+            db.add(LoyaltyMemberRow(
+                id=new_member["id"], id_toko=new_member["id_toko"],
+                nama_toko=new_member["nama_toko"], kabupaten=new_member["kabupaten"],
+                cluster_pareto=new_member["cluster_pareto"], tso=new_member["tso"],
+                reward_type=new_member["reward_type"], catatan=new_member.get("catatan") or "",
+                status=new_member["status"], tgl_masuk=date.fromisoformat(new_member["tgl_masuk"]),
+                tgl_keluar=None, alasan_keluar=None,
+            ))
+            db.commit()
+            return True
+        finally:
+            db.close()
+    with _LOCK:
+        members = _rj(_MEMBERS_PATH)
+        if any(m["id_toko"] == new_member["id_toko"] and m.get("status") == "Aktif" for m in members):
+            return False
+        members.append(new_member)
+        _wj(_MEMBERS_PATH, members)
+        return True
+
+
+def _add_members_bulk(new_members: list[dict]) -> None:
+    if not new_members:
+        return
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            for nm in new_members:
+                db.add(LoyaltyMemberRow(
+                    id=nm["id"], id_toko=nm["id_toko"], nama_toko=nm["nama_toko"],
+                    kabupaten=nm["kabupaten"], cluster_pareto=nm["cluster_pareto"],
+                    tso=nm["tso"], reward_type=nm["reward_type"], catatan=nm.get("catatan") or "",
+                    status=nm["status"], tgl_masuk=date.fromisoformat(nm["tgl_masuk"]),
+                    tgl_keluar=None, alasan_keluar=None,
+                ))
+            db.commit()
+        finally:
+            db.close()
+        return
+    with _LOCK:
+        members = _rj(_MEMBERS_PATH)
+        members.extend(new_members)
+        _wj(_MEMBERS_PATH, members)
+
+
+def _update_member_by_id(member_id: str, updates: dict) -> dict | None:
+    """updates: dict field->value sudah dalam format JSON-friendly (tanggal
+    sebagai string ISO atau None) — dikonversi ke tipe kolom di cabang SQLite."""
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            row = db.query(LoyaltyMemberRow).filter_by(id=member_id).first()
+            if row is None:
+                return None
+            for k, v in updates.items():
+                if k in ("tgl_keluar", "tgl_masuk") and isinstance(v, str):
+                    v = date.fromisoformat(v)
+                setattr(row, k, v)
+            db.commit()
+            return _member_to_dict(row)
+        finally:
+            db.close()
+    with _LOCK:
+        members = _rj(_MEMBERS_PATH)
+        idx = next((i for i, m in enumerate(members) if m.get("id") == member_id), None)
+        if idx is None:
+            return None
+        members[idx] = {**members[idx], **updates}
+        _wj(_MEMBERS_PATH, members)
+        return members[idx]
+
+
+def _history_to_dict(h: LoyaltyHistoryRow) -> dict:
+    d = {
+        "id_member":   h.id_member,
+        "id_toko":     h.id_toko,
+        "nama_toko":   h.nama_toko,
+        "tanggal":     h.tanggal.isoformat(),
+        "perubahan":   h.perubahan,
+        "alasan":      h.alasan,
+        "status_baru": h.status_baru,
+    }
+    # "catatan" tidak selalu ada di JSON asli (hanya dari take-out) — pertahankan
+    # nuansa itu: key absen kalau None, bukan present-tapi-null, untuk parity persis.
+    if h.catatan is not None:
+        d["catatan"] = h.catatan
+    return d
+
+
+def _get_history() -> list[dict]:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            return [_history_to_dict(h) for h in db.query(LoyaltyHistoryRow).all()]
+        finally:
+            db.close()
+    with _LOCK:
+        return _rj(_HISTORY_PATH)
+
+
+def _add_history_event(event: dict) -> None:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            db.add(LoyaltyHistoryRow(
+                id_member=event.get("id_member"), id_toko=event["id_toko"],
+                nama_toko=event["nama_toko"], tanggal=datetime.fromisoformat(event["tanggal"]),
+                perubahan=event["perubahan"], alasan=event.get("alasan"),
+                catatan=event.get("catatan"), status_baru=event["status_baru"],
+            ))
+            db.commit()
+        finally:
+            db.close()
+        return
     with _LOCK:
         hist = _rj(_HISTORY_PATH)
         hist.append(event)
         _wj(_HISTORY_PATH, hist)
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+def _add_history_events_bulk(events: list[dict]) -> None:
+    if not events:
+        return
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            for event in events:
+                db.add(LoyaltyHistoryRow(
+                    id_member=event.get("id_member"), id_toko=event["id_toko"],
+                    nama_toko=event["nama_toko"], tanggal=datetime.fromisoformat(event["tanggal"]),
+                    perubahan=event["perubahan"], alasan=event.get("alasan"),
+                    catatan=event.get("catatan"), status_baru=event["status_baru"],
+                ))
+            db.commit()
+        finally:
+            db.close()
+        return
+    with _LOCK:
+        hist = _rj(_HISTORY_PATH)
+        hist.extend(events)
+        _wj(_HISTORY_PATH, hist)
+
+
+def _save_target_config(new_cfg: dict) -> None:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            row = db.query(LoyaltyConfigRow).filter_by(id="default").first()
+            if row is None:
+                row = LoyaltyConfigRow(id="default")
+                db.add(row)
+            row.w1               = new_cfg["w1"]
+            row.w2               = new_cfg["w2"]
+            row.min_pct_sp       = new_cfg["min_pct_sp"]
+            row.min_pct_platinum = new_cfg["min_pct_platinum"]
+            row.min_pct_gold     = new_cfg["min_pct_gold"]
+            row.min_pct_silver   = new_cfg["min_pct_silver"]
+            row.growth_rates     = new_cfg["growth_rates"]
+            db.commit()
+        finally:
+            db.close()
+        return
+    _wj(_CONFIG_PATH, new_cfg)
+
+
+def _log(event: dict) -> None:
+    _add_history_event(event)
 
 
 def _meta(**kw: Any) -> dict:
@@ -167,11 +443,30 @@ class TargetConfigBody(BaseModel):
 
 
 def _load_config() -> dict:
-    """Load loyalty_config.json merged with DEFAULT_CONFIG as fallback.
+    """Load loyalty_config (JSON atau SQLite, lihat USE_SQLITE) merged dengan
+    DEFAULT_CONFIG sebagai fallback.
 
-    Migrates old flat growth_normal/warning/kritis → nested growth_rates.
+    Cabang JSON memigrasikan format flat lama growth_normal/warning/kritis →
+    nested growth_rates — logic asli, tidak diubah.
     """
     base = dict(DEFAULT_CONFIG)
+
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            row = db.query(LoyaltyConfigRow).filter_by(id="default").first()
+            if row is None:
+                return base
+            stored = {
+                "w1": row.w1, "w2": row.w2,
+                "min_pct_sp": row.min_pct_sp, "min_pct_platinum": row.min_pct_platinum,
+                "min_pct_gold": row.min_pct_gold, "min_pct_silver": row.min_pct_silver,
+                "growth_rates": row.growth_rates,
+            }
+            return {**base, **stored}
+        finally:
+            db.close()
+
     if not _CONFIG_PATH.exists():
         return base
     try:
@@ -201,8 +496,7 @@ def get_members(
     limit:       int        = Query(50, ge=1, le=500),
     offset:      int        = Query(0, ge=0),
 ) -> dict:
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
+    members = _get_members()
 
     if status:
         members = [m for m in members if m.get("status") == status]
@@ -231,8 +525,7 @@ def get_members(
 
 @router.get("/summary")
 def get_summary() -> dict:
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
+    members = _get_members()
 
     aktif    = [m for m in members if m.get("status") == "Aktif"]
     nonaktif = [m for m in members if m.get("status") == "Nonaktif"]
@@ -328,12 +621,8 @@ def add_one_member(body: AddOneMember) -> dict:
         "alasan_keluar": None,
     }
 
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
-        if any(m["id_toko"] == body.id_toko and m.get("status") == "Aktif" for m in members):
-            raise HTTPException(409, detail=f"Toko {body.id_toko} sudah ada di program loyalty")
-        members.append(new_member)
-        _wj(_MEMBERS_PATH, members)
+    if not _add_member_if_not_duplicate(new_member):
+        raise HTTPException(409, detail=f"Toko {body.id_toko} sudah ada di program loyalty")
 
     _log({
         "id_member": new_id, "id_toko": body.id_toko, "nama_toko": body.nama_toko,
@@ -381,56 +670,47 @@ def upload_excel(file: UploadFile = File(...)) -> dict:
     new_members: list[dict] = []
     hist_events: list[dict] = []
 
-    with _LOCK:
-        members   = _rj(_MEMBERS_PATH)
-        active_ids = {m["id_toko"] for m in members if m.get("status") == "Aktif"}
+    active_ids = _get_active_ids()
 
-        for i, row in enumerate(rows[1:], start=2):
-            id_toko = gcol(row, "ID Toko")
-            nama    = gcol(row, "Nama Toko")
-            kab     = gcol(row, "Kabupaten")
-            cluster = gcol(row, "Cluster Pareto")
-            tso     = gcol(row, "TSO")
-            rt      = gcol(row, "Reward Type", "Standard")
+    for i, row in enumerate(rows[1:], start=2):
+        id_toko = gcol(row, "ID Toko")
+        nama    = gcol(row, "Nama Toko")
+        kab     = gcol(row, "Kabupaten")
+        cluster = gcol(row, "Cluster Pareto")
+        tso     = gcol(row, "TSO")
+        rt      = gcol(row, "Reward Type", "Standard")
 
-            if not id_toko or not nama:
-                errors.append(f"Baris {i}: ID Toko atau Nama Toko kosong")
-                continue
-            if id_toko in active_ids:
-                duplikat += 1
-                continue
-            if cluster not in VALID_CLUSTERS:
-                errors.append(f"Baris {i} ({nama}): Cluster tidak valid — '{cluster}'")
-                continue
-            if rt not in VALID_REWARD_TYPES:
-                rt = "Standard"
+        if not id_toko or not nama:
+            errors.append(f"Baris {i}: ID Toko atau Nama Toko kosong")
+            continue
+        if id_toko in active_ids:
+            duplikat += 1
+            continue
+        if cluster not in VALID_CLUSTERS:
+            errors.append(f"Baris {i} ({nama}): Cluster tidak valid — '{cluster}'")
+            continue
+        if rt not in VALID_REWARD_TYPES:
+            rt = "Standard"
 
-            new_id = str(uuid.uuid4())
-            m = {
-                "id": new_id, "id_toko": id_toko, "nama_toko": nama,
-                "kabupaten": kab, "cluster_pareto": cluster, "tso": tso,
-                "reward_type": rt, "catatan": "",
-                "status": "Aktif", "tgl_masuk": date.today().isoformat(),
-                "tgl_keluar": None, "alasan_keluar": None,
-            }
-            new_members.append(m)
-            active_ids.add(id_toko)
-            berhasil += 1
-            hist_events.append({
-                "id_member": new_id, "id_toko": id_toko, "nama_toko": nama,
-                "tanggal": _now(), "perubahan": "Upload Excel",
-                "alasan": "-", "status_baru": "Aktif",
-            })
+        new_id = str(uuid.uuid4())
+        m = {
+            "id": new_id, "id_toko": id_toko, "nama_toko": nama,
+            "kabupaten": kab, "cluster_pareto": cluster, "tso": tso,
+            "reward_type": rt, "catatan": "",
+            "status": "Aktif", "tgl_masuk": date.today().isoformat(),
+            "tgl_keluar": None, "alasan_keluar": None,
+        }
+        new_members.append(m)
+        active_ids.add(id_toko)
+        berhasil += 1
+        hist_events.append({
+            "id_member": new_id, "id_toko": id_toko, "nama_toko": nama,
+            "tanggal": _now(), "perubahan": "Upload Excel",
+            "alasan": "-", "status_baru": "Aktif",
+        })
 
-        if new_members:
-            members.extend(new_members)
-            _wj(_MEMBERS_PATH, members)
-
-    if hist_events:
-        with _LOCK:
-            hist = _rj(_HISTORY_PATH)
-            hist.extend(hist_events)
-            _wj(_HISTORY_PATH, hist)
+    _add_members_bulk(new_members)
+    _add_history_events_bulk(hist_events)
 
     return {
         "status": "ok",
@@ -443,22 +723,17 @@ def upload_excel(file: UploadFile = File(...)) -> dict:
 
 @router.post("/members/{member_id}/take-out")
 def take_out_member(member_id: str, body: TakeOutBody) -> dict:
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
-        idx = next((i for i, m in enumerate(members) if m.get("id") == member_id), None)
-        if idx is None:
-            raise HTTPException(404, detail="Member tidak ditemukan")
-        if members[idx].get("status") == "Nonaktif":
-            raise HTTPException(400, detail="Member sudah nonaktif")
+    existing = _get_member_by_id(member_id)
+    if existing is None:
+        raise HTTPException(404, detail="Member tidak ditemukan")
+    if existing.get("status") == "Nonaktif":
+        raise HTTPException(400, detail="Member sudah nonaktif")
 
-        members[idx] = {
-            **members[idx],
-            "status":        "Nonaktif",
-            "tgl_keluar":    date.today().isoformat(),
-            "alasan_keluar": body.alasan,
-        }
-        _wj(_MEMBERS_PATH, members)
-        updated = members[idx]
+    updated = _update_member_by_id(member_id, {
+        "status":        "Nonaktif",
+        "tgl_keluar":    date.today().isoformat(),
+        "alasan_keluar": body.alasan,
+    })
 
     _log({
         "id_member": member_id,
@@ -480,15 +755,11 @@ def update_reward_type(member_id: str, body: UpdateRewardTypeBody) -> dict:
     if body.reward_type not in VALID_REWARD_TYPES:
         raise HTTPException(400, detail=f"reward_type tidak valid: {body.reward_type}")
 
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
-        idx = next((i for i, m in enumerate(members) if m.get("id") == member_id), None)
-        if idx is None:
-            raise HTTPException(404, detail="Member tidak ditemukan")
-        old_rt = members[idx].get("reward_type", "Standard")
-        members[idx] = {**members[idx], "reward_type": body.reward_type}
-        _wj(_MEMBERS_PATH, members)
-        updated = members[idx]
+    existing = _get_member_by_id(member_id)
+    if existing is None:
+        raise HTTPException(404, detail="Member tidak ditemukan")
+    old_rt = existing.get("reward_type", "Standard")
+    updated = _update_member_by_id(member_id, {"reward_type": body.reward_type})
 
     _log({
         "id_member": member_id,
@@ -506,8 +777,7 @@ def update_reward_type(member_id: str, body: UpdateRewardTypeBody) -> dict:
 
 @router.get("/takeout-recommendations")
 def get_takeout_recs() -> dict:
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
+    members = _get_members()
 
     active = [m for m in members if m.get("status") == "Aktif"]
     if not active:
@@ -525,8 +795,7 @@ def get_takeout_recs() -> dict:
 def get_smart_promos() -> dict:
     from api.core.cannibalization_engine import load_cached_result
 
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
+    members = _get_members()
 
     active = [m for m in members if m.get("status") == "Aktif"]
     if not active:
@@ -547,8 +816,7 @@ def get_smart_promos() -> dict:
 
 @router.get("/ilp-recommendations")
 def get_ilp_recs(limit: int = Query(50, ge=1, le=200)) -> dict:
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
+    members = _get_members()
 
     active_ids = {str(m["id_toko"]) for m in members if m.get("status") == "Aktif"}
     crs  = get_store_crs()
@@ -581,8 +849,7 @@ def get_ilp_recs(limit: int = Query(50, ge=1, le=200)) -> dict:
 
 @router.get("/history")
 def get_history() -> dict:
-    with _LOCK:
-        hist = _rj(_HISTORY_PATH)
+    hist = _get_history()
     hist_sorted = sorted(hist, key=lambda x: x.get("tanggal", ""), reverse=True)
     return {"status": "ok", "data": hist_sorted, "meta": _meta(total=len(hist_sorted))}
 
@@ -626,8 +893,7 @@ def download_template() -> StreamingResponse:
 @router.get("/search-stores")
 def search_stores(q: str = Query("", min_length=1)) -> dict:
     crs = get_store_crs()
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
+    members = _get_members()
     active_ids = {str(m["id_toko"]) for m in members if m.get("status") == "Aktif"}
 
     q_lower = q.lower().strip()
@@ -685,8 +951,7 @@ def get_targets(
     limit:   int        = Query(50, ge=1, le=500),
     offset:  int        = Query(0, ge=0),
 ) -> dict:
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
+    members = _get_members()
     active = [m for m in members if m.get("status") == "Aktif"]
     if not active:
         return {"status": "ok", "data": [], "summary": _EMPTY_SUMMARY,
@@ -770,8 +1035,7 @@ def export_targets(
     search:  str | None = Query(None),
 ) -> StreamingResponse:
     """Export filtered historical targets as .xlsx."""
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
+    members = _get_members()
     active = [m for m in members if m.get("status") == "Aktif"]
     if not active:
         raise HTTPException(404, detail="Tidak ada peserta aktif")
@@ -876,8 +1140,7 @@ def export_targets(
 
 @router.get("/targets/summary")
 def get_targets_summary() -> dict:
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
+    members = _get_members()
     active = [m for m in members if m.get("status") == "Aktif"]
     if not active:
         return {
@@ -973,7 +1236,7 @@ def update_targets_config(body: TargetConfigBody) -> dict:
             raise HTTPException(400, detail=f"{field} harus antara 0 dan 1")
 
     new_cfg = body.model_dump()
-    _wj(_CONFIG_PATH, new_cfg)
+    _save_target_config(new_cfg)
     return {"status": "ok", "data": new_cfg, "meta": _meta()}
 
 
@@ -1019,8 +1282,7 @@ def get_targets_history(
     bulan_end:   str = Query("2026-04"),
 ) -> dict:
     """Historical targets for all active members from bulan_start to bulan_end."""
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
+    members = _get_members()
     active = [m for m in members if m.get("status") == "Aktif"]
     if not active:
         return {"status": "ok", "data": [], "meta": _meta(total=0)}
@@ -1077,8 +1339,7 @@ def get_effectiveness_endpoint(
     bulan: int = Query(..., ge=1, le=12),
     tahun: int = Query(..., ge=2020),
 ) -> dict:
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
+    members = _get_members()
     active = [m for m in members if m.get("status") == "Aktif"]
     if not active:
         return {"status": "ok", "data": calculate_effectiveness(pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), bulan, tahun), "meta": _meta()}
@@ -1107,8 +1368,7 @@ def get_insights_volume_trend() -> dict:
     """12-month volume trend: loyalty vs non-loyalty, with targets and achievement %."""
     from collections import defaultdict
 
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
+    members = _get_members()
     active = [m for m in members if m.get("status") == "Aktif"]
     active_ids = {str(m["id_toko"]) for m in active}
 
@@ -1169,8 +1429,7 @@ def get_insights_comparison() -> dict:
     """6-month avg TON per store: loyalty vs non-loyalty."""
     from collections import defaultdict
 
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
+    members = _get_members()
     active = [m for m in members if m.get("status") == "Aktif"]
     active_ids = {str(m["id_toko"]) for m in active}
 
@@ -1224,8 +1483,7 @@ def get_insights_effectiveness_trend() -> dict:
     """12-month effectiveness trend."""
     from collections import defaultdict
 
-    with _LOCK:
-        members = _rj(_MEMBERS_PATH)
+    members = _get_members()
     active = [m for m in members if m.get("status") == "Aktif"]
     active_ids = {str(m["id_toko"]) for m in active}
     total_peserta = len(active)
@@ -1280,3 +1538,21 @@ def get_insights_effectiveness_trend() -> dict:
         })
 
     return {"status": "ok", "data": result, "meta": _meta()}
+
+
+# ── GET /api/loyalty/debug/storage-mode ──────────────────────────────────────
+# SEMENTARA — untuk verifikasi rollout Tahap 4. HAPUS setelah migrasi selesai
+# final dan flag USE_SQLITE_STORAGE sudah permanen true di production.
+#
+# Catatan path: diminta sebagai /api/debug/storage-mode (tanpa prefix /loyalty),
+# tapi ditempatkan di sini sebagai /api/loyalty/debug/storage-mode supaya tidak
+# perlu menyentuh main.py untuk mendaftarkan router baru — sesuai strategi
+# "satu modul dulu, blast radius kecil". Mudah dipindah ke path persis yang
+# diminta nanti kalau diperlukan.
+
+@router.get("/debug/storage-mode")
+def debug_storage_mode() -> dict:
+    return {
+        "use_sqlite": USE_SQLITE,
+        "db_path": str(DB_PATH) if USE_SQLITE else None,
+    }
