@@ -32,7 +32,7 @@ from api.core.loyalty_engine import (
     get_takeout_recommendations,
     get_target_triggers,
 )
-from api.database import DB_PATH, SessionLocal
+from api.database import SessionLocal
 from api.models import LoyaltyConfig as LoyaltyConfigRow
 from api.models import LoyaltyHistory as LoyaltyHistoryRow
 from api.models import LoyaltyMember as LoyaltyMemberRow
@@ -1538,21 +1538,3 @@ def get_insights_effectiveness_trend() -> dict:
         })
 
     return {"status": "ok", "data": result, "meta": _meta()}
-
-
-# ── GET /api/loyalty/debug/storage-mode ──────────────────────────────────────
-# SEMENTARA — untuk verifikasi rollout Tahap 4. HAPUS setelah migrasi selesai
-# final dan flag USE_SQLITE_STORAGE sudah permanen true di production.
-#
-# Catatan path: diminta sebagai /api/debug/storage-mode (tanpa prefix /loyalty),
-# tapi ditempatkan di sini sebagai /api/loyalty/debug/storage-mode supaya tidak
-# perlu menyentuh main.py untuk mendaftarkan router baru — sesuai strategi
-# "satu modul dulu, blast radius kecil". Mudah dipindah ke path persis yang
-# diminta nanti kalau diperlukan.
-
-@router.get("/debug/storage-mode")
-def debug_storage_mode() -> dict:
-    return {
-        "use_sqlite": USE_SQLITE,
-        "db_path": str(DB_PATH) if USE_SQLITE else None,
-    }
