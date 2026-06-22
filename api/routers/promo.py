@@ -27,8 +27,26 @@ from api.core.promo_engine import (
     get_promo_summary,
 )
 from api.core import promo_calculator as pc
+from api.database import SessionLocal
+from api.models import LoyaltyMember as LoyaltyMemberRow
+from api.models import Promo as PromoRow
+from api.models import PromoArchive as PromoArchiveRow
+from api.models import PromoPeserta as PromoPesertaRow
 
 router = APIRouter(prefix="/api/promo", tags=["promo"])
+
+# Feature flag — Tahap 4b rollout, pola identik dengan loyalty.py (Tahap 4a).
+# Default false = perilaku identik dengan sebelumnya (JSON). Lihat fungsi
+# _get_promos()/_save_new_promo()/dst. di bawah untuk abstraksinya.
+USE_SQLITE = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
+
+# jenis_promo yang HANYA dihasilkan oleh skema v1 (_infer_jenis(), endpoint
+# /create) — tidak pernah overlap dengan jenis_promo v2/v3 (multi_tier_points/
+# flat_multiplier/leaderboard). Dipakai untuk merekonstruksi nama field asli
+# ("konfigurasi_promo" vs "reward_config") saat baca balik dari kolom
+# reward_config yang menyatukan keduanya di model Promo — lihat docstring
+# class Promo di api/models.py.
+_V1_JENIS_PROMO = {"reward_rate", "target_bonus", "cashback", "kombinasi"}
 
 _LOCK = threading.Lock()
 
@@ -71,6 +89,282 @@ def _now() -> str:
 
 def _meta(**kw: Any) -> dict:
     return {"generated_at": _now(), **kw}
+
+
+# ── Storage abstraction (JSON / SQLite) ────────────────────────────────────────
+#
+# Pola identik dengan loyalty.py: setiap fungsi punya DUA cabang (USE_SQLITE
+# True/False) yang mengembalikan/menerima bentuk dict YANG SAMA PERSIS dengan
+# JSON asli. Cabang JSON adalah logic lama, TIDAK diubah — hanya dipindah ke
+# dalam fungsi.
+#
+# Promo Selesai/Dibatalkan TETAP di tabel Promo yang sama (siklus hidup live
+# tidak pernah "pindah tabel" — beda dari kategorisasi satu-kali di skrip
+# migrasi). Tabel PromoArchive hanya berisi 1 entri legacy historis dari
+# migrasi Tahap 3 (promo lama yang skemanya terlalu tidak konsisten untuk
+# dinormalisasi) — read-only dari sisi aplikasi live, digabung saat baca
+# supaya tetap muncul di GET /api/promo dan GET /api/promo/{id}.
+
+def _peserta_to_dict(pp: PromoPesertaRow) -> dict:
+    """rate_override/brand_utama: union shape, lihat docstring class PromoPeserta
+    di api/models.py — add-one/upload-excel TIDAK PUNYA key brand_utama sama
+    sekali (bukan None), monitoring-add TIDAK PUNYA key rate_override sama
+    sekali. Beberapa konsumen (promo_calculator.calculate_flat_multiplier_program)
+    memakai peserta.get("brand_utama", "Semen Elang") — kalau key selalu di-set
+    ke None di sini, default itu TIDAK PERNAH terpakai dan reward salah hitung
+    (dikonfirmasi via parity test: multiplier 2.0X jadi 1.0X). rate_override
+    aman selalu disertakan karena semua pemanggil pakai .get() tanpa default
+    truthy (lihat promo_engine.py)."""
+    d: dict = {
+        "id_toko":       pp.id_toko,
+        "nama_toko":     pp.nama_toko,
+        "cluster":       pp.cluster,
+        "rate_override": pp.rate_override,
+        "target_ton":    pp.target_ton,
+        "catatan":       pp.catatan or "",
+    }
+    if pp.brand_utama is not None:
+        d["brand_utama"] = pp.brand_utama
+    return d
+
+
+def _iso_utc(dt: datetime | None) -> str | None:
+    """SQLite/SQLAlchemy melepas tzinfo saat baca balik kolom DateTime.
+    Semua datetime yang pernah ditulis ke kolom ini berasal dari _now()
+    (datetime.now(timezone.utc)) atau func.now() SQLite (juga UTC) — aman
+    menempelkan kembali UTC di sini supaya output ISO string sama persis
+    dengan mode JSON (yang menyimpan _now() apa adanya, termasuk +00:00)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
+def _promo_row_to_dict(p: PromoRow, peserta_rows: list[PromoPesertaRow]) -> dict:
+    d: dict = {
+        "id":              p.id,
+        "nama_promo":      p.nama_promo,
+        "deskripsi":       p.deskripsi or "",
+        "jenis_promo":     p.jenis_promo,
+        "status":          p.status,
+        "periode_mulai":   p.periode_mulai.isoformat() if p.periode_mulai else None,
+        "periode_selesai": p.periode_selesai.isoformat() if p.periode_selesai else None,
+        "created_by":      p.created_by,
+        "created_at":      _iso_utc(p.created_at),
+        "peserta":         [_peserta_to_dict(pp) for pp in peserta_rows],
+        "summary_peserta": p.summary_peserta or {"total_toko": 0, "per_cluster": {}, "estimasi_budget_total": 0},
+    }
+    # reward_config kolom menyatukan konfigurasi_promo (v1) dan reward_config
+    # (v2/v3) — lihat _V1_JENIS_PROMO di atas untuk aturan rekonstruksi nama field.
+    if p.jenis_promo in _V1_JENIS_PROMO:
+        d["konfigurasi_promo"] = p.reward_config or {}
+    else:
+        d["reward_config"] = p.reward_config or {}
+    if p.tipe_program is not None:
+        d["tipe_program"] = p.tipe_program
+    if p.activated_at is not None:
+        d["activated_at"] = _iso_utc(p.activated_at)
+    if p.completed_at is not None:
+        d["completed_at"] = _iso_utc(p.completed_at)
+    if p.cancelled_at is not None:
+        d["cancelled_at"] = _iso_utc(p.cancelled_at)
+    if p.alasan_batal is not None:
+        d["alasan_batal"] = p.alasan_batal
+    if p.final_summary is not None:
+        d["final_summary"] = p.final_summary
+    if p.final_achievements is not None:
+        d["final_achievements"] = p.final_achievements
+    return d
+
+
+def _get_promos() -> list[dict]:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            rows = db.query(PromoRow).all()
+            out = [
+                _promo_row_to_dict(
+                    p,
+                    db.query(PromoPesertaRow).filter_by(promo_id=p.id).order_by(PromoPesertaRow.id).all(),
+                )
+                for p in rows
+            ]
+            out += [dict(a.raw_json) for a in db.query(PromoArchiveRow).all()]
+            out.sort(key=lambda x: x["id"])
+            return out
+        finally:
+            db.close()
+    with _LOCK:
+        return _rp(_PROMOS_PATH)
+
+
+def _get_promo_by_id(promo_id: str) -> dict | None:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            p = db.query(PromoRow).filter_by(id=promo_id).first()
+            if p is not None:
+                peserta_rows = db.query(PromoPesertaRow).filter_by(promo_id=p.id).order_by(PromoPesertaRow.id).all()
+                return _promo_row_to_dict(p, peserta_rows)
+            a = db.query(PromoArchiveRow).filter_by(id=promo_id).first()
+            return dict(a.raw_json) if a is not None else None
+        finally:
+            db.close()
+    promos = _rp(_PROMOS_PATH)
+    return next((p for p in promos if p["id"] == promo_id), None)
+
+
+def _save_new_promo(promo: dict) -> None:
+    """Insert promo baru — selalu Draft + peserta kosong di kedua mode
+    (satu-satunya jalur insert; lihat create/create-v2/create-v3)."""
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            reward_config = promo.get("konfigurasi_promo") if promo.get("jenis_promo") in _V1_JENIS_PROMO else promo.get("reward_config")
+            db.add(PromoRow(
+                id=promo["id"], nama_promo=promo["nama_promo"], deskripsi=promo.get("deskripsi", ""),
+                jenis_promo=promo.get("jenis_promo"), tipe_program=promo.get("tipe_program"),
+                status=promo["status"],
+                periode_mulai=date.fromisoformat(promo["periode_mulai"]),
+                periode_selesai=date.fromisoformat(promo["periode_selesai"]),
+                created_by=promo.get("created_by", "admin"),
+                reward_config=reward_config or {},
+                summary_peserta=promo.get("summary_peserta", {}),
+            ))
+            db.commit()
+        finally:
+            db.close()
+        return
+    with _LOCK:
+        promos = _rp(_PROMOS_PATH)
+        promos.append(promo)
+        _wp(_PROMOS_PATH, promos)
+
+
+_DATETIME_FIELDS = {"activated_at", "completed_at", "cancelled_at"}
+
+
+def _update_promo_status(promo_id: str, **fields: Any) -> dict | None:
+    """Update field skalar pada Promo row (status/activated_at/dst). Hanya
+    dipanggil utk promo di tabel Promo (status-guard di endpoint mencegah
+    operasi ini menyentuh entri PromoArchive — lihat audit Tahap 4b).
+    fields: nilai dalam format JSON-friendly (string ISO utk datetime,
+    sama seperti _now()) — dikonversi ke tipe kolom di cabang SQLite."""
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            p = db.query(PromoRow).filter_by(id=promo_id).first()
+            if p is None:
+                return None
+            for k, v in fields.items():
+                if k in _DATETIME_FIELDS and isinstance(v, str):
+                    v = datetime.fromisoformat(v)
+                setattr(p, k, v)
+            db.commit()
+            peserta_rows = db.query(PromoPesertaRow).filter_by(promo_id=p.id).order_by(PromoPesertaRow.id).all()
+            return _promo_row_to_dict(p, peserta_rows)
+        finally:
+            db.close()
+    with _LOCK:
+        promos = _rp(_PROMOS_PATH)
+        idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
+        if idx is None:
+            return None
+        promos[idx].update(fields)
+        _wp(_PROMOS_PATH, promos)
+        return promos[idx]
+
+
+def _delete_promo_by_id(promo_id: str) -> bool:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            p = db.query(PromoRow).filter_by(id=promo_id).first()
+            if p is not None:
+                db.delete(p)  # cascades to PromoPeserta
+                db.commit()
+                return True
+            a = db.query(PromoArchiveRow).filter_by(id=promo_id).first()
+            if a is not None:
+                db.delete(a)
+                db.commit()
+                return True
+            return False
+        finally:
+            db.close()
+    with _LOCK:
+        promos = _rp(_PROMOS_PATH)
+        idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
+        if idx is None:
+            return False
+        promos.pop(idx)
+        _wp(_PROMOS_PATH, promos)
+        return True
+
+
+def _set_peserta_list(promo_id: str, peserta: list[dict], summary_peserta: dict) -> None:
+    """Replace seluruh list peserta suatu promo (dipakai add-one/upload-excel/
+    add/update/remove — semuanya menulis ulang list lengkap, sama seperti
+    cabang JSON yang menulis ulang seluruh array setiap kali)."""
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            db.query(PromoPesertaRow).filter_by(promo_id=promo_id).delete()
+            for p in peserta:
+                db.add(PromoPesertaRow(
+                    promo_id=promo_id, id_toko=p["id_toko"], nama_toko=p["nama_toko"],
+                    cluster=p["cluster"], target_ton=p.get("target_ton") or 0.0,
+                    rate_override=p.get("rate_override"), brand_utama=p.get("brand_utama"),
+                    catatan=p.get("catatan", ""),
+                ))
+            row = db.query(PromoRow).filter_by(id=promo_id).first()
+            if row is not None:
+                row.summary_peserta = summary_peserta
+            db.commit()
+        finally:
+            db.close()
+        return
+    with _LOCK:
+        promos = _rp(_PROMOS_PATH)
+        idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
+        if idx is None:
+            return
+        promos[idx]["peserta"]         = peserta
+        promos[idx]["summary_peserta"] = summary_peserta
+        _wp(_PROMOS_PATH, promos)
+
+
+def _member_row_to_dict(m: LoyaltyMemberRow) -> dict:
+    return {
+        "id":             m.id,
+        "id_toko":        m.id_toko,
+        "nama_toko":      m.nama_toko,
+        "kabupaten":      m.kabupaten,
+        "cluster_pareto": m.cluster_pareto,
+        "tso":            m.tso,
+        "reward_type":    m.reward_type,
+        "catatan":        m.catatan or "",
+        "status":         m.status,
+        "tgl_masuk":      m.tgl_masuk.isoformat() if m.tgl_masuk else None,
+        "tgl_keluar":     m.tgl_keluar.isoformat() if m.tgl_keluar else None,
+        "alasan_keluar":  m.alasan_keluar,
+    }
+
+
+def _get_loyalty_members_for_promo() -> list[dict]:
+    """Cross-module lookup — promo.py butuh data toko loyalty utk validasi
+    peserta (nama_toko/cluster/status). Mode-aware terhadap flag yang SAMA
+    dgn loyalty.py: saat SQLite aktif, loyalty.py berhenti menulis ke
+    loyalty_members.json sama sekali, jadi baca JSON di sini akan stale
+    (lihat audit Tahap 4b) — wajib ikut baca dari SQLite saat flag true."""
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            return [_member_row_to_dict(m) for m in db.query(LoyaltyMemberRow).all()]
+        finally:
+            db.close()
+    return _rp(_MEMBERS_PATH)
 
 
 # ── Business helpers ──────────────────────────────────────────────────────────
@@ -285,10 +579,8 @@ def create_promo_v2(body: CreatePromoBodyV2) -> dict:
     if multipliers != sorted(multipliers):
         raise HTTPException(400, "multiplier harus naik mengikuti urutan threshold tier")
 
-    with _LOCK:
-        promos = _rp(_PROMOS_PATH)
-        new_id = _generate_id(promos)
-        promo: dict = {
+    def _build(new_id: str) -> dict:
+        return {
             "id":             new_id,
             "nama_promo":     body.nama_promo,
             "deskripsi":      body.deskripsi,
@@ -302,8 +594,16 @@ def create_promo_v2(body: CreatePromoBodyV2) -> dict:
             "peserta":        [],
             "summary_peserta": {"total_toko": 0, "per_cluster": {}, "estimasi_budget_total": 0},
         }
-        promos.append(promo)
-        _wp(_PROMOS_PATH, promos)
+
+    if USE_SQLITE:
+        promo = _build(_generate_id(_get_promos()))
+        _save_new_promo(promo)
+    else:
+        with _LOCK:
+            promos = _rp(_PROMOS_PATH)
+            promo  = _build(_generate_id(promos))
+            promos.append(promo)
+            _wp(_PROMOS_PATH, promos)
 
     return {"status": "ok", "data": promo}
 
@@ -348,10 +648,8 @@ def create_promo_v3(body: CreatePromoV3Body) -> dict:
         "leaderboard":     "leaderboard",
     }
 
-    with _LOCK:
-        promos = _rp(_PROMOS_PATH)
-        new_id = _generate_id(promos)
-        promo: dict = {
+    def _build(new_id: str) -> dict:
+        return {
             "id":              new_id,
             "nama_promo":      body.nama_promo,
             "deskripsi":       body.deskripsi,
@@ -366,8 +664,16 @@ def create_promo_v3(body: CreatePromoV3Body) -> dict:
             "peserta":         [],
             "summary_peserta": {"total_toko": 0, "per_cluster": {}, "estimasi_budget_total": 0},
         }
-        promos.append(promo)
-        _wp(_PROMOS_PATH, promos)
+
+    if USE_SQLITE:
+        promo = _build(_generate_id(_get_promos()))
+        _save_new_promo(promo)
+    else:
+        with _LOCK:
+            promos = _rp(_PROMOS_PATH)
+            promo  = _build(_generate_id(promos))
+            promos.append(promo)
+            _wp(_PROMOS_PATH, promos)
 
     return {"status": "ok", "data": promo}
 
@@ -413,8 +719,7 @@ def list_promos(
     limit:  int        = Query(50, ge=1, le=200),
     offset: int        = Query(0,  ge=0),
 ) -> dict:
-    with _LOCK:
-        promos = _rp(_PROMOS_PATH)
+    promos = _get_promos()
 
     if status:
         promos = [p for p in promos if p.get("status") == status]
@@ -434,10 +739,9 @@ def list_promos(
 @router.post("/create", status_code=201)
 def create_promo(body: CreatePromoBody) -> dict:
     cfg  = body.konfigurasi_promo.model_dump()
-    with _LOCK:
-        promos = _rp(_PROMOS_PATH)
-        new_id = _generate_id(promos)
-        promo: dict = {
+
+    def _build(new_id: str) -> dict:
+        return {
             "id":               new_id,
             "nama_promo":       body.nama_promo,
             "deskripsi":        body.deskripsi,
@@ -451,8 +755,16 @@ def create_promo(body: CreatePromoBody) -> dict:
             "peserta":          [],
             "summary_peserta":  {"total_toko": 0, "per_cluster": {}, "estimasi_budget_total": 0},
         }
-        promos.append(promo)
-        _wp(_PROMOS_PATH, promos)
+
+    if USE_SQLITE:
+        promo = _build(_generate_id(_get_promos()))
+        _save_new_promo(promo)
+    else:
+        with _LOCK:
+            promos = _rp(_PROMOS_PATH)
+            promo  = _build(_generate_id(promos))
+            promos.append(promo)
+            _wp(_PROMOS_PATH, promos)
 
     return {"status": "ok", "data": promo}
 
@@ -461,9 +773,7 @@ def create_promo(body: CreatePromoBody) -> dict:
 
 @router.get("/{promo_id}")
 def get_promo(promo_id: str) -> dict:
-    with _LOCK:
-        promos = _rp(_PROMOS_PATH)
-    promo = next((p for p in promos if p["id"] == promo_id), None)
+    promo = _get_promo_by_id(promo_id)
     if not promo:
         raise HTTPException(404, detail="Promo tidak ditemukan")
     return {"status": "ok", "data": promo, "meta": _meta()}
@@ -473,6 +783,37 @@ def get_promo(promo_id: str) -> dict:
 
 @router.put("/{promo_id}/update")
 def update_promo(promo_id: str, body: UpdatePromoBody) -> dict:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            p = db.query(PromoRow).filter_by(id=promo_id).first()
+            if p is None:
+                raise HTTPException(404, detail="Promo tidak ditemukan")
+            if p.status != "Draft":
+                raise HTTPException(400, detail="Hanya promo Draft yang bisa diubah")
+
+            if body.nama_promo is not None:
+                p.nama_promo = body.nama_promo
+            if body.deskripsi is not None:
+                p.deskripsi = body.deskripsi
+            if body.periode_mulai is not None:
+                p.periode_mulai = date.fromisoformat(body.periode_mulai)
+            if body.periode_selesai is not None:
+                p.periode_selesai = date.fromisoformat(body.periode_selesai)
+            peserta_rows = db.query(PromoPesertaRow).filter_by(promo_id=p.id).order_by(PromoPesertaRow.id).all()
+            if body.konfigurasi_promo is not None:
+                cfg = body.konfigurasi_promo.model_dump()
+                p.reward_config   = cfg
+                p.jenis_promo     = _infer_jenis(cfg)
+                peserta_dicts     = [_peserta_to_dict(pp) for pp in peserta_rows]
+                p.summary_peserta = _rebuild_summary(peserta_dicts, cfg)
+
+            db.commit()
+            updated = _promo_row_to_dict(p, peserta_rows)
+        finally:
+            db.close()
+        return {"status": "ok", "data": updated}
+
     with _LOCK:
         promos = _rp(_PROMOS_PATH)
         idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
@@ -505,6 +846,17 @@ def update_promo(promo_id: str, body: UpdatePromoBody) -> dict:
 
 @router.post("/{promo_id}/activate")
 def activate_promo(promo_id: str) -> dict:
+    if USE_SQLITE:
+        promo = _get_promo_by_id(promo_id)
+        if promo is None:
+            raise HTTPException(404, detail="Promo tidak ditemukan")
+        if promo["status"] != "Draft":
+            raise HTTPException(400, detail="Hanya promo Draft yang bisa diaktifkan")
+        if not promo["peserta"]:
+            raise HTTPException(400, detail="Promo harus memiliki minimal satu peserta")
+        updated = _update_promo_status(promo_id, status="Aktif", activated_at=_now())
+        return {"status": "ok", "data": updated}
+
     with _LOCK:
         promos = _rp(_PROMOS_PATH)
         idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
@@ -527,6 +879,26 @@ def activate_promo(promo_id: str) -> dict:
 
 @router.post("/{promo_id}/complete")
 def complete_promo(promo_id: str) -> dict:
+    if USE_SQLITE:
+        promo = _get_promo_by_id(promo_id)
+        if promo is None:
+            raise HTTPException(404, detail="Promo tidak ditemukan")
+        if promo["status"] != "Aktif":
+            raise HTTPException(400, detail="Hanya promo Aktif yang bisa diselesaikan")
+
+        df_trx  = load_data()
+        ach_df  = calculate_promo_achievement(promo, df_trx)
+        summary = get_promo_summary(promo, ach_df)
+
+        updated = _update_promo_status(
+            promo_id,
+            status="Selesai",
+            completed_at=_now(),
+            final_summary=summary,
+            final_achievements=ach_df.to_dict("records") if not ach_df.empty else [],
+        )
+        return {"status": "ok", "data": updated, "meta": _meta(summary=summary)}
+
     with _LOCK:
         promos = _rp(_PROMOS_PATH)
         idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
@@ -557,6 +929,15 @@ def complete_promo(promo_id: str) -> dict:
 
 @router.post("/{promo_id}/cancel")
 def cancel_promo(promo_id: str, body: CancelBody) -> dict:
+    if USE_SQLITE:
+        promo = _get_promo_by_id(promo_id)
+        if promo is None:
+            raise HTTPException(404, detail="Promo tidak ditemukan")
+        if promo["status"] in ("Selesai", "Dibatalkan"):
+            raise HTTPException(400, detail=f"Promo {promo['status']} tidak bisa dibatalkan")
+        updated = _update_promo_status(promo_id, status="Dibatalkan", alasan_batal=body.alasan, cancelled_at=_now())
+        return {"status": "ok", "data": updated}
+
     with _LOCK:
         promos = _rp(_PROMOS_PATH)
         idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
@@ -578,6 +959,11 @@ def cancel_promo(promo_id: str, body: CancelBody) -> dict:
 
 @router.delete("/{promo_id}")
 def delete_promo(promo_id: str) -> dict:
+    if USE_SQLITE:
+        if not _delete_promo_by_id(promo_id):
+            raise HTTPException(404, detail="Promo tidak ditemukan")
+        return {"status": "ok", "deleted_id": promo_id}
+
     with _LOCK:
         promos = _rp(_PROMOS_PATH)
         idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
@@ -592,7 +978,7 @@ def delete_promo(promo_id: str) -> dict:
 
 @router.post("/{promo_id}/peserta/add-one")
 def add_peserta(promo_id: str, body: AddPesertaBody) -> dict:
-    members_raw = _rp(_MEMBERS_PATH)
+    members_raw = _get_loyalty_members_for_promo()
     member      = next(
         (m for m in members_raw if str(m["id_toko"]) == body.id_toko and m.get("status") == "Aktif"),
         None,
@@ -609,6 +995,29 @@ def add_peserta(promo_id: str, body: AddPesertaBody) -> dict:
         nama_toko = str(row.get("Nama Toko", ""))
         cluster   = str(row.get("Cluster Pareto", "Bronze"))
 
+    new_entry = {
+        "id_toko":       body.id_toko,
+        "nama_toko":     nama_toko,
+        "cluster":       cluster,
+        "rate_override": body.rate_override,
+        "target_ton":    body.target_ton or 0.0,
+        "catatan":       body.catatan,
+    }
+
+    if USE_SQLITE:
+        promo = _get_promo_by_id(promo_id)
+        if promo is None:
+            raise HTTPException(404, detail="Promo tidak ditemukan")
+        if promo["status"] != "Draft":
+            raise HTTPException(400, detail="Peserta hanya bisa ditambahkan saat status Draft")
+        existing_ids = {str(p["id_toko"]) for p in promo["peserta"]}
+        if body.id_toko in existing_ids:
+            raise HTTPException(409, detail=f"Toko {body.id_toko} sudah terdaftar")
+        updated_peserta = promo["peserta"] + [new_entry]
+        summary = _rebuild_summary(updated_peserta, promo.get("konfigurasi_promo", {}))
+        _set_peserta_list(promo_id, updated_peserta, summary)
+        return {"status": "ok", "data": updated_peserta}
+
     with _LOCK:
         promos = _rp(_PROMOS_PATH)
         idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
@@ -621,14 +1030,7 @@ def add_peserta(promo_id: str, body: AddPesertaBody) -> dict:
         if body.id_toko in existing_ids:
             raise HTTPException(409, detail=f"Toko {body.id_toko} sudah terdaftar")
 
-        promos[idx]["peserta"].append({
-            "id_toko":       body.id_toko,
-            "nama_toko":     nama_toko,
-            "cluster":       cluster,
-            "rate_override": body.rate_override,
-            "target_ton":    body.target_ton or 0.0,
-            "catatan":       body.catatan,
-        })
+        promos[idx]["peserta"].append(new_entry)
         promos[idx]["summary_peserta"] = _rebuild_summary(
             promos[idx]["peserta"], promos[idx].get("konfigurasi_promo", {})
         )
@@ -669,7 +1071,7 @@ def upload_peserta(promo_id: str, file: UploadFile = File(...)) -> dict:
             return default
         return str(row[i] or "").strip()
 
-    members_raw = _rp(_MEMBERS_PATH)
+    members_raw = _get_loyalty_members_for_promo() if USE_SQLITE else _rp(_MEMBERS_PATH)
     member_map  = {str(m["id_toko"]): m for m in members_raw if m.get("status") == "Aktif"}
     crs         = get_store_crs()
     crs_idx     = crs.set_index("ID Toko") if "ID Toko" in crs.columns else pd.DataFrame()
@@ -679,16 +1081,8 @@ def upload_peserta(promo_id: str, file: UploadFile = File(...)) -> dict:
     errors: list[str] = []
     new_peserta: list[dict] = []
 
-    with _LOCK:
-        promos = _rp(_PROMOS_PATH)
-        idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
-        if idx is None:
-            raise HTTPException(404, detail="Promo tidak ditemukan")
-        if promos[idx]["status"] != "Draft":
-            raise HTTPException(400, detail="Upload hanya bisa saat status Draft")
-
-        existing_ids = {str(p["id_toko"]) for p in promos[idx]["peserta"]}
-
+    def _process_rows(existing_ids: set[str]) -> None:
+        nonlocal berhasil, duplikat
         for row_num, row in enumerate(rows[1:], start=2):
             id_toko = gcol(row, "ID Toko")
             if not id_toko:
@@ -733,6 +1127,36 @@ def upload_peserta(promo_id: str, file: UploadFile = File(...)) -> dict:
             existing_ids.add(id_toko)
             berhasil += 1
 
+    if USE_SQLITE:
+        promo = _get_promo_by_id(promo_id)
+        if promo is None:
+            raise HTTPException(404, detail="Promo tidak ditemukan")
+        if promo["status"] != "Draft":
+            raise HTTPException(400, detail="Upload hanya bisa saat status Draft")
+
+        _process_rows({str(p["id_toko"]) for p in promo["peserta"]})
+
+        if new_peserta:
+            updated_peserta = promo["peserta"] + new_peserta
+            summary = _rebuild_summary(updated_peserta, promo.get("konfigurasi_promo", {}))
+            _set_peserta_list(promo_id, updated_peserta, summary)
+
+        return {
+            "status": "ok",
+            "data":   {"berhasil": berhasil, "duplikat": duplikat, "errors": errors},
+            "meta":   _meta(),
+        }
+
+    with _LOCK:
+        promos = _rp(_PROMOS_PATH)
+        idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
+        if idx is None:
+            raise HTTPException(404, detail="Promo tidak ditemukan")
+        if promos[idx]["status"] != "Draft":
+            raise HTTPException(400, detail="Upload hanya bisa saat status Draft")
+
+        _process_rows({str(p["id_toko"]) for p in promos[idx]["peserta"]})
+
         if new_peserta:
             promos[idx]["peserta"].extend(new_peserta)
             promos[idx]["summary_peserta"] = _rebuild_summary(
@@ -755,14 +1179,12 @@ def search_toko_for_promo(
     q: str = Query("", min_length=0),
 ) -> dict:
     """Cari toko yang belum jadi peserta program ini."""
-    with _LOCK:
-        promos = _rp(_PROMOS_PATH)
-    promo = next((p for p in promos if p["id"] == promo_id), None)
+    promo = _get_promo_by_id(promo_id)
     if not promo:
         raise HTTPException(404, detail="Promo tidak ditemukan")
 
     existing_ids = {str(p["id_toko"]) for p in promo.get("peserta", [])}
-    members_raw  = _rp(_MEMBERS_PATH)
+    members_raw  = _get_loyalty_members_for_promo()
     q_lower      = q.lower().strip()
 
     results: list[dict] = []
@@ -796,7 +1218,7 @@ def add_peserta_mon(promo_id: str, body: AddPesertaMonBody) -> dict:
     cluster   = body.cluster
 
     if not nama_toko or not cluster:
-        members_raw = _rp(_MEMBERS_PATH)
+        members_raw = _get_loyalty_members_for_promo()
         member = next((m for m in members_raw if str(m.get("id_toko", "")) == body.id_toko), None)
         if member:
             nama_toko = nama_toko or str(member["nama_toko"])
@@ -810,6 +1232,28 @@ def add_peserta_mon(promo_id: str, body: AddPesertaMonBody) -> dict:
             nama_toko = nama_toko or str(row.get("Nama Toko", ""))
             cluster   = cluster   or str(row.get("Cluster Pareto", "Bronze"))
 
+    new_p = {
+        "id_toko":     body.id_toko,
+        "nama_toko":   nama_toko or "",
+        "cluster":     cluster or "Bronze",
+        "target_ton":  body.target_ton,
+        "brand_utama": body.brand_utama or "",
+        "catatan":     body.catatan,
+    }
+
+    if USE_SQLITE:
+        promo = _get_promo_by_id(promo_id)
+        if promo is None:
+            raise HTTPException(404, detail="Promo tidak ditemukan")
+        if promo["status"] in ("Selesai", "Dibatalkan"):
+            raise HTTPException(400, detail="Tidak bisa menambah peserta ke program yang sudah Selesai atau Dibatalkan")
+        if any(str(p["id_toko"]) == body.id_toko for p in promo["peserta"]):
+            raise HTTPException(409, detail=f"Toko {body.id_toko} sudah terdaftar dalam program ini")
+        updated_peserta = promo["peserta"] + [new_p]
+        summary = _rebuild_summary(updated_peserta, promo.get("konfigurasi_promo", {}))
+        _set_peserta_list(promo_id, updated_peserta, summary)
+        return {"status": "ok", "data": new_p, "meta": _meta()}
+
     with _LOCK:
         promos = _rp(_PROMOS_PATH)
         idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
@@ -821,14 +1265,6 @@ def add_peserta_mon(promo_id: str, body: AddPesertaMonBody) -> dict:
         if any(str(p["id_toko"]) == body.id_toko for p in promos[idx]["peserta"]):
             raise HTTPException(409, detail=f"Toko {body.id_toko} sudah terdaftar dalam program ini")
 
-        new_p = {
-            "id_toko":     body.id_toko,
-            "nama_toko":   nama_toko or "",
-            "cluster":     cluster or "Bronze",
-            "target_ton":  body.target_ton,
-            "brand_utama": body.brand_utama or "",
-            "catatan":     body.catatan,
-        }
         promos[idx]["peserta"].append(new_p)
         promos[idx]["summary_peserta"] = _rebuild_summary(
             promos[idx]["peserta"], promos[idx].get("konfigurasi_promo", {})
@@ -843,6 +1279,26 @@ def add_peserta_mon(promo_id: str, body: AddPesertaMonBody) -> dict:
 @router.put("/{promo_id}/peserta/{id_toko}")
 def update_peserta(promo_id: str, id_toko: str, body: UpdatePesertaBody) -> dict:
     """Update data peserta spesifik."""
+    if USE_SQLITE:
+        promo = _get_promo_by_id(promo_id)
+        if promo is None:
+            raise HTTPException(404, detail="Promo tidak ditemukan")
+        if promo["status"] in ("Selesai", "Dibatalkan"):
+            raise HTTPException(400, detail="Tidak bisa mengubah peserta di program yang sudah Selesai atau Dibatalkan")
+        peserta = promo["peserta"]
+        pidx = next((j for j, p in enumerate(peserta) if str(p["id_toko"]) == id_toko), None)
+        if pidx is None:
+            raise HTTPException(404, detail=f"Toko {id_toko} tidak ditemukan dalam program")
+
+        if body.target_ton  is not None: peserta[pidx]["target_ton"]  = body.target_ton
+        if body.brand_utama is not None: peserta[pidx]["brand_utama"] = body.brand_utama
+        if body.catatan     is not None: peserta[pidx]["catatan"]     = body.catatan
+
+        updated = peserta[pidx]
+        summary = _rebuild_summary(peserta, promo.get("konfigurasi_promo", {}))
+        _set_peserta_list(promo_id, peserta, summary)
+        return {"status": "ok", "data": updated, "meta": _meta()}
+
     with _LOCK:
         promos = _rp(_PROMOS_PATH)
         idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
@@ -875,6 +1331,20 @@ def update_peserta(promo_id: str, id_toko: str, body: UpdatePesertaBody) -> dict
 
 @router.delete("/{promo_id}/peserta/{id_toko}")
 def remove_peserta(promo_id: str, id_toko: str) -> dict:
+    if USE_SQLITE:
+        promo = _get_promo_by_id(promo_id)
+        if promo is None:
+            raise HTTPException(404, detail="Promo tidak ditemukan")
+        if promo["status"] in ("Selesai", "Dibatalkan"):
+            raise HTTPException(400, detail="Tidak bisa menghapus peserta dari program yang sudah Selesai atau Dibatalkan")
+        before = len(promo["peserta"])
+        updated_peserta = [p for p in promo["peserta"] if str(p["id_toko"]) != id_toko]
+        if len(updated_peserta) == before:
+            raise HTTPException(404, detail=f"Toko {id_toko} tidak ditemukan di peserta")
+        summary = _rebuild_summary(updated_peserta, promo.get("konfigurasi_promo", {}))
+        _set_peserta_list(promo_id, updated_peserta, summary)
+        return {"status": "ok", "data": updated_peserta}
+
     with _LOCK:
         promos = _rp(_PROMOS_PATH)
         idx = next((i for i, p in enumerate(promos) if p["id"] == promo_id), None)
@@ -906,9 +1376,7 @@ def reward_preview(
     brand:            str   = "Semen Elang",
 ) -> dict:
     """Preview kalkulasi reward menggunakan reward_config program yang tersimpan."""
-    with _LOCK:
-        promos = _rp(_PROMOS_PATH)
-    promo = next((p for p in promos if p["id"] == promo_id), None)
+    promo = _get_promo_by_id(promo_id)
     if not promo:
         raise HTTPException(404, "Promo tidak ditemukan")
 
@@ -935,9 +1403,7 @@ def get_monitoring(
     sort_by:  str = Query("achievement", pattern="^(achievement|realisasi|reward)$"),
     order:    str = Query("desc",        pattern="^(asc|desc)$"),
 ) -> dict:
-    with _LOCK:
-        promos = _rp(_PROMOS_PATH)
-    promo = next((p for p in promos if p["id"] == promo_id), None)
+    promo = _get_promo_by_id(promo_id)
     if not promo:
         raise HTTPException(404, detail="Promo tidak ditemukan")
     if promo["status"] not in ("Aktif", "Selesai"):
@@ -1031,9 +1497,7 @@ def get_monitoring(
 @router.get("/{promo_id}/standings")
 def get_standings(promo_id: str) -> dict:
     """Real-time leaderboard standings — khusus tipe_program leaderboard."""
-    with _LOCK:
-        promos = _rp(_PROMOS_PATH)
-    promo = next((p for p in promos if p["id"] == promo_id), None)
+    promo = _get_promo_by_id(promo_id)
     if not promo:
         raise HTTPException(404, detail="Promo tidak ditemukan")
     if promo.get("tipe_program") != "leaderboard":
@@ -1056,9 +1520,7 @@ def get_standings(promo_id: str) -> dict:
 
 @router.get("/{promo_id}/monitoring/export")
 def export_monitoring(promo_id: str) -> StreamingResponse:
-    with _LOCK:
-        promos = _rp(_PROMOS_PATH)
-    promo = next((p for p in promos if p["id"] == promo_id), None)
+    promo = _get_promo_by_id(promo_id)
     if not promo:
         raise HTTPException(404, detail="Promo tidak ditemukan")
     if promo["status"] not in ("Aktif", "Selesai"):
