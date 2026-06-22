@@ -423,20 +423,67 @@ def migrate_asperssi(db) -> dict:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+_ENTITIES = ("loyalty_members", "loyalty_history", "loyalty_config", "promo", "cad", "asperssi")
+
+# Idempotensi per entitas — db.merge() aman di-re-run berkali-kali (upsert by
+# PK), db.add() polos TIDAK aman (autoincrement PK + tidak ada existing-check
+# → duplikat, atau IntegrityError kalau ada UniqueConstraint seperti
+# PromoPeserta). Dicatat di sini supaya --only dipakai dengan benar — re-run
+# penuh tanpa --only HANYA aman kalau semua entitas yang diproses idempoten.
+_IDEMPOTENT = {
+    "loyalty_members": True,   # db.merge()
+    "loyalty_history":  False,  # db.add() tanpa id asli — duplikat tiap re-run
+    "loyalty_config":  True,   # db.merge()
+    "promo":           False,  # PromoPeserta pakai db.add() + UniqueConstraint
+    "cad":             True,   # CADAlert db.merge(); CADValidasiToko db.add()
+                                # tapi re-run idempoten SELAMA toko_validasi
+                                # masih kosong (re-run akan duplikat toko
+                                # kalau sudah ada isinya — re-run sebelum fitur
+                                # itu dipakai aktif).
+    "asperssi":        False,  # MarketShareBrand/Detail pakai db.add()
+}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Migrasi JSON → SQLite (Tahap 3)")
     parser.add_argument("--source-dir", type=str, default=None, help="Default: _get_data_dir() (path production)")
     parser.add_argument("--db-path", type=str, default=None, help="Default: api.database.DB_PATH (path production)")
+    parser.add_argument(
+        "--only", type=str, default=None,
+        help=f"Comma-separated subset dari {_ENTITIES} — jalankan hanya entitas ini "
+             "(re-run scoped, hindari duplikasi pada entitas non-idempoten seperti "
+             "loyalty_history/promo/asperssi). Default: semua (perilaku asli, tidak berubah).",
+    )
     args = parser.parse_args()
 
     source_dir = Path(args.source_dir) if args.source_dir else Path(_resolve_db_path()).parent
     db_path = args.db_path or _resolve_db_path()
+
+    only = None
+    if args.only:
+        only = {e.strip() for e in args.only.split(",")}
+        unknown = only - set(_ENTITIES)
+        if unknown:
+            print(f"ERROR: --only tidak dikenal: {unknown}. Pilihan: {_ENTITIES}", file=sys.stderr)
+            sys.exit(1)
+        non_idempotent = [e for e in only if not _IDEMPOTENT[e]]
+        if non_idempotent:
+            print(
+                f"PERINGATAN: entitas berikut TIDAK idempoten — re-run akan "
+                f"menduplikasi/error kalau sudah pernah dimigrasikan sebelumnya: {non_idempotent}",
+                file=sys.stderr,
+            )
+
+    def _run(entity: str) -> bool:
+        return only is None or entity in only
 
     print("=" * 72)
     print("MIGRASI JSON → SQLITE")
     print("=" * 72)
     print(f"Source dir : {source_dir}")
     print(f"DB path    : {db_path}")
+    if only:
+        print(f"Scope      : --only {sorted(only)}")
     print()
 
     engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
@@ -444,35 +491,45 @@ def main() -> None:
     Session = sessionmaker(bind=engine)
     db = Session()
 
-    print("[1/6] LoyaltyMember...")
-    lm_in, lm_ok = migrate_loyalty_members(source_dir, db)
-    print(f"      {lm_in} di JSON → {lm_ok} tersimpan")
+    lm_in = lm_ok = lh_in = lh_ok = cad_in = cad_ok = tv_ok = sp_in = sp_ok = ms_in = ms_ok = 0
+    pr = {"cat_a": 0, "cat_b_confident": 0, "cat_b_flagged": 0, "cat_c": 0, "peserta_a": 0, "peserta_b": 0, "peserta_c_archived": 0}
+    asp = {"marketshare_brand_detail": 0}
 
-    print("[2/6] LoyaltyHistory...")
-    lh_in, lh_ok = migrate_loyalty_history(source_dir, db)
-    print(f"      {lh_in} di JSON → {lh_ok} tersimpan")
+    if _run("loyalty_members"):
+        print("[1/6] LoyaltyMember...")
+        lm_in, lm_ok = migrate_loyalty_members(source_dir, db)
+        print(f"      {lm_in} di JSON → {lm_ok} tersimpan")
 
-    print("[3/6] LoyaltyConfig...")
-    lc = migrate_loyalty_config(source_dir, db)
-    print(f"      tersimpan 1 row (w1={lc['w1']}, w2={lc['w2']}, brand_point_values={len(lc['brand_point_values'])} brand)")
+    if _run("loyalty_history"):
+        print("[2/6] LoyaltyHistory...")
+        lh_in, lh_ok = migrate_loyalty_history(source_dir, db)
+        print(f"      {lh_in} di JSON → {lh_ok} tersimpan")
 
-    print("[4/6] Promo (kategori a/b/c)...")
-    pr = migrate_promos(source_dir, db)
-    print(f"      (a) Aktif+v3            : {pr['cat_a']} promo, {pr['peserta_a']} peserta → Promo+PromoPeserta")
-    print(f"      (b) Aktif+legacy,confident: {pr['cat_b_confident']} promo → ditransformasi ke v3")
-    print(f"      (b) Aktif+legacy,flagged : {pr['cat_b_flagged']} promo → perlu_review_manual=True")
-    print(f"      (c) Nonaktif/Selesai     : {pr['cat_c']} promo, {pr['peserta_c_archived']} peserta (di raw_json) → PromoArchive")
+    if _run("loyalty_config"):
+        print("[3/6] LoyaltyConfig...")
+        lc = migrate_loyalty_config(source_dir, db)
+        print(f"      tersimpan 1 row (w1={lc['w1']}, w2={lc['w2']}, brand_point_values={len(lc['brand_point_values'])} brand)")
 
-    print("[5/6] CAD History...")
-    cad_in, cad_ok, tv_ok = migrate_cad_history(source_dir, db)
-    print(f"      {cad_in} alert di JSON → {cad_ok} tersimpan ({tv_ok} toko_validasi)")
+    if _run("promo"):
+        print("[4/6] Promo (kategori a/b/c)...")
+        pr = migrate_promos(source_dir, db)
+        print(f"      (a) Aktif+v3            : {pr['cat_a']} promo, {pr['peserta_a']} peserta → Promo+PromoPeserta")
+        print(f"      (b) Aktif+legacy,confident: {pr['cat_b_confident']} promo → ditransformasi ke v3")
+        print(f"      (b) Aktif+legacy,flagged : {pr['cat_b_flagged']} promo → perlu_review_manual=True")
+        print(f"      (c) Nonaktif/Selesai     : {pr['cat_c']} promo, {pr['peserta_c_archived']} peserta (di raw_json) → PromoArchive")
 
-    print("[6/6] ASPERSSI...")
-    asp = migrate_asperssi(db)
-    sp_in, sp_ok = asp["share_provinsi"]
-    ms_in, ms_ok = asp["marketshare_brand"]
-    print(f"      share_provinsi    : {sp_in} di JSON → {sp_ok} tersimpan")
-    print(f"      marketshare_brand : {ms_in} di JSON → {ms_ok} tersimpan ({asp['marketshare_brand_detail']} brand detail)")
+    if _run("cad"):
+        print("[5/6] CAD History...")
+        cad_in, cad_ok, tv_ok = migrate_cad_history(source_dir, db)
+        print(f"      {cad_in} alert di JSON → {cad_ok} tersimpan ({tv_ok} toko_validasi)")
+
+    if _run("asperssi"):
+        print("[6/6] ASPERSSI...")
+        asp = migrate_asperssi(db)
+        sp_in, sp_ok = asp["share_provinsi"]
+        ms_in, ms_ok = asp["marketshare_brand"]
+        print(f"      share_provinsi    : {sp_in} di JSON → {sp_ok} tersimpan")
+        print(f"      marketshare_brand : {ms_in} di JSON → {ms_ok} tersimpan ({asp['marketshare_brand_detail']} brand detail)")
 
     db.close()
 
@@ -480,14 +537,19 @@ def main() -> None:
     print("=" * 72)
     print("RINGKASAN VALIDASI")
     print("=" * 72)
-    print(f"loyalty_members   : {lm_in} JSON → {lm_ok} SQLite  {'OK' if lm_in == lm_ok else 'MISMATCH!'}")
-    print(f"loyalty_history   : {lh_in} JSON → {lh_ok} SQLite  {'OK' if lh_in == lh_ok else 'MISMATCH!'}")
-    print(f"promo aktif (a+b) : {pr['cat_a'] + pr['cat_b_confident'] + pr['cat_b_flagged']} program, "
-          f"{pr['peserta_a'] + pr['peserta_b']} peserta → Promo+PromoPeserta")
-    print(f"promo arsip (c)   : {pr['cat_c']} program, {pr['peserta_c_archived']} peserta → PromoArchive")
-    print(f"cad_history       : {cad_in} JSON → {cad_ok} SQLite  {'OK' if cad_in == cad_ok else 'MISMATCH!'}")
-    print(f"share_provinsi    : {sp_in} JSON → {sp_ok} SQLite  {'OK' if sp_in == sp_ok else 'MISMATCH!'}")
-    print(f"marketshare_brand : {ms_in} JSON → {ms_ok} SQLite  {'OK' if ms_in == ms_ok else 'MISMATCH!'}")
+    if _run("loyalty_members"):
+        print(f"loyalty_members   : {lm_in} JSON → {lm_ok} SQLite  {'OK' if lm_in == lm_ok else 'MISMATCH!'}")
+    if _run("loyalty_history"):
+        print(f"loyalty_history   : {lh_in} JSON → {lh_ok} SQLite  {'OK' if lh_in == lh_ok else 'MISMATCH!'}")
+    if _run("promo"):
+        print(f"promo aktif (a+b) : {pr['cat_a'] + pr['cat_b_confident'] + pr['cat_b_flagged']} program, "
+              f"{pr['peserta_a'] + pr['peserta_b']} peserta → Promo+PromoPeserta")
+        print(f"promo arsip (c)   : {pr['cat_c']} program, {pr['peserta_c_archived']} peserta → PromoArchive")
+    if _run("cad"):
+        print(f"cad_history       : {cad_in} JSON → {cad_ok} SQLite  {'OK' if cad_in == cad_ok else 'MISMATCH!'}")
+    if _run("asperssi"):
+        print(f"share_provinsi    : {sp_in} JSON → {sp_ok} SQLite  {'OK' if sp_in == sp_ok else 'MISMATCH!'}")
+        print(f"marketshare_brand : {ms_in} JSON → {ms_ok} SQLite  {'OK' if ms_in == ms_ok else 'MISMATCH!'}")
     print()
     print("File JSON sumber TIDAK diubah/dihapus — script ini hanya membaca.")
 
