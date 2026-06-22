@@ -39,7 +39,32 @@ def get_db():
         db.close()
 
 
+def migrate_add_columns_if_missing() -> None:
+    """Tambah kolom yang dibuat setelah skema awal (create_all tidak ALTER
+    tabel yang sudah ada). Idempotent — aman dijalankan berulang kali.
+    Tidak dipanggil otomatis di startup app (lihat init_db() — pola di
+    proyek ini adalah migrasi dijalankan manual via script, bukan auto-run),
+    jalankan manual lewat railway ssh saat kolom baru ditambahkan."""
+    import sqlite3
+    migrations = [
+        ("cad_validasi_toko", "nama_toko", "TEXT"),
+    ]
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cursor = conn.cursor()
+        for table, column, col_type in migrations:
+            cursor.execute(f"PRAGMA table_info({table})")
+            existing_columns = [row[1] for row in cursor.fetchall()]
+            if column not in existing_columns:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+                print(f"[migration] Added column {column} to {table}")
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def init_db() -> None:
     import api.models  # noqa: F401  registers models on Base.metadata
     Base.metadata.create_all(bind=engine)
+    migrate_add_columns_if_missing()
     print(f"[database] Initialized at {DB_PATH}")

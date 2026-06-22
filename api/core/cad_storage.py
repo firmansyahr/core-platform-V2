@@ -1,6 +1,7 @@
 """
-Local JSON storage for CAD Alert History.
-Thread-safe read/write via _lock.
+Storage for CAD Alert History — JSON (legacy) atau SQLite, lihat USE_SQLITE.
+Thread-safe read/write via _lock (cabang JSON saja, lihat catatan di
+loyalty.py/promo.py untuk alasan SQLite tidak butuh lock app-level).
 """
 import json
 import logging
@@ -10,6 +11,10 @@ from collections import Counter
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+from api.database import SessionLocal
+from api.models import CADAlert as CADAlertRow
+from api.models import CADValidasiToko as CADValidasiTokoRow
 
 
 def _get_data_dir() -> Path:
@@ -27,6 +32,9 @@ _DATA_DIR  = _get_data_dir()
 _HIST_FILE = _DATA_DIR / "cad_history.json"
 _lock      = threading.Lock()
 _log       = logging.getLogger(__name__)
+
+# Feature flag — Tahap 4c rollout, pola identik dengan loyalty.py/promo.py.
+USE_SQLITE = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
 
 KATEGORI_CHOICES = [
     "Kompetitor Eksternal",
@@ -155,13 +163,106 @@ def _check_overdue(record: dict) -> bool:
         return False
 
 
+# ── Storage abstraction (JSON / SQLite) ────────────────────────────────────────
+#
+# Pola identik dengan loyalty.py/promo.py. Model CADAlert hanya punya kolom
+# KANONIK (tgl_alert/tgl_validasi/validated_by) — nama legacy (tanggal_alert/
+# tanggal_kunjungan/tso_assigned) DIBUANG dari skema sesuai desain awal model.
+# Tapi export.py (CSV) dan beberapa logic internal di sini (_check_overdue,
+# dst.) masih baca nama LEGACY — jadi _cad_alert_to_dict() WAJIB isi KEDUA
+# nama key dengan nilai yang sama, bukan cuma kanonik.
+#
+# Ditemukan saat audit: 1 record production (CAD-20260617-KOTA_PALANGKA_RAYA)
+# punya field legacy & kanonik yang DIVERGEN (update_record() lama hanya
+# menulis nama legacy, tidak pernah sinkron ke kanonik). Keputusan: saat
+# migrasi/tulis baru, COALESCE kanonik-dulu-fallback-legacy ke satu nilai,
+# lalu nilai itu yang dipakai untuk kedua nama key saat dibaca balik —
+# konsisten dengan niat desain model ("kolom legacy dibuang").
+
+def _iso_utc(dt: datetime | None) -> str | None:
+    """Sama seperti promo.py — SQLite/SQLAlchemy melepas tzinfo kolom
+    DateTime saat dibaca balik; semua datetime di sini selalu ditulis UTC."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
+def _toko_validasi_to_dict(t: "CADValidasiTokoRow") -> dict:
+    return {
+        "id_toko":      t.id_toko,
+        "nama_toko":    t.nama_toko,
+        "aegis_score":  t.aegis_score,
+        "kondisi":      t.kondisi,
+        "catatan":      t.catatan,
+        "validated_by": t.validated_by,
+        "validated_at": _iso_utc(t.validated_at),
+    }
+
+
+def _cad_alert_to_dict(a: "CADAlertRow", toko_rows: list) -> dict:
+    tgl_alert_str     = a.tgl_alert.isoformat() if a.tgl_alert else None
+    tgl_validasi_str  = a.tgl_validasi.isoformat() if a.tgl_validasi else None
+    resolved_str      = a.tanggal_resolved.isoformat() if a.tanggal_resolved else None
+    return {
+        "id":                    a.id,
+        "kabupaten":             a.kabupaten,
+        "provinsi":              a.provinsi,
+        "tgl_alert":             tgl_alert_str,
+        "tanggal_alert":         tgl_alert_str,
+        "status_alert":          a.status_alert,
+        "jumlah_toko":           a.jumlah_toko,
+        "aegis_score_rata":      a.aegis_score_rata,
+        "tgl_validasi":          tgl_validasi_str,
+        "tanggal_kunjungan":     tgl_validasi_str,
+        "validated_by":          a.validated_by,
+        "tso_assigned":          a.validated_by,
+        "hasil_validasi":        a.hasil_validasi,
+        "hasil_validasi_detail": a.hasil_validasi_detail,
+        "catatan":               a.catatan,
+        "status_resolusi":       a.status_resolusi,
+        "status":                a.status,
+        "tanggal_resolved":      resolved_str,
+        "created_at":            _iso_utc(a.created_at),
+        "kondisi_alert":         a.kondisi_alert,
+        "follow_up":             a.follow_up,
+        "toko_validasi":         [_toko_validasi_to_dict(t) for t in toko_rows],
+    }
+
+
+def _get_all_records() -> list[dict]:
+    """Semua record CAD, belum di-sort/filter/paginasi — dipakai get_records(),
+    get_record_by_id(), get_toko_cad_history(), get_summary(). Hasil tetap
+    di-pass lewat _ensure_new_fields() oleh pemanggil (idempotent — no-op
+    untuk dict yang sudah lengkap dari SQLite, tetap berfungsi penuh untuk
+    JSON lama)."""
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            alerts = db.query(CADAlertRow).all()
+            out = []
+            for a in alerts:
+                toko_rows = (
+                    db.query(CADValidasiTokoRow)
+                    .filter_by(cad_alert_id=a.id)
+                    .order_by(CADValidasiTokoRow.id)
+                    .all()
+                )
+                out.append(_cad_alert_to_dict(a, toko_rows))
+            return out
+        finally:
+            db.close()
+    return _read()
+
+
 # ── Core build logic ──────────────────────────────────────────────────────────
 
 def _build_records_from_cad() -> tuple[list[dict], list[str]]:
     import pandas as pd
     from api.core.aegis_engine import get_store_crs
 
-    existing     = _read()
+    existing     = _get_all_records()
     existing_ids = {r["id"] for r in existing}
 
     stores  = get_store_crs()
@@ -274,24 +375,32 @@ def _build_records_from_cad() -> tuple[list[dict], list[str]]:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
-def initialize_cad_history() -> None:
-    if _HIST_FILE.exists():
-        return
-    try:
-        records, created = _build_records_from_cad()
-        with _lock:
-            _write(records)
-        _log.info(f"CAD history initialized: {len(created)} records created.")
-    except Exception as exc:
-        _log.warning(f"CAD history init failed: {exc}")
-
-
 def generate_from_cad_alerts() -> tuple[int, int]:
-    before_count = len(_read())
+    before_count = len(_get_all_records())
     try:
         all_records, created_ids = _build_records_from_cad()
-        with _lock:
-            _write(all_records)
+        if USE_SQLITE:
+            if created_ids:
+                new_records = [r for r in all_records if r["id"] in created_ids]
+                db = SessionLocal()
+                try:
+                    for r in new_records:
+                        db.add(CADAlertRow(
+                            id=r["id"], kabupaten=r["kabupaten"], provinsi=r.get("provinsi"),
+                            tgl_alert=date.fromisoformat(r["tgl_alert"]),
+                            status_alert=r["status_alert"], jumlah_toko=r["jumlah_toko"],
+                            aegis_score_rata=r["aegis_score_rata"],
+                            tgl_validasi=None, validated_by=None,
+                            hasil_validasi=None, hasil_validasi_detail=None, catatan=None,
+                            status_resolusi="OPEN", status="Pending Validasi", tanggal_resolved=None,
+                            kondisi_alert=r["kondisi_alert"], follow_up=r["follow_up"],
+                        ))
+                    db.commit()
+                finally:
+                    db.close()
+        else:
+            with _lock:
+                _write(all_records)
         return len(created_ids), before_count
     except Exception as exc:
         _log.warning(f"CAD history generate failed: {exc}")
@@ -305,7 +414,7 @@ def get_records(
     offset: int = 0,
 ) -> tuple[list[dict], int]:
     records = sorted(
-        _read(),
+        _get_all_records(),
         key=lambda r: (r.get("tanggal_alert") or r.get("tgl_alert") or "", r.get("kabupaten", "")),
         reverse=True,
     )
@@ -334,7 +443,7 @@ def get_records(
 
 
 def get_record_by_id(rec_id: str) -> Optional[dict]:
-    for r in _read():
+    for r in _get_all_records():
         if r["id"] == rec_id:
             nr = _ensure_new_fields(r)
             nr["overdue"] = _check_overdue(r)
@@ -343,6 +452,35 @@ def get_record_by_id(rec_id: str) -> Optional[dict]:
 
 
 def update_record(rec_id: str, updates: dict) -> Optional[dict]:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            a = db.query(CADAlertRow).filter_by(id=rec_id).first()
+            if a is None:
+                return None
+            if "tso_assigned" in updates:
+                a.validated_by = updates["tso_assigned"]
+            if "tanggal_kunjungan" in updates:
+                a.tgl_validasi = date.fromisoformat(updates["tanggal_kunjungan"])
+            if "hasil_validasi" in updates:
+                a.hasil_validasi = updates["hasil_validasi"]
+            if "catatan" in updates:
+                a.catatan = updates["catatan"]
+            if "status_resolusi" in updates:
+                a.status_resolusi = updates["status_resolusi"]
+                if updates["status_resolusi"] == "RESOLVED" and not a.tanggal_resolved:
+                    a.tanggal_resolved = date.today()
+                    a.status = "Resolved"
+                elif updates["status_resolusi"] == "IN_PROGRESS":
+                    a.status = "In Progress"
+            db.commit()
+            toko_rows = (
+                db.query(CADValidasiTokoRow).filter_by(cad_alert_id=a.id)
+                .order_by(CADValidasiTokoRow.id).all()
+            )
+            return _ensure_new_fields(_cad_alert_to_dict(a, toko_rows))
+        finally:
+            db.close()
     with _lock:
         records = _read()
         for i, r in enumerate(records):
@@ -367,6 +505,28 @@ def validate_record(
 ) -> Optional[dict]:
     """Store structured validation data into the record."""
     _REV_MAP = {v: k for k, v in _OLD_HASIL_MAP.items()}
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            a = db.query(CADAlertRow).filter_by(id=rec_id).first()
+            if a is None:
+                return None
+            kategori = hasil_detail.get("kategori_utama", "")
+            a.tgl_validasi          = date.fromisoformat(tgl_validasi)
+            a.validated_by          = validated_by
+            a.hasil_validasi        = _REV_MAP.get(kategori, "LAINNYA")
+            a.hasil_validasi_detail = hasil_detail
+            a.catatan               = hasil_detail.get("action_items")
+            a.status_resolusi       = "IN_PROGRESS"
+            a.status                = "In Progress"
+            db.commit()
+            toko_rows = (
+                db.query(CADValidasiTokoRow).filter_by(cad_alert_id=a.id)
+                .order_by(CADValidasiTokoRow.id).all()
+            )
+            return _ensure_new_fields(_cad_alert_to_dict(a, toko_rows))
+        finally:
+            db.close()
     with _lock:
         records = _read()
         for i, r in enumerate(records):
@@ -392,6 +552,46 @@ def validate_record(
 
 def add_toko_validasi(rec_id: str, toko_data: dict) -> Optional[list]:
     """Append or update a per-toko validation entry; auto-update distribusi_kondisi."""
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            a = db.query(CADAlertRow).filter_by(id=rec_id).first()
+            if a is None:
+                return None
+            db.query(CADValidasiTokoRow).filter_by(
+                cad_alert_id=rec_id, id_toko=toko_data.get("id_toko")
+            ).delete()
+            db.add(CADValidasiTokoRow(
+                cad_alert_id=rec_id,
+                id_toko=toko_data.get("id_toko"),
+                nama_toko=toko_data.get("nama_toko"),
+                kondisi=toko_data.get("kondisi"),
+                catatan=toko_data.get("catatan"),
+                validated_by=toko_data.get("validated_by"),
+                aegis_score=toko_data.get("aegis_score"),
+                validated_at=datetime.now(timezone.utc),
+            ))
+            db.flush()
+            toko_rows = (
+                db.query(CADValidasiTokoRow).filter_by(cad_alert_id=rec_id)
+                .order_by(CADValidasiTokoRow.id).all()
+            )
+
+            hvd = a.hasil_validasi_detail
+            if isinstance(hvd, dict):
+                counts = Counter(t.kondisi for t in toko_rows if t.kondisi)
+                a.hasil_validasi_detail = {
+                    **hvd,
+                    "distribusi_kondisi": [
+                        {"kategori": k, "jumlah_toko": v}
+                        for k, v in sorted(counts.items(), key=lambda x: -x[1])
+                    ],
+                }
+
+            db.commit()
+            return [_toko_validasi_to_dict(t) for t in toko_rows]
+        finally:
+            db.close()
     with _lock:
         records = _read()
         for i, r in enumerate(records):
@@ -439,6 +639,34 @@ def get_toko_validasi(rec_id: str) -> Optional[dict]:
 
 
 def update_follow_up(rec_id: str, follow_up_data: dict) -> Optional[dict]:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            a = db.query(CADAlertRow).filter_by(id=rec_id).first()
+            if a is None:
+                return None
+            existing_fu = a.follow_up or {}
+            merged_fu = {**existing_fu, **follow_up_data}
+
+            if merged_fu.get("eskalasi_asm"):
+                a.status = "Butuh Eskalasi"
+            elif follow_up_data.get("status"):
+                a.status = follow_up_data["status"]
+                if follow_up_data["status"] == "Resolved":
+                    a.status_resolusi = "RESOLVED"
+                    if not a.tanggal_resolved:
+                        a.tanggal_resolved = date.today()
+                    merged_fu["resolved_at"] = a.tanggal_resolved.isoformat()
+
+            a.follow_up = merged_fu
+            db.commit()
+            toko_rows = (
+                db.query(CADValidasiTokoRow).filter_by(cad_alert_id=a.id)
+                .order_by(CADValidasiTokoRow.id).all()
+            )
+            return _ensure_new_fields(_cad_alert_to_dict(a, toko_rows))
+        finally:
+            db.close()
     with _lock:
         records = _read()
         for i, r in enumerate(records):
@@ -466,7 +694,7 @@ def update_follow_up(rec_id: str, follow_up_data: dict) -> Optional[dict]:
 def get_toko_cad_history(id_toko: str) -> list[dict]:
     """Return all CAD alert validations that include a specific toko ID."""
     results = []
-    for r in _read():
+    for r in _get_all_records():
         for tv in (r.get("toko_validasi") or []):
             if tv.get("id_toko") == id_toko:
                 results.append({
@@ -484,7 +712,7 @@ def get_toko_cad_history(id_toko: str) -> list[dict]:
 
 
 def get_summary() -> dict:
-    records  = _read()
+    records  = _get_all_records()
     total    = len(records)
     pending  = sum(1 for r in records if r.get("status_resolusi") == "OPEN")
     in_prog  = sum(1 for r in records if r.get("status_resolusi") == "IN_PROGRESS")

@@ -14,6 +14,8 @@ from api.routers import aegis, auth, cad_history, cannibalization, causal, compe
 async def lifespan(app: FastAPI):
     from api.startup import ensure_data_files
     ensure_data_files()
+    from api.database import init_db
+    init_db()
     print("[startup] Pre-loading data ke memory...", flush=True)
     from api.core.data_loader import preload_data
     preload_data()

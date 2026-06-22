@@ -239,12 +239,18 @@ class CADAlert(Base):
 
 class CADValidasiToko(Base):
     """Validasi per-toko dalam satu CAD alert — relasional karena ada query
-    lintas-alert per toko (get_toko_cad_history()). Tidak ada id di JSON asli."""
+    lintas-alert per toko (get_toko_cad_history()). Tidak ada id di JSON asli.
+
+    nama_toko ditambahkan Tahap 4c (audit cad_storage.py) — TokoValidasiBody
+    di router menyertakan nama_toko tapi kolom ini sebelumnya tidak ada,
+    akan hilang diam-diam saat SQLite aktif. 0 baris terdampak saat
+    penambahan (toko_validasi masih kosong di semua 99 alert production)."""
     __tablename__ = "cad_validasi_toko"
 
     id            = Column(Integer, primary_key=True, autoincrement=True)
     cad_alert_id  = Column(String, ForeignKey("cad_alerts.id"), nullable=False, index=True)
     id_toko       = Column(String, nullable=False, index=True)
+    nama_toko     = Column(String, nullable=True)
     kondisi       = Column(String, nullable=True)
     catatan       = Column(String, nullable=True)
     validated_by  = Column(String, nullable=True)

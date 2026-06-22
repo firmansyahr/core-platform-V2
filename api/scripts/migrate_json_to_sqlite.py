@@ -53,6 +53,7 @@ sys.path.insert(0, str(_ROOT))
 from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
+from api.core.cad_storage import _ensure_new_fields  # noqa: E402
 from api.database import Base, _resolve_db_path  # noqa: E402
 from api.models import (  # noqa: E402
     CADAlert,
@@ -319,7 +320,17 @@ def migrate_cad_history(source_dir: Path, db) -> tuple[int, int, int]:
     n_ok = 0
     n_toko_validasi = 0
 
-    for r in raw:
+    for raw_r in raw:
+        # Record lama (pra-skema-unified) bisa SAMA SEKALI tidak punya key
+        # status/kondisi_alert/follow_up/hasil_validasi_detail — kalau migrasi
+        # baca r.get(key, default) polos, nilai jadi default kosong/salah
+        # (mis. status selalu "Pending Validasi" walau status_resolusi sudah
+        # RESOLVED). _ensure_new_fields() adalah fungsi YANG SAMA dipakai
+        # mode JSON saat serve API — jalankan dulu di sini supaya hasil
+        # migrasi konsisten dengan apa yang sudah ditampilkan ke user
+        # selama ini, bukan re-derive dari field kosong.
+        r = _ensure_new_fields(raw_r)
+
         alert = CADAlert(
             id=str(r["id"]),
             kabupaten=str(r.get("kabupaten", "")),
@@ -347,6 +358,7 @@ def migrate_cad_history(source_dir: Path, db) -> tuple[int, int, int]:
             db.add(CADValidasiToko(
                 cad_alert_id=alert.id,
                 id_toko=str(tv.get("id_toko", "")),
+                nama_toko=tv.get("nama_toko"),
                 kondisi=tv.get("kondisi"),
                 catatan=tv.get("catatan"),
                 validated_by=tv.get("validated_by"),
