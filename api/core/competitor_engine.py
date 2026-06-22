@@ -2,26 +2,96 @@
 from __future__ import annotations
 
 import json
+import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from api.database import SessionLocal
+from api.models import AsperssiMeta as AsperssiMetaRow
+from api.models import MarketShareBrand as MarketShareBrandRow
+from api.models import MarketShareBrandDetail as MarketShareBrandDetailRow
+from api.models import ShareProvinsi as ShareProvinsiRow
+
 AGGREGATE_KEYWORDS = ["other", "lainnya", "others", "lain-lain", "misc"]
+
+# Feature flag — Tahap 4d rollout, pola identik dengan loyalty.py/promo.py/
+# cad_storage.py.
+USE_SQLITE = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
 
 
 def detect_is_aggregate(nama_brand: str) -> bool:
     n = nama_brand.lower().strip()
     return any(k in n for k in AGGREGATE_KEYWORDS)
 
-# ── Data paths ────────────────────────────────────────────────────────────────
+# ── Data paths (cabang JSON) ──────────────────────────────────────────────────
+# Path INI relatif ke repo (bukan _get_data_dir()/volume) — akar masalah data
+# ASPERSSI hilang tiap redeploy (lihat docstring class ShareProvinsi di
+# models.py). Cabang SQLite di bawah memperbaiki ini secara permanen.
 
 _ASPERSSI_DIR  = Path("api/data/asperssi")
 _SHARE_PROV    = _ASPERSSI_DIR / "share_provinsi.json"
 _MS_BRAND      = _ASPERSSI_DIR / "marketshare_brand.json"
 
 
+# ── Storage abstraction (JSON / SQLite) ────────────────────────────────────────
+#
+# save_*() menerima payload UTUH (seluruh dataset, bukan delta) — sama seperti
+# semantik tulis-ulang-seluruh-file di mode JSON (lihat semua call site di
+# competitor.py: load → mutasi penuh di memori → save). Cabang SQLite
+# meniru ini dengan UPSERT by natural key (provinsi+periode, +nama brand
+# utk detail) — BUKAN wipe+reinsert — supaya row_id (=str(PK)) baris yang
+# TIDAK berubah tetap stabil lintas save() (row_id dipakai endpoint CRUD
+# row_id di competitor.py untuk merujuk baris spesifik; wipe+reinsert akan
+# mengeluarkan PK baru utk semua baris dan merusak row_id yang sedang
+# dipegang user lain di sesi terpisah).
+
+def _get_asperssi_meta(db, dataset: str) -> datetime | None:
+    meta = db.query(AsperssiMetaRow).filter_by(dataset=dataset).first()
+    return meta.last_updated if meta else None
+
+
+def _iso_utc(dt: datetime | None) -> str | None:
+    """Sama seperti promo.py/cad_storage.py — SQLite/SQLAlchemy melepas
+    tzinfo kolom DateTime saat dibaca balik; nilai ini selalu ditulis UTC."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
+def _touch_asperssi_meta(db, dataset: str) -> None:
+    meta = db.query(AsperssiMetaRow).filter_by(dataset=dataset).first()
+    if meta is None:
+        meta = AsperssiMetaRow(dataset=dataset)
+        db.add(meta)
+    meta.last_updated = datetime.now(timezone.utc)
+
+
 def load_share_provinsi() -> dict:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            rows = db.query(ShareProvinsiRow).all()
+            last_updated = _get_asperssi_meta(db, "share_provinsi")
+            return {
+                "metadata": {"last_updated": _iso_utc(last_updated)},
+                "data": [
+                    {
+                        "row_id":             str(r.id),
+                        "provinsi":           r.provinsi,
+                        "periode":            r.periode,
+                        "share_nasional_pct": r.share_nasional_pct,
+                        "tersedia":           r.tersedia,
+                    }
+                    for r in rows
+                ],
+            }
+        finally:
+            db.close()
     if not _SHARE_PROV.exists():
         return {"metadata": {}, "data": []}
     with open(_SHARE_PROV, encoding="utf-8") as f:
@@ -29,12 +99,65 @@ def load_share_provinsi() -> dict:
 
 
 def save_share_provinsi(payload: dict) -> None:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            incoming = payload.get("data", [])
+            incoming_keys = {(d["provinsi"], d["periode"]) for d in incoming}
+            existing = {(r.provinsi, r.periode): r for r in db.query(ShareProvinsiRow).all()}
+
+            for key, row in existing.items():
+                if key not in incoming_keys:
+                    db.delete(row)
+
+            for d in incoming:
+                key = (d["provinsi"], d["periode"])
+                row = existing.get(key)
+                if row is None:
+                    row = ShareProvinsiRow(provinsi=d["provinsi"], periode=d["periode"])
+                    db.add(row)
+                row.share_nasional_pct = d["share_nasional_pct"]
+                row.tersedia = d.get("tersedia", True)
+
+            _touch_asperssi_meta(db, "share_provinsi")
+            db.commit()
+        finally:
+            db.close()
+        return
     _ASPERSSI_DIR.mkdir(parents=True, exist_ok=True)
     with open(_SHARE_PROV, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
 def load_marketshare_brand() -> dict:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            rows = db.query(MarketShareBrandRow).all()
+            last_updated = _get_asperssi_meta(db, "marketshare_brand")
+            return {
+                "metadata": {"last_updated": _iso_utc(last_updated)},
+                "data": [
+                    {
+                        "provinsi": r.provinsi,
+                        "periode":  r.periode,
+                        "tersedia": r.tersedia,
+                        "brands": [
+                            {
+                                "row_id":              str(b.id),
+                                "nama":                b.nama,
+                                "market_share_pct":    b.market_share_pct,
+                                "is_own_brand":        b.is_own_brand,
+                                "is_aggregate_others": b.is_aggregate_others,
+                            }
+                            for b in sorted(r.brands, key=lambda b: b.id)
+                        ],
+                    }
+                    for r in rows
+                ],
+            }
+        finally:
+            db.close()
     if not _MS_BRAND.exists():
         return {"metadata": {}, "data": []}
     with open(_MS_BRAND, encoding="utf-8") as f:
@@ -42,6 +165,51 @@ def load_marketshare_brand() -> dict:
 
 
 def save_marketshare_brand(payload: dict) -> None:
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            incoming = payload.get("data", [])
+            incoming_keys = {(d["provinsi"], d["periode"]) for d in incoming}
+            existing = {(r.provinsi, r.periode): r for r in db.query(MarketShareBrandRow).all()}
+
+            for key, row in existing.items():
+                if key not in incoming_keys:
+                    db.delete(row)  # cascade ke MarketShareBrandDetail
+
+            for d in incoming:
+                key = (d["provinsi"], d["periode"])
+                entry_row = existing.get(key)
+                if entry_row is None:
+                    entry_row = MarketShareBrandRow(provinsi=d["provinsi"], periode=d["periode"])
+                    db.add(entry_row)
+                    db.flush()  # butuh entry_row.id utk FK detail di bawah
+                entry_row.tersedia = d.get("tersedia", True)
+
+                incoming_brands = d.get("brands", [])
+                incoming_brand_names = {b["nama"] for b in incoming_brands}
+                existing_details = {
+                    b.nama: b for b in db.query(MarketShareBrandDetailRow)
+                    .filter_by(marketshare_brand_id=entry_row.id).all()
+                }
+                for name, brow in existing_details.items():
+                    if name not in incoming_brand_names:
+                        db.delete(brow)
+                for b in incoming_brands:
+                    brow = existing_details.get(b["nama"])
+                    if brow is None:
+                        brow = MarketShareBrandDetailRow(
+                            marketshare_brand_id=entry_row.id, nama=b["nama"],
+                        )
+                        db.add(brow)
+                    brow.market_share_pct = b["market_share_pct"]
+                    brow.is_own_brand = b.get("is_own_brand", False)
+                    brow.is_aggregate_others = b.get("is_aggregate_others", False)
+
+            _touch_asperssi_meta(db, "marketshare_brand")
+            db.commit()
+        finally:
+            db.close()
+        return
     _ASPERSSI_DIR.mkdir(parents=True, exist_ok=True)
     with open(_MS_BRAND, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)

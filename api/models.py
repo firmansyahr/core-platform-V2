@@ -311,3 +311,15 @@ class MarketShareBrandDetail(Base):
     is_aggregate_others   = Column(Boolean, nullable=False, default=False)
 
     entry = relationship("MarketShareBrand", back_populates="brands")
+
+
+class AsperssiMeta(Base):
+    """metadata.last_updated dari file asli (timestamp upload eksplisit,
+    BUKAN derivable dari data — beda dari sumber/deskripsi/satuan yang
+    statis dan periode_tersedia yang selalu di-derive ulang di
+    get_asperssi_coverage()). 1 baris per dataset ('share_provinsi' atau
+    'marketshare_brand'), ditambahkan Tahap 4d (audit competitor.py)."""
+    __tablename__ = "asperssi_meta"
+
+    dataset      = Column(String, primary_key=True)
+    last_updated = Column(DateTime, nullable=True)
