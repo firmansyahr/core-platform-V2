@@ -41,8 +41,8 @@ np.random.seed(42)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-DATA_PATH       = _ROOT / "data" / "transaksi_aegis_synthetic.parquet"
-OUTPUT_DRYRUN   = _ROOT / "api" / "data" / "loyalty_members_NEW_dryrun.json"
+DATA_PATH       = _ROOT / "data" / "transaksi_sample_deploy.parquet"
+OUTPUT_DRYRUN   = _ROOT / "api" / "data" / "loyalty_members_NEW_300_sample.json"
 OUTPUT_FINAL    = _ROOT / "api" / "data" / "loyalty_members.json"
 OUTPUT_BACKUP   = _ROOT / "api" / "data" / "loyalty_members_BACKUP_pre_regen.json"
 
@@ -168,22 +168,27 @@ def build_members(
     ]
     n_available_warning = len(warning_toko_ids)
 
+    n_aegis = min(N_AEGIS, n_available_warning)
+    n_random = TARGET_TOTAL - n_aegis
+
     if n_available_warning >= N_AEGIS:
-        selected_aegis = random.sample(warning_toko_ids, N_AEGIS)
+        selected_aegis = random.sample(warning_toko_ids, n_aegis)
         fallback_note = (
             f"Tersedia {n_available_warning} toko dengan warning valid "
             f"({len(excluded_last_month)} toko dikeluarkan karena first_warning di bulan "
             f"terakhir {ROLL_END}, tidak ada tanggal masuk yang valid untuk toko tersebut), "
-            f"diambil {N_AEGIS}. Tidak ada fallback."
+            f"diambil {n_aegis}. Tidak ada fallback."
         )
     else:
-        # Fallback: pakai semua toko yang pernah warning, kekurangan dipenuhi dari random
+        # Kandidat AEGIS-triggered kurang dari target — sesuaikan proporsi:
+        # ambil semua kandidat yang ada, sisanya dipenuhi dari kelompok random
+        # (bukan fixed N_RANDOM=120) supaya total tetap TARGET_TOTAL=300.
         selected_aegis = warning_toko_ids
         shortfall = N_AEGIS - n_available_warning
         fallback_note = (
-            f"FALLBACK: hanya {n_available_warning} toko yang pernah Merah/Oranye "
-            f"(kurang {shortfall} dari target {N_AEGIS}). "
-            f"{shortfall} toko tambahan diisi dari kelompok random dengan tgl_masuk acak."
+            f"ADJUSTED: hanya {n_available_warning} toko yang pernah Merah/Oranye "
+            f"(kurang {shortfall} dari target {N_AEGIS}). Proporsi disesuaikan: "
+            f"{n_aegis} AEGIS-triggered + {n_random} random (bukan {N_AEGIS}/{N_RANDOM})."
         )
 
     selected_aegis_set = set(selected_aegis)
@@ -191,7 +196,7 @@ def build_members(
     # ── Kelompok 2: random dari sisa toko ────────────────────────────────────
     # "Sisa" = toko yang tidak dipilih di kelompok AEGIS (boleh pernah warning)
     sisa_toko = [t for t in all_toko if t not in selected_aegis_set]
-    n_random_take = min(N_RANDOM, len(sisa_toko))
+    n_random_take = min(n_random, len(sisa_toko))
     selected_random = random.sample(sisa_toko, n_random_take)
 
     # ── Assemble records ──────────────────────────────────────────────────────
@@ -358,6 +363,16 @@ def main(write_final: bool = False) -> None:
 
     # 3. Generate members
     members, fallback_note = build_members(df, first_warnings)
+
+    # 3b. Validasi WAJIB: semua member punya transaksi di sumber data
+    toko_dengan_transaksi = set(df["ID Toko"].unique())
+    member_ids = {m["id_toko"] for m in members}
+    tanpa_transaksi = member_ids - toko_dengan_transaksi
+    assert len(tanpa_transaksi) == 0, (
+        f"GAGAL: {len(tanpa_transaksi)} toko tidak punya transaksi "
+        f"di sumber data: {list(tanpa_transaksi)[:5]}"
+    )
+    print(f"PASSED - semua {len(members)} member punya transaksi di {DATA_PATH.name}\n", flush=True)
 
     # 4. Save dry run
     OUTPUT_DRYRUN.parent.mkdir(parents=True, exist_ok=True)
