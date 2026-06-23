@@ -8,6 +8,7 @@ import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { RewardConfigDisplay } from "@/components/RewardConfigDisplay";
 import PromoAnalyticsView, { type ProgramAnalytics } from "@/components/loyalty/PromoAnalyticsView";
+import { useOracleContext } from "@/hooks/useOracleContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -1414,6 +1415,23 @@ export default function PromoDetailPage() {
   }, [promoId, monSortBy, monOrder]);
 
   useEffect(() => { fetchPromo(); }, [fetchPromo]);
+
+  // Beri context ke ORACLE — entity yang sedang dilihat user di halaman ini.
+  const { setOracleContext } = useOracleContext();
+  useEffect(() => {
+    if (!promo) return;
+    setOracleContext({
+      entity_name: promo.nama_promo,
+      entity_snapshot: {
+        tipe: promo.tipe_program ?? "legacy",
+        status: promo.status,
+        roi_pct: (monitoring && "analytics" in monitoring ? monitoring.analytics?.roi?.roi_pct : null) ?? null,
+        total_peserta: promo.peserta?.length ?? 0,
+        periode: `${promo.periode_mulai} - ${promo.periode_selesai}`,
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [promo, monitoring]);
 
   useEffect(() => {
     if (activeTab === "monitoring" && promo && promo.status !== "Draft") {

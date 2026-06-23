@@ -210,9 +210,9 @@ const AI_CAPS = [
 const GEN_AI_CAPS = [
   {
     icon: Bot,
-    title: "Conversational Analytics",
-    desc: "Chat bahasa natural tentang kondisi pasar dan program loyalty",
-    detail: "Multi-turn context · Tersedia di semua halaman (ikon melayang pojok kanan bawah) · Claude API",
+    title: "ORACLE Intelligence",
+    desc: "AI analyst dengan tool calling ke data real platform, page-context aware, dan Root Cause Analysis",
+    detail: "14+ tools (volume, AEGIS, kompetitor, GMM, ROI promo, simulasi) · Floating widget di semua halaman + Full Workspace di /analytics/oracle · Claude API",
     color: "text-cyan-600 dark:text-cyan-400",
     bg: "bg-cyan-50 dark:bg-cyan-950/20",
   },
@@ -283,7 +283,7 @@ const ACCESS_MATRIX = [
   { feature: "Performance Tracker",      admin: true,  viewer: true  },
   { feature: "Competitor Intelligence",  admin: true,  viewer: true  },
   { feature: "AI Report Generator",      admin: true,  viewer: true  },
-  { feature: "Conversational Analytics", admin: true,  viewer: true  },
+  { feature: "ORACLE Intelligence",      admin: true,  viewer: true  },
   { feature: "Settings (view)",          admin: true,  viewer: true  },
   { feature: "Settings (edit)",          admin: true,  viewer: false },
   { feature: "Brand Config (view)",      admin: true,  viewer: true  },

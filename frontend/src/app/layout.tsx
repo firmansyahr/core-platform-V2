@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import ChatBubble from "@/components/ChatBubble";
+import { OracleContextProvider } from "@/components/oracle/OracleContextProvider";
+import OracleWidget from "@/components/oracle/OracleWidget";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
@@ -25,8 +26,10 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange={false}
         >
-          {children}
-          <ChatBubble />
+          <OracleContextProvider>
+            {children}
+            <OracleWidget />
+          </OracleContextProvider>
         </ThemeProvider>
       </body>
     </html>

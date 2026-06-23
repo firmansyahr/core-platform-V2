@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
-import { Moon, Sun, Settings, LogOut, Info, Menu, X, ChevronDown, FileText } from "lucide-react";
+import { Moon, Sun, Settings, LogOut, Info, Menu, X, ChevronDown, FileText, Sparkles } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
 import {
@@ -261,6 +261,12 @@ export default function Navbar() {
               Report
             </a>
 
+            {/* ORACLE */}
+            <a href="/analytics/oracle" className={linkCls("/analytics/oracle")}>
+              <Sparkles size={15} strokeWidth={1.75} />
+              ORACLE
+            </a>
+
             {/* Settings */}
             <a href="/settings" className={linkCls("/settings")}>
               <Settings size={15} strokeWidth={1.75} />
@@ -433,6 +439,12 @@ export default function Navbar() {
             <a href="/report" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/report")}>
               <FileText size={16} strokeWidth={1.75} />
               Report
+            </a>
+
+            {/* ORACLE */}
+            <a href="/analytics/oracle" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/analytics/oracle")}>
+              <Sparkles size={16} strokeWidth={1.75} />
+              ORACLE
             </a>
 
             {/* Settings */}

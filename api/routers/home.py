@@ -10,7 +10,6 @@ from pydantic import BaseModel
 from api.core.aegis_engine import get_store_crs
 from api.core.data_loader import load_data
 from api.core.insight_engine import (
-    answer_analytics_question,
     generate_home_insight,
     generate_monthly_report,
 )
@@ -245,92 +244,6 @@ def get_warning_heatmap() -> dict:
         })
 
     result.sort(key=lambda x: x["total_warning"], reverse=True)
-    return {"status": "ok", "data": result, "meta": _META()}
-
-
-# ── Chat (Conversational Analytics) ──────────────────────────────────────────
-
-class ChatRequest(BaseModel):
-    question: str
-    conversation_history: list[dict[str, Any]] = []
-
-
-def _suggested_questions(question: str) -> list[str]:
-    q = question.lower()
-    if any(w in q for w in ["loyalty", "peserta", "achievement", "efektivitas", "program"]):
-        return [
-            "Berapa efektivitas program bulan ini?",
-            "Toko mana yang achievement-nya terendah?",
-            "Berapa estimasi budget program?",
-        ]
-    if any(w in q for w in ["warning", "merah", "kritis", "aegis", "pola", "toko"]):
-        return [
-            "Kabupaten mana yang paling kritis?",
-            "Berapa toko Pola B bulan ini?",
-            "Wilayah mana yang perlu dikunjungi segera?",
-        ]
-    if any(w in q for w in ["volume", "growth", "tren", "mom", "yoy"]):
-        return [
-            "Bagaimana tren volume 3 bulan terakhir?",
-            "Berapa porsi produk murah bulan ini?",
-            "Berapa toko aktif bulan ini?",
-        ]
-    return [
-        "Berapa toko warning hari ini?",
-        "Wilayah mana yang paling kritis?",
-        "Bagaimana efektivitas program loyalty?",
-    ]
-
-
-@router.post("/chat")
-def chat_analytics(body: ChatRequest) -> dict:
-    summary_resp = get_home_summary()
-    summary_dict = summary_resp.data.model_dump()
-
-    stores = get_store_crs()
-    warning_stores = stores[stores["alert"] != "Normal"]
-
-    # Top 10 warning kabupaten
-    top_kab: list[dict] = []
-    if "Kabupaten Toko" in warning_stores.columns:
-        kab_counts = (
-            warning_stores.groupby("Kabupaten Toko")["ID Toko"]
-            .count()
-            .sort_values(ascending=False)
-            .head(10)
-        )
-        top_kab = [{"kabupaten": str(k), "jumlah_toko": int(v)} for k, v in kab_counts.items()]
-
-    # Pola distribution
-    pola_dist: dict[str, int] = {}
-    if "pola_kode" in warning_stores.columns:
-        for p, cnt in warning_stores["pola_kode"].value_counts().items():
-            pola_dist[str(p)] = int(cnt)
-
-    # Loyalty data
-    loyalty_summary: dict = {}
-    try:
-        from api.routers.loyalty import get_summary as loyalty_get_summary  # type: ignore[import]
-        lres = loyalty_get_summary()
-        loyalty_summary = lres.get("data", {})
-    except Exception:
-        pass
-
-    data_context = {
-        "kpi_bulan_ini": summary_dict,
-        "top_10_kabupaten_warning": top_kab,
-        "distribusi_pola_warning": pola_dist,
-        "total_warning_stores": int(len(warning_stores)),
-        "loyalty": loyalty_summary,
-    }
-
-    result = answer_analytics_question(
-        question=body.question,
-        conversation_history=body.conversation_history,
-        data_context=data_context,
-    )
-    result["suggested_questions"] = _suggested_questions(body.question)
-
     return {"status": "ok", "data": result, "meta": _META()}
 
 

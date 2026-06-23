@@ -1,0 +1,407 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Sparkles, Send, Settings, RotateCcw, Search, CheckCircle2, Circle, Loader2 } from "lucide-react";
+import Navbar from "@/components/Navbar";
+import { getUser } from "@/lib/auth";
+import { apiFetch, API } from "@/lib/fetch";
+import {
+  useOracleContextValue, type OracleMessage, type RenderCommand,
+} from "@/components/oracle/OracleContextProvider";
+import {
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from "recharts";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+
+const fmtNum = (n: unknown) => typeof n === "number" ? new Intl.NumberFormat("id-ID").format(n) : String(n ?? "");
+
+function getSessionId(): string {
+  if (typeof window === "undefined") return "server";
+  let id = sessionStorage.getItem("oracle-session-id");
+  if (!id) {
+    id = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    sessionStorage.setItem("oracle-session-id", id);
+  }
+  return id;
+}
+
+// ── Render command renderers ─────────────────────────────────────────────────
+
+function ChartCard({ cmd }: { cmd: RenderCommand }) {
+  const data = (cmd.data as Record<string, unknown>[]) ?? [];
+  const xKey = String(cmd.x_key ?? "name");
+  const yKey = String(cmd.y_key ?? "value");
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <p className="text-sm font-semibold mb-3">{String(cmd.title ?? "Chart")}</p>
+      <div style={{ height: 260 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          {cmd.type === "line_chart" ? (
+            <LineChart data={data} margin={{ top: 4, right: 12, left: 0, bottom: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+              <XAxis dataKey={xKey} tick={{ fontSize: 10 }} angle={-25} textAnchor="end" interval={0} />
+              <YAxis tick={{ fontSize: 10 }} />
+              <Tooltip />
+              <Line type="monotone" dataKey={yKey} stroke="#7c3aed" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          ) : (
+            <BarChart data={data} margin={{ top: 4, right: 12, left: 0, bottom: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+              <XAxis dataKey={xKey} tick={{ fontSize: 10 }} angle={-25} textAnchor="end" interval={0} />
+              <YAxis tick={{ fontSize: 10 }} />
+              <Tooltip />
+              <Bar dataKey={yKey} fill="#7c3aed" radius={[3, 3, 0, 0]} />
+            </BarChart>
+          )}
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+function TableCard({ cmd }: { cmd: RenderCommand }) {
+  const columns = (cmd.columns as string[]) ?? [];
+  const rows = (cmd.rows as Record<string, unknown>[]) ?? [];
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <p className="text-sm font-semibold px-4 pt-4 pb-2">{String(cmd.title ?? "Tabel")}</p>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {columns.map((c) => <TableHead key={c} className="text-xs whitespace-nowrap">{c}</TableHead>)}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row, i) => (
+              <TableRow key={i}>
+                {columns.map((c) => (
+                  <TableCell key={c} className="text-xs whitespace-nowrap">{fmtNum(row[c])}</TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function KpiCardsCard({ cmd }: { cmd: RenderCommand }) {
+  const cards = (cmd.cards as { label: string; value: string; sub?: string }[]) ?? [];
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      {cards.map((c, i) => (
+        <div key={i} className="rounded-xl border border-border bg-card p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{c.label}</p>
+          <p className="text-xl font-bold mt-1">{c.value}</p>
+          {c.sub && <p className="text-[10px] text-muted-foreground mt-1">{c.sub}</p>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ComparisonCard({ cmd }: { cmd: RenderCommand }) {
+  const items = (cmd.items as Record<string, unknown>[]) ?? [];
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <p className="text-sm font-semibold mb-3">{String(cmd.title ?? "Perbandingan")}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {items.map((item, i) => (
+          <div key={i} className="rounded-lg bg-muted/40 p-3 space-y-1">
+            {Object.entries(item).map(([k, v]) => (
+              <div key={k} className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">{k}</span>
+                <span className="font-medium">{fmtNum(v)}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RenderCommandView({ cmd }: { cmd: RenderCommand }) {
+  if (cmd.type === "bar_chart" || cmd.type === "line_chart") return <ChartCard cmd={cmd} />;
+  if (cmd.type === "table") return <TableCard cmd={cmd} />;
+  if (cmd.type === "kpi_cards") return <KpiCardsCard cmd={cmd} />;
+  if (cmd.type === "comparison") return <ComparisonCard cmd={cmd} />;
+  return null;
+}
+
+// ── RCA progress tracker ──────────────────────────────────────────────────────
+
+function RcaTracker({ steps }: { steps: { step: number; label: string; status: string }[] }) {
+  return (
+    <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-3 mb-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400 mb-2 flex items-center gap-1.5">
+        <Search className="h-3 w-3" /> RCA Progress
+      </p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {steps.map((s, i) => (
+          <div key={s.step} className="flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-white dark:bg-background border border-amber-200 dark:border-amber-800">
+              {s.status === "done" ? <CheckCircle2 className="h-3 w-3 text-green-600" /> : <Circle className="h-3 w-3 text-muted-foreground" />}
+              {s.label}
+            </span>
+            {i < steps.length - 1 && <span className="text-amber-400">→</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Page ───────────────────────────────────────────────────────────────────────
+
+export default function OracleWorkspacePage() {
+  const [mounted, setMounted] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [dataTab, setDataTab] = useState<"charts" | "tables" | "summary">("summary");
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const { pageContext, history, appendMessage, clearHistory } = useOracleContextValue();
+
+  useEffect(() => {
+    setMounted(true);
+    setIsLoggedIn(!!getUser());
+  }, []);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [history, isLoading]);
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+      </div>
+    );
+  }
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <main className="pt-24 max-w-md mx-auto text-center px-6">
+          <Sparkles className="h-10 w-10 text-primary mx-auto mb-4 opacity-70" />
+          <p className="text-sm text-muted-foreground">Login untuk mengakses ORACLE Workspace.</p>
+        </main>
+      </div>
+    );
+  }
+
+  async function sendMessage(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed || isLoading) return;
+
+    appendMessage({ role: "user", content: trimmed, timestamp: Date.now() });
+    setInput("");
+    setIsLoading(true);
+
+    try {
+      const res = await apiFetch(`${API}/api/oracle/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: trimmed,
+          conversation_history: history.map((m) => ({ role: m.role, content: m.content })),
+          page_context: pageContext,
+          session_id: getSessionId(),
+        }),
+      });
+      const json = await res.json();
+      const d = json.data ?? json;
+      const newMsg: OracleMessage = {
+        role: "assistant",
+        content: d.reply ?? "Maaf, tidak ada jawaban tersedia.",
+        render_commands: d.render_commands ?? [],
+        suggested_followups: d.suggested_followups ?? [],
+        rca_mode: d.rca_mode ?? false,
+        rca_steps: d.rca_steps ?? null,
+        confidence_signals: d.confidence_signals ?? null,
+        timestamp: Date.now(),
+      };
+      appendMessage(newMsg);
+      const cmds = newMsg.render_commands ?? [];
+      if (cmds.some((c) => c.type === "bar_chart" || c.type === "line_chart")) setDataTab("charts");
+      else if (cmds.some((c) => c.type === "table")) setDataTab("tables");
+      else if (cmds.length > 0) setDataTab("summary");
+    } catch {
+      appendMessage({ role: "assistant", content: "Maaf, terjadi kesalahan menghubungi ORACLE. Coba lagi.", timestamp: Date.now() });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  const lastAssistant = [...history].reverse().find((m) => m.role === "assistant");
+
+  // Akumulasi semua render_commands dari seluruh percakapan, dikelompokkan per kategori tab.
+  const allCommands = history.flatMap((m) => m.render_commands ?? []);
+  const chartsCmds = allCommands.filter((c) => c.type === "bar_chart" || c.type === "line_chart");
+  const tablesCmds = allCommands.filter((c) => c.type === "table");
+  const summaryCmds = allCommands.filter((c) => c.type === "kpi_cards" || c.type === "comparison");
+
+  const activeCommands = dataTab === "charts" ? chartsCmds : dataTab === "tables" ? tablesCmds : summaryCmds;
+
+  const headerSubtitle = pageContext.entity_name
+    ? `Menganalisis: ${pageContext.entity_name}${pageContext.module ? ` · ${pageContext.module}` : ""}`
+    : "Siap menganalisis seluruh data platform";
+
+  return (
+    <div className="min-h-screen bg-background">
+      <Navbar />
+      <main className="pt-16 h-screen flex flex-col">
+        {/* Header */}
+        <div className="px-6 py-3 border-b border-border flex items-center justify-between shrink-0">
+          <div>
+            <h1 className="text-base font-bold flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" /> ORACLE Intelligence
+            </h1>
+            <p className="text-xs text-muted-foreground mt-0.5">{headerSubtitle}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={clearHistory}
+              className="text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-muted transition-colors flex items-center gap-1.5"
+            >
+              <RotateCcw className="h-3 w-3" /> New Session
+            </button>
+            <button className="p-1.5 rounded-lg border border-border hover:bg-muted transition-colors" aria-label="Settings">
+              <Settings className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Two-panel layout */}
+        <div className="flex-1 flex min-h-0">
+          {/* Chat panel — 40% */}
+          <div className="w-2/5 flex flex-col border-r border-border min-h-0">
+            <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0">
+              {history.length === 0 ? (
+                <div className="text-center py-10">
+                  <Sparkles className="h-10 w-10 text-primary mx-auto mb-3 opacity-70" />
+                  <p className="text-sm font-medium">Mulai analisis dengan ORACLE</p>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    Tanya tentang ROI program, root cause penurunan toko,<br />perbandingan kompetitor, atau simulasi skenario.
+                  </p>
+                </div>
+              ) : (
+                history.map((msg, i) => (
+                  <div key={i}>
+                    {msg.role === "assistant" && msg.rca_mode && msg.rca_steps && (
+                      <RcaTracker steps={msg.rca_steps} />
+                    )}
+                    <div className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
+                        msg.role === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-muted text-foreground rounded-bl-sm"
+                      }`}>
+                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                      </div>
+                    </div>
+                    {msg.role === "assistant" && msg.confidence_signals && msg.confidence_signals.length > 0 && (
+                      <div className="mt-2 space-y-1.5">
+                        {msg.confidence_signals.map((f, j) => (
+                          <div key={j} className="text-[11px] rounded-lg border border-border bg-card p-2">
+                            <div className="flex items-center justify-between mb-0.5">
+                              <span className="font-medium">{f.finding}</span>
+                              <span className={`shrink-0 ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                f.confidence === "tinggi" ? "bg-green-100 text-green-700" :
+                                f.confidence === "sedang" ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-600"
+                              }`}>{f.confidence}</span>
+                            </div>
+                            <p className="text-muted-foreground">{f.evidence}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span className="text-xs text-muted-foreground">ORACLE sedang menganalisis…</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {!isLoading && lastAssistant && (lastAssistant.suggested_followups?.length ?? 0) > 0 && (
+              <div className="px-4 pb-2 flex flex-wrap gap-1 shrink-0">
+                {lastAssistant.suggested_followups!.map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => sendMessage(q)}
+                    className="text-xs px-2.5 py-1 border border-border rounded-full hover:bg-muted transition-colors"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="p-3 border-t border-border shrink-0">
+              <div className="flex gap-2">
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
+                  placeholder="Tanya ORACLE…"
+                  disabled={isLoading}
+                  rows={2}
+                  className="flex-1 text-sm px-3 py-2 border border-border rounded-lg bg-background resize-none
+                    placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
+                />
+                <button
+                  onClick={() => sendMessage(input)}
+                  disabled={!input.trim() || isLoading}
+                  className="px-3 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-40 transition-colors shrink-0 self-end"
+                  aria-label="Kirim"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Data panel — 60% */}
+          <div className="w-3/5 flex flex-col min-h-0">
+            <div className="flex items-center gap-1 px-4 pt-3 shrink-0">
+              {(["summary", "charts", "tables"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setDataTab(tab)}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors ${
+                    dataTab === tab ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {tab === "summary" ? "Summary" : tab === "charts" ? "Charts" : "Tables"}
+                </button>
+              ))}
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+              {activeCommands.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-center">
+                  <div>
+                    <Sparkles className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">Belum ada visualisasi di kategori ini.</p>
+                    <p className="text-xs text-muted-foreground/70 mt-1">Visualisasi muncul otomatis saat ORACLE merender chart/tabel/KPI.</p>
+                  </div>
+                </div>
+              ) : (
+                [...activeCommands].reverse().map((cmd, i) => <RenderCommandView key={i} cmd={cmd} />)
+              )}
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}

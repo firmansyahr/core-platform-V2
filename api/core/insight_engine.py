@@ -136,57 +136,6 @@ poin, fokus pada tindakan nyata yang bisa dilakukan TSO.""",
         return {"status": "error", "narasi": None, "error": str(e), "cached": False}
 
 
-def answer_analytics_question(
-    question: str,
-    conversation_history: list,
-    data_context: dict,
-) -> dict:
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        return {"status": "disabled", "answer": None}
-
-    try:
-        system = f"""Kamu adalah asisten analitik data untuk platform
-pemantauan distribusi semen. Kamu memiliki akses ke data berikut:
-
-KONTEKS DATA SAAT INI:
-{json.dumps(data_context, ensure_ascii=False, indent=2)}
-
-KEMAMPUANMU:
-- Menjawab pertanyaan tentang kondisi pasar, toko warning, volume
-- Menjelaskan pola AEGIS (A/B/C/D) dalam bahasa bisnis
-- Memberikan rekomendasi tindakan berdasarkan data
-- Menghitung dan membandingkan angka dari data yang tersedia
-
-ATURAN:
-- Jawab dalam bahasa Indonesia yang formal namun ramah
-- Jika data tidak tersedia, katakan dengan jelas
-- Jawaban singkat dan langsung ke poin (max 3-4 kalimat)
-- Jangan sebut nama perusahaan
-- Jika ditanya tentang toko spesifik yang tidak ada di context,
-  minta user untuk membuka halaman Store Detail
-"""
-        messages = []
-        for h in conversation_history[-10:]:
-            messages.append({"role": h["role"], "content": h["content"]})
-        messages.append({"role": "user", "content": question})
-
-        response = _get_client().messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=400,
-            system=system,
-            messages=messages,
-        )
-
-        return {
-            "status": "ok",
-            "answer": response.content[0].text,
-            "tokens_used": response.usage.input_tokens + response.usage.output_tokens,
-        }
-
-    except Exception as e:
-        return {"status": "error", "answer": None, "error": str(e)}
-
-
 def generate_monthly_report(report_data: dict) -> dict:
     if not os.getenv("ANTHROPIC_API_KEY"):
         return {"status": "disabled", "sections": None, "raw_data": report_data}
