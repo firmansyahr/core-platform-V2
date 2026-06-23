@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Settings } from "lucide-react";
+import Link from "next/link";
+import { Settings, Tags, ChevronRight } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/hooks/useAuth";
 import { getToken } from "@/lib/auth";
@@ -655,6 +656,25 @@ export default function SettingsPage() {
               <p className="text-xs text-muted-foreground italic">Hanya Admin yang dapat mengubah nilai poin.</p>
             )}
           </section>
+
+          {/* ── Brand Config per Wilayah (link) ─────────────────── */}
+          <Link
+            href="/settings/brand-config"
+            className="block rounded-xl border border-border bg-card p-4 hover:bg-muted/50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg shrink-0">
+                <Tags className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm">Konfigurasi Brand per Wilayah</p>
+                <p className="text-xs text-muted-foreground">
+                  Setting MB/CB/FB per provinsi dan kabupaten untuk perhitungan volume dan reward loyalty
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+            </div>
+          </Link>
 
           {/* ── Data Source ─────────────────────────────────────── */}
           <section className="rounded-xl border border-border bg-card p-6 space-y-5">

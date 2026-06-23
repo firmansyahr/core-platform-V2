@@ -126,6 +126,22 @@ def get_available_brands() -> dict:
     return _ok({"brands": brands})
 
 
+@router.get("/regions")
+def get_regions() -> dict:
+    """Provinsi + kabupaten per provinsi dari data toko, untuk cascading select di form config."""
+    df = get_data()
+    if df is None or df.empty:
+        return _ok({"provinsi": [], "kabupaten_by_provinsi": {}})
+
+    sub = df[["Provinsi Toko", "Kabupaten Toko"]].dropna().drop_duplicates()
+    provinsi = sorted(sub["Provinsi Toko"].unique().tolist())
+    kabupaten_by_provinsi = {
+        p: sorted(sub.loc[sub["Provinsi Toko"] == p, "Kabupaten Toko"].unique().tolist())
+        for p in provinsi
+    }
+    return _ok({"provinsi": provinsi, "kabupaten_by_provinsi": kabupaten_by_provinsi})
+
+
 @router.post("", status_code=201)
 def create_brand_config(
     body: BrandConfigCreateBody,
