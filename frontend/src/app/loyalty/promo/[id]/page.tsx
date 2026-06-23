@@ -7,6 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { RewardConfigDisplay } from "@/components/RewardConfigDisplay";
+import PromoAnalyticsView, { type ProgramAnalytics } from "@/components/loyalty/PromoAnalyticsView";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -135,6 +136,7 @@ interface MultiTierMonData {
   total_rupiah:      number;
   tier_distribution: Record<string, number>;
   peserta_detail:    MultiTierPesertaRow[];
+  analytics?:        ProgramAnalytics;
 }
 
 interface FlatMultiplierPesertaRow {
@@ -159,6 +161,7 @@ interface FlatMultiplierMonData {
   total_poin:      number;
   total_rupiah:    number;
   peserta_detail:  FlatMultiplierPesertaRow[];
+  analytics?:      ProgramAnalytics;
 }
 
 interface LeaderboardStandingRow {
@@ -189,6 +192,7 @@ interface LeaderboardMonData {
   total_reward_rupiah:     number;
   standings:               LeaderboardStandingRow[];
   grouped_standings:       Record<string, LeaderboardStandingRow[]> | null;
+  analytics?:              ProgramAnalytics;
 }
 
 type AnyMonData = MonitoringData | MultiTierMonData | FlatMultiplierMonData | LeaderboardMonData;
@@ -1979,9 +1983,15 @@ export default function PromoDetailPage() {
                   </>
                 );
               })()
+            ) : monitoring.analytics ? (
+              <PromoAnalyticsView
+                analytics={monitoring.analytics}
+                tipeProgram={monitoring.tipe_program}
+                periodeMulai={promo.periode_mulai}
+              />
             ) : (
               <div className="text-center py-12 text-muted-foreground">
-                <p className="text-sm">Tab Analisis tidak tersedia untuk tipe program <span className="font-medium">{monitoring.tipe_program}</span>.</p>
+                <p className="text-sm">Data analisis belum tersedia untuk program ini.</p>
                 <p className="text-xs mt-1">Lihat tab Monitoring untuk data detail program ini.</p>
               </div>
             )}

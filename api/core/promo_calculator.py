@@ -155,6 +155,171 @@ def calculate_tier_reward(
     }
 
 
+def get_baseline_volume(
+    toko_ids: list[str],
+    periode_mulai: str,
+    periode_selesai: str,
+    transaksi_df: pd.DataFrame,
+    lookback_months: int = 3,
+) -> dict[str, float]:
+    """
+    Volume baseline per toko SEBELUM program, dinormalisasi ke durasi yang SAMA
+    dengan periode program (bukan total mentah lookback_months) — supaya
+    perbandingan before/during adil terlepas dari berapa lama program berjalan.
+
+    baseline[toko] = (rata-rata volume harian toko selama lookback window
+    sebelum periode_mulai) × jumlah hari periode program.
+    """
+    mulai   = pd.Timestamp(periode_mulai).normalize()
+    selesai = pd.Timestamp(periode_selesai).normalize()
+    durasi_hari = (selesai - mulai).days + 1
+
+    lookback_end   = mulai - pd.Timedelta(days=1)
+    lookback_start = mulai - pd.DateOffset(months=lookback_months)
+    lookback_days  = max((lookback_end - lookback_start).days + 1, 1)
+
+    df = transaksi_df.copy()
+    df["_dt"] = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
+
+    fighting  = "SEMEN BANTENG"
+    brand_col = next((c for c in df.columns if "brand" in c.lower()), None)
+    if brand_col:
+        df = df[~df[brand_col].str.upper().eq(fighting)]
+
+    df_lookback = df[
+        (df["_dt"] >= lookback_start) & (df["_dt"] <= lookback_end)
+        & (df["ID Toko"].isin(toko_ids))
+    ]
+    agg = df_lookback.groupby("ID Toko")["TON Quantity"].sum()
+
+    return {
+        str(toko_id): round(float(agg.get(toko_id, 0.0)) / lookback_days * durasi_hari, 2)
+        for toko_id in toko_ids
+    }
+
+
+def compute_program_analytics(
+    peserta_rows: list[dict],
+    baseline: dict[str, float],
+    total_reward_issued: float,
+) -> dict[str, Any]:
+    """
+    Analytics universal untuk semua tipe program — dipanggil SETELAH masing-masing
+    calculator menormalisasi baris pesertanya ke bentuk:
+      {id_toko, nama_toko, during_vol, target_ton, reward_rupiah, forced_status?}
+
+    target_ton None → tipe program ini tidak punya target volume eksplisit
+    (flat_multiplier/leaderboard) — achievement diukur dari lift vs baseline
+    sendiri (maintain/tumbuh = sukses), BUKAN diam-diam dianggap 0%.
+
+    forced_status (opsional) → override status untuk business rule yang tidak
+    bisa diturunkan dari volume saja (mis. leaderboard: masuk rank 1-3 = sukses
+    walau basis_ranking-nya growth_pct dengan volume absolut kecil).
+    """
+    default_pv = get_brand_point_values().get("Semen Elang", 5000)
+
+    per_toko: list[dict] = []
+    baseline_total = 0.0
+    during_total   = 0.0
+
+    for r in peserta_rows:
+        toko_id      = r["id_toko"]
+        baseline_vol = float(baseline.get(toko_id, 0.0))
+        during_vol   = float(r["during_vol"])
+        baseline_total += baseline_vol
+        during_total   += during_vol
+
+        if baseline_vol > 0:
+            lift_pct = (during_vol - baseline_vol) / baseline_vol * 100
+        else:
+            lift_pct = 100.0 if during_vol > 0 else 0.0
+
+        target_ton = r.get("target_ton")
+        if target_ton:
+            achievement_pct = during_vol / target_ton * 100
+        else:
+            # Tidak ada target eksplisit — pakai baseline sendiri sebagai
+            # "target implisit": maintain/tumbuh dari kondisi sebelum program
+            # dianggap sukses, bukan dipaksa 0%.
+            achievement_pct = lift_pct + 100
+
+        if baseline_vol == 0 and during_vol == 0:
+            status = "no_movement"
+        elif achievement_pct >= 110:
+            status = "over_achiever"
+        elif achievement_pct >= 90:
+            status = "on_track"
+        else:
+            status = "under_achiever"
+        status = r.get("forced_status") or status
+
+        per_toko.append({
+            "toko_id":      toko_id,
+            "nama_toko":    r.get("nama_toko", ""),
+            "baseline_vol": round(baseline_vol, 2),
+            "during_vol":   round(during_vol, 2),
+            "lift_pct":     round(lift_pct, 1),
+            "status":       status,
+        })
+
+    if baseline_total > 0:
+        overall_lift_pct = (during_total - baseline_total) / baseline_total * 100
+    else:
+        overall_lift_pct = 100.0 if during_total > 0 else 0.0
+
+    total_peserta  = len(per_toko)
+    over_achiever  = sum(1 for p in per_toko if p["status"] == "over_achiever")
+    on_track       = sum(1 for p in per_toko if p["status"] == "on_track")
+    under_achiever = sum(1 for p in per_toko if p["status"] == "under_achiever")
+    non_movers     = sum(1 for p in per_toko if p["status"] == "no_movement")
+    mencapai_target = over_achiever + on_track
+
+    incremental_volume = max(during_total - baseline_total, 0.0)
+    cost_per_incremental_ton = (
+        round(total_reward_issued / incremental_volume, 0) if incremental_volume > 0 else None
+    )
+    # Nilai volume inkremental diestimasi sebagai poin reguler (1X) pada
+    # point_value brand default — proxy kasar (point_value sebenarnya bervariasi
+    # per brand/tier), dipakai HANYA untuk sinyal arah ROI, bukan angka presisi.
+    implied_value = incremental_volume * default_pv
+    roi_pct = (
+        round((implied_value - total_reward_issued) / total_reward_issued * 100, 1)
+        if total_reward_issued > 0 else None
+    )
+    breakeven_volume = round(total_reward_issued / default_pv, 2) if default_pv > 0 else 0.0
+
+    sorted_by_lift = sorted(per_toko, key=lambda p: p["lift_pct"], reverse=True)
+
+    return {
+        "volume_lift": {
+            "baseline_total": round(baseline_total, 2),
+            "during_total":   round(during_total, 2),
+            "lift_pct":       round(overall_lift_pct, 1),
+            "per_toko":       per_toko,
+        },
+        "achievement": {
+            "total_peserta":   total_peserta,
+            "mencapai_target": mencapai_target,
+            "pct_achieved":    round(mencapai_target / total_peserta * 100, 1) if total_peserta else 0.0,
+            "over_achiever":   over_achiever,
+            "on_track":        on_track,
+            "under_achiever":  under_achiever,
+        },
+        "roi": {
+            "total_reward_issued":      round(total_reward_issued, 0),
+            "incremental_volume":       round(incremental_volume, 2),
+            "cost_per_incremental_ton": cost_per_incremental_ton,
+            "roi_pct":                  roi_pct,
+            "breakeven_volume":         breakeven_volume,
+        },
+        "responders": {
+            "top_5":      sorted_by_lift[:5],
+            "bottom_5":   sorted_by_lift[-5:][::-1] if len(sorted_by_lift) > 5 else [],
+            "non_movers": non_movers,
+        },
+    }
+
+
 def calculate_program_reward_summary(
     promo: dict,
     peserta_data: list[dict],
@@ -214,6 +379,19 @@ def calculate_program_reward_summary(
         tier = r.get("tier_berlaku", "Reguler")
         tier_distribution[tier] = tier_distribution.get(tier, 0) + 1
 
+    baseline = get_baseline_volume(
+        [r["id_toko"] for r in results], promo["periode_mulai"], promo["periode_selesai"], transaksi_df,
+    )
+    analytics_rows = [
+        {
+            "id_toko":   r["id_toko"], "nama_toko": r["nama_toko"],
+            "during_vol": r["realisasi_ton"], "target_ton": r["target_ton"] or None,
+            "reward_rupiah": r["total_rupiah"],
+        }
+        for r in results
+    ]
+    analytics = compute_program_analytics(analytics_rows, baseline, total_rupiah_program)
+
     return {
         "tipe_program":       "multi_tier",
         "program_id":         promo["id"],
@@ -223,6 +401,7 @@ def calculate_program_reward_summary(
         "total_rupiah":       round(total_rupiah_program, 0),
         "tier_distribution":  tier_distribution,
         "peserta_detail":     results,
+        "analytics":          analytics,
     }
 
 
@@ -284,6 +463,22 @@ def calculate_flat_multiplier_program(
     total_poin_prog   = sum(r["total_poin"]   for r in results)
     total_rupiah_prog = sum(r["total_rupiah"] for r in results)
 
+    # Flat multiplier tidak punya target volume eksplisit (semua transaksi
+    # dapat multiplier yang sama, tidak tergantung pencapaian) — target_ton
+    # None supaya analytics pakai baseline sendiri sebagai pembanding.
+    baseline = get_baseline_volume(
+        [r["id_toko"] for r in results], promo["periode_mulai"], promo["periode_selesai"], transaksi_df,
+    )
+    analytics_rows = [
+        {
+            "id_toko": r["id_toko"], "nama_toko": r["nama_toko"],
+            "during_vol": r["volume_ton"], "target_ton": None,
+            "reward_rupiah": r["total_rupiah"],
+        }
+        for r in results
+    ]
+    analytics = compute_program_analytics(analytics_rows, baseline, total_rupiah_prog)
+
     return {
         "tipe_program":   "flat_multiplier",
         "program_id":     promo["id"],
@@ -294,6 +489,7 @@ def calculate_flat_multiplier_program(
         "total_poin":     round(total_poin_prog, 0),
         "total_rupiah":   round(total_rupiah_prog, 0),
         "peserta_detail": results,
+        "analytics":      analytics,
     }
 
 
@@ -399,6 +595,24 @@ def calculate_leaderboard_standings(
 
     total_rupiah = round(sum(s["reward_rupiah"] for s in standings), 0)
 
+    # Leaderboard tidak punya target volume — "target"-nya adalah masuk rank
+    # 1-3 (di scope masing-masing, global atau per-cluster). forced_status
+    # override status berbasis-lift supaya toko rank 1-3 selalu dihitung sukses
+    # walau basis_ranking-nya growth_pct dengan volume absolut kecil.
+    baseline = get_baseline_volume(
+        [s["id_toko"] for s in standings], promo["periode_mulai"], promo["periode_selesai"], transaksi_df,
+    )
+    analytics_rows = [
+        {
+            "id_toko": s["id_toko"], "nama_toko": s["nama_toko"],
+            "during_vol": s["volume_periode"], "target_ton": None,
+            "reward_rupiah": s["reward_rupiah"],
+            "forced_status": "over_achiever" if s["rank"] <= 3 else None,
+        }
+        for s in standings
+    ]
+    analytics = compute_program_analytics(analytics_rows, baseline, total_rupiah)
+
     return {
         "tipe_program":           "leaderboard",
         "program_id":             promo["id"],
@@ -412,6 +626,7 @@ def calculate_leaderboard_standings(
         "total_reward_rupiah":    total_rupiah,
         "standings":              standings,
         "grouped_standings":      grouped,
+        "analytics":              analytics,
     }
 
 
