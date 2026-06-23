@@ -1621,8 +1621,12 @@ export default function PromoDetailPage() {
           </p>
         </div>
 
-        {/* Tabs — horizontal bar + full-width content, no sidebar */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        {/* Tabs — horizontal bar + full-width content, no sidebar.
+            flex-col explicit di sini karena base Tabs (components/ui/tabs.tsx)
+            pakai syntax data-horizontal:/group-data-horizontal: tanpa bracket
+            — itu konvensi Tailwind v4, proyek ini masih v3.4.1, jadi variant itu
+            no-op dan root Tabs jatuh ke flex row default tanpa override ini. */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-col">
           <div className="flex items-center justify-between border-b mb-6">
             <TabsList className="h-auto p-0 bg-transparent border-0">
               <TabsTrigger value="detail" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-4 py-3">Detail Promo</TabsTrigger>
