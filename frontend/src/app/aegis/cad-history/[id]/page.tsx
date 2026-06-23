@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { getUser } from "@/lib/auth";
 import TokoValidasiModal, { KONDISI_COLOR, KONDISI_CHOICES } from "@/components/TokoValidasiModal";
 import ValidasiModal, { type CADRecordFull } from "@/components/ValidasiModal";
+import UpdateCADModal, { type CADRecord as UpdateCADRecord } from "@/components/UpdateCADModal";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -70,14 +71,21 @@ interface CADRecord {
   tgl_alert: string;
   tanggal_alert?: string;
   status: string;
+  status_alert: string;
   status_resolusi: string;
   jumlah_toko: number;
   aegis_score_rata: number;
   kondisi_alert?: KondisiAlert;
+  hasil_validasi?: string | null;
   hasil_validasi_detail?: HasilValidasi | null;
   toko_validasi?: TokoValidasi[];
   validated_by: string | null;
+  tso_assigned?: string | null;
   tgl_validasi: string | null;
+  tanggal_kunjungan?: string | null;
+  catatan?: string | null;
+  tanggal_resolved?: string | null;
+  created_at: string;
   follow_up?: {
     status: string;
     reminder_sent: boolean;
@@ -125,6 +133,7 @@ export default function CADHistoryDetailPage() {
 
   const [showTokoModal, setShowTokoModal] = useState(false);
   const [showValidasiModal, setShowValidasiModal] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
 
   const currentUser = getUser()?.name || getUser()?.username || "";
 
@@ -195,6 +204,22 @@ export default function CADHistoryDetailPage() {
     jumlah_toko:      record.jumlah_toko,
     aegis_score_rata: record.aegis_score_rata,
     hasil_validasi_detail: record.hasil_validasi_detail as Record<string, unknown> | null | undefined,
+  };
+
+  const asUpdateCADRecord: UpdateCADRecord = {
+    id:                record.id,
+    kabupaten:         record.kabupaten,
+    tanggal_alert:     record.tanggal_alert ?? record.tgl_alert,
+    status_alert:      record.status_alert,
+    jumlah_toko:       record.jumlah_toko,
+    aegis_score_rata:  record.aegis_score_rata,
+    tso_assigned:      record.tso_assigned ?? null,
+    tanggal_kunjungan: record.tanggal_kunjungan ?? null,
+    hasil_validasi:    record.hasil_validasi ?? null,
+    catatan:           record.catatan ?? null,
+    status_resolusi:   record.status_resolusi,
+    tanggal_resolved:  record.tanggal_resolved ?? null,
+    created_at:        record.created_at,
   };
 
   return (
@@ -315,6 +340,14 @@ export default function CADHistoryDetailPage() {
                     className="ml-auto text-xs px-3 py-1.5 rounded border border-amber-400 text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30 transition-colors font-medium"
                   >
                     Mulai Validasi →
+                  </button>
+                )}
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowUpdateModal(true)}
+                    className="text-xs px-3 py-1 rounded border border-border hover:bg-muted transition-colors"
+                  >
+                    Update Status
                   </button>
                 )}
               </div>
@@ -601,6 +634,13 @@ export default function CADHistoryDetailPage() {
           currentUser={currentUser}
           onClose={() => setShowValidasiModal(false)}
           onSaved={() => { fetchRecord(); }}
+        />
+      )}
+      {showUpdateModal && (
+        <UpdateCADModal
+          record={asUpdateCADRecord}
+          onClose={() => setShowUpdateModal(false)}
+          onSaved={() => { fetchRecord(); setShowUpdateModal(false); }}
         />
       )}
     </div>
