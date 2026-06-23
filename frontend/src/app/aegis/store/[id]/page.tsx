@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, RefreshCw, Plus, GitBranch, Scale, Info } from "lucide-react";
+import { Sparkles, RefreshCw, Plus, GitBranch, Scale, Info, Loader2 } from "lucide-react";
 import StoreJourneyModal from "@/components/StoreJourneyModal";
 import {
   ComposedChart,
@@ -1186,6 +1186,9 @@ export default function StoreDetailPage() {
   const [cadHistory,        setCadHistory]      = useState<CADHistoryItem[]>([]);
   const [cadLoading,        setCadLoading]      = useState(false);
   const [showTokoModal,     setShowTokoModal]   = useState(false);
+  const [activeCadId,       setActiveCadId]     = useState<string | null>(null);
+  const [cadLookupLoading,  setCadLookupLoading] = useState(false);
+  const [cadLookupError,    setCadLookupError]  = useState<string | null>(null);
   const { isAdmin }    = useAuth();
   const currentUser    = getUser()?.name || getUser()?.username || "";
 
@@ -1355,6 +1358,31 @@ export default function StoreDetailPage() {
   const polaAction = POLA_ACTION[cw.pola_kode];
   const scoreCol = scoreColor(cw.aegis_score);
 
+  const handleOpenTokoValidasi = async () => {
+    if (!info.kabupaten) return;
+    setCadLookupError(null);
+    setCadLookupLoading(true);
+    try {
+      const res = await fetch(
+        `${API}/api/aegis/cad-history?kabupaten=${encodeURIComponent(info.kabupaten)}&limit=1`
+      );
+      const json = await res.json();
+      const latestAlert = json.data?.[0];
+      if (!latestAlert?.id) {
+        setCadLookupError(
+          `Belum ada CAD Alert untuk kabupaten ${info.kabupaten}. Generate data CAD terlebih dahulu.`
+        );
+        return;
+      }
+      setActiveCadId(latestAlert.id);
+      setShowTokoModal(true);
+    } catch {
+      setCadLookupError("Gagal memuat data CAD. Coba lagi.");
+    } finally {
+      setCadLookupLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -1402,12 +1430,19 @@ export default function StoreDetailPage() {
                     <p className="text-sm text-muted-foreground mt-0.5 font-mono">{info.id_toko}</p>
                   </div>
                   {isAdmin && (
-                    <Button size="sm" variant="outline" className="shrink-0" onClick={() => setShowTokoModal(true)}>
-                      <Plus className="h-4 w-4 mr-1" />
-                      Tambah Validasi
+                    <Button size="sm" variant="outline" className="shrink-0" onClick={handleOpenTokoValidasi} disabled={cadLookupLoading}>
+                      {cadLookupLoading ? (
+                        <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Memuat…</>
+                      ) : (
+                        <><Plus className="h-4 w-4 mr-1" />Tambah Validasi</>
+                      )}
                     </Button>
                   )}
                 </div>
+
+                {cadLookupError && (
+                  <p className="text-xs text-destructive">{cadLookupError}</p>
+                )}
 
                 {/* Info grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -2072,14 +2107,23 @@ export default function StoreDetailPage() {
               <CardTitle className="text-sm">Riwayat Validasi CAD</CardTitle>
               {isAdmin && (
                 <button
-                  onClick={() => setShowTokoModal(true)}
+                  onClick={handleOpenTokoValidasi}
+                  disabled={cadLookupLoading}
                   className="px-3 py-1.5 rounded-lg text-xs font-medium border border-amber-500/60 text-amber-600
-                    hover:bg-amber-50 dark:text-amber-400 dark:border-amber-500/40 dark:hover:bg-amber-950/30 transition-colors"
+                    hover:bg-amber-50 dark:text-amber-400 dark:border-amber-500/40 dark:hover:bg-amber-950/30 transition-colors
+                    disabled:opacity-50 inline-flex items-center"
                 >
-                  + Tambah Validasi
+                  {cadLookupLoading ? (
+                    <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />Memuat…</>
+                  ) : (
+                    "+ Tambah Validasi"
+                  )}
                 </button>
               )}
             </div>
+            {cadLookupError && (
+              <p className="text-xs text-destructive mt-2">{cadLookupError}</p>
+            )}
           </CardHeader>
           <CardContent className="pt-3 pb-3">
             {cadLoading ? (
@@ -2177,15 +2221,15 @@ export default function StoreDetailPage() {
       )}
 
       {/* Toko Validasi Modal */}
-      {showTokoModal && (
+      {showTokoModal && activeCadId && (
         <TokoValidasiModal
-          cadId=""
+          cadId={activeCadId}
           idToko={id}
           namaToko={info.nama_toko}
           aegisScore={cw.aegis_score}
           currentUser={currentUser}
-          onClose={() => setShowTokoModal(false)}
-          onSaved={() => { fetchCadHistory(); setShowTokoModal(false); }}
+          onClose={() => { setShowTokoModal(false); setActiveCadId(null); }}
+          onSaved={() => { fetchCadHistory(); setShowTokoModal(false); setActiveCadId(null); }}
         />
       )}
     </div>
