@@ -17,6 +17,9 @@ import {
   TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
+  Tooltip as UiTooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   ComposedChart, BarChart, Bar, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Legend, ReferenceLine, Cell,
@@ -57,6 +60,9 @@ interface Summary {
   total_aktif: number; total_nonaktif: number; est_budget_bulan: number;
   per_reward_type: Record<string, number>;
   rekomendasi_takeout: number; rekomendasi_takein: number;
+}
+interface AchievementSummary {
+  total: number; avg_achievement_pct: number; member_above_target: number;
 }
 interface TakeoutRec {
   id: string; id_toko: string; nama_toko: string; kabupaten: string;
@@ -1022,10 +1028,10 @@ function TargetConfigModal({
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
 function KpiCard({
-  label, value, sub, icon: Icon, color,
+  label, value, sub, icon: Icon, color, progress,
 }: {
   label: string; value: string; sub?: string;
-  icon: React.ElementType; color: string;
+  icon: React.ElementType; color: string; progress?: number;
 }) {
   return (
     <Card className="shadow-sm min-h-[100px]" style={{ borderBottom: `3px solid ${color}` }}>
@@ -1036,6 +1042,14 @@ function KpiCard({
         </div>
         <p className="text-2xl font-bold leading-none tabular-nums" style={{ color }}>{value}</p>
         {sub && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{sub}</p>}
+        {progress !== undefined && (
+          <div className="w-full bg-muted rounded-full h-1.5 mt-2">
+            <div
+              className="h-1.5 rounded-full"
+              style={{ width: `${Math.min(Math.max(progress, 0), 100)}%`, background: color }}
+            />
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -1046,6 +1060,7 @@ function KpiCard({
 function LoyaltyContent() {
   const router = useRouter();
   const [summary, setSummary]       = useState<Summary | null>(null);
+  const [achievementSummary, setAchievementSummary] = useState<AchievementSummary | null>(null);
   const [members, setMembers]       = useState<LoyaltyMember[]>([]);
   const [takeoutRecs, setTakeoutRecs] = useState<TakeoutRec[]>([]);
   const [smartPromos, setSmartPromos] = useState<SmartPromo[]>([]);
@@ -1166,6 +1181,12 @@ function LoyaltyContent() {
     apiFetch(`${API}/api/promo?status=Aktif`)
       .then(r => r.json())
       .then(j => setPromoAktifCount(j.meta?.total ?? 0))
+      .catch(() => {});
+
+    // Achievement scorecard — non-blocking
+    apiFetch(`${API}/api/loyalty/targets/summary`)
+      .then(r => r.json())
+      .then(j => { if (j.status === "ok") setAchievementSummary(j.data); })
       .catch(() => {});
   }, [fetchSummary, fetchMembers, fetchTargets]);
 
@@ -1350,6 +1371,27 @@ function LoyaltyContent() {
                   </CardContent>
                 </Card>
               </Link>
+            </>
+          )}
+        </div>
+
+        {/* Achievement scorecards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {loading ? (
+            Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)
+          ) : (
+            <>
+              <KpiCard
+                label="Pencapaian Target" icon={Target} color="#8b5cf6"
+                value={`${achievementSummary?.avg_achievement_pct ?? 0}%`}
+                sub="rata-rata seluruh member aktif"
+                progress={achievementSummary?.avg_achievement_pct ?? 0}
+              />
+              <KpiCard
+                label="Member Capai Target" icon={Check} color="#16a34a"
+                value={fmtNum(achievementSummary?.member_above_target ?? 0)}
+                sub="≥100% pencapaian bulan ini"
+              />
             </>
           )}
         </div>
@@ -2083,6 +2125,7 @@ function LoyaltyContent() {
                     <p className="text-sm font-medium text-muted-foreground">Tambah peserta untuk melihat rekomendasi promo</p>
                   </div>
                 ) : (
+                  <TooltipProvider>
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader className="sticky top-0 bg-muted/50 backdrop-blur-sm">
@@ -2119,14 +2162,23 @@ function LoyaltyContent() {
                               </TableCell>
                               <TableCell><RewardBadge type={p.promo_aktif} /></TableCell>
                               <TableCell>
-                                <div className="space-y-1 min-w-[120px]">
+                                <div className="space-y-1 max-w-[160px]">
                                   <RewardBadge type={p.tipe_promo} />
                                   {p.override_reason && (
                                     <div className="p-1.5 bg-blue-50 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-800/50 rounded text-[10px]">
                                       <span className="text-blue-700 dark:text-blue-400 font-semibold block mb-0.5">
                                         Disesuaikan dari {p.original_recommendation}
                                       </span>
-                                      <p className="text-muted-foreground leading-snug">{p.override_reason}</p>
+                                      <UiTooltip>
+                                        <TooltipTrigger asChild>
+                                          <p className="text-muted-foreground leading-snug truncate cursor-help">
+                                            {p.override_reason}
+                                          </p>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="max-w-[300px] whitespace-normal text-left">
+                                          {p.override_reason}
+                                        </TooltipContent>
+                                      </UiTooltip>
                                     </div>
                                   )}
                                 </div>
@@ -2155,6 +2207,7 @@ function LoyaltyContent() {
                       </TableBody>
                     </Table>
                   </div>
+                  </TooltipProvider>
                 )}
               </CardContent>
             </Card>

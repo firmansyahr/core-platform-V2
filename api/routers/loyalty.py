@@ -1170,6 +1170,7 @@ def get_targets_summary() -> dict:
             "data": {
                 "total": 0, "avg_achievement_pct": 0.0,
                 "on_track": 0, "at_risk": 0, "below_target": 0,
+                "member_above_target": 0,
                 "lowest_achievers": [], "bulan_target": None,
             },
             "meta": _meta(),
@@ -1186,6 +1187,7 @@ def get_targets_summary() -> dict:
             "data": {
                 "total": 0, "avg_achievement_pct": 0.0,
                 "on_track": 0, "at_risk": 0, "below_target": 0,
+                "member_above_target": 0,
                 "lowest_achievers": [], "bulan_target": None,
             },
             "meta": _meta(),
@@ -1208,6 +1210,7 @@ def get_targets_summary() -> dict:
             "on_track":            int((targets_df["status"] == "On Track").sum()),
             "at_risk":             int((targets_df["status"] == "At Risk").sum()),
             "below_target":        int((targets_df["status"] == "Below Target").sum()),
+            "member_above_target": int((targets_df["achievement_pct"] >= 100).sum()),
             "triggers":            len(triggers_df),
             "lowest_achievers":    lowest_five,
             "bulan_target":        str(targets_df["bulan_target"].iloc[0]),
