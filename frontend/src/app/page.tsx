@@ -507,9 +507,6 @@ export default function HomePage() {
           {/* ── Page title ──────────────────────────────────────────────── */}
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Dashboard Analitik</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              SEMEN ELANG · AEGIS Monitor · ILP Optimizer
-            </p>
           </div>
 
           {/* API error */}
@@ -837,6 +834,11 @@ export default function HomePage() {
               </CardContent>
             </Card>
 
+          </div>
+
+          {/* ── Dampak Kausal + Outcome Program Loyalty (berdampingan) ───── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
             {/* Dampak Kausal Program Loyalty (DoWhy + EconML) */}
             <Card className="shadow-sm">
               <CardHeader className="pb-2">
@@ -854,7 +856,7 @@ export default function HomePage() {
                 ) : causalData && causalData.status === "ok" ? (
                   <>
                     <div className="flex items-baseline gap-2 mb-2">
-                      <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+                      <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">
                         {causalData.ate_pct > 0 ? "+" : ""}{causalData.ate_pct}%
                       </span>
                       <span className="text-xs text-muted-foreground">
@@ -869,7 +871,7 @@ export default function HomePage() {
                       toko sebelum masuk program.
                     </p>
 
-                    <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3 pt-3 border-t text-xs">
                       <div>
                         <span className="text-muted-foreground">Naive DiD (tanpa adjustment)</span>
                         <div className="font-semibold">
@@ -913,66 +915,66 @@ export default function HomePage() {
                 )}
               </CardContent>
             </Card>
-          </div>
 
-          {/* ── Performance Tracker Summary ──────────────────────────────── */}
-          {(perfLoad || perfData) && (
-            <Card className="shadow-sm">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-green-500" />
-                  Outcome Program Loyalty
-                </CardTitle>
-                <Link href="/performance" className="text-xs text-primary hover:underline">
-                  Lihat detail tracker →
-                </Link>
-              </CardHeader>
-              <CardContent>
-                {perfLoad ? (
-                  <div className="flex items-center gap-4">
-                    <Skeleton className="h-[100px] w-[100px] rounded-full shrink-0" />
-                    <div className="space-y-2 flex-1">
-                      {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-4 w-32 rounded" />)}
-                    </div>
-                  </div>
-                ) : perfData && perfData.total_dipantau > 0 ? (() => {
-                  const total = perfData.total_dipantau;
-                  const verdictData = [
-                    { verdict: "Membaik",          count: perfData.membaik,          color: "#22c55e" },
-                    { verdict: "Stabil",            count: perfData.stabil,           color: "#3b82f6" },
-                    { verdict: "Perlu Perhatian",   count: perfData.perlu_perhatian,  color: "#ef4444" },
-                    { verdict: "Dalam Pemantauan",  count: perfData.dalam_pemantauan, color: "#9ca3af" },
-                  ].filter((d) => d.count > 0);
-                  return (
-                    <div className="flex items-center gap-6">
-                      <div className="shrink-0">
-                        <PieChart width={100} height={100}>
-                          <Pie data={verdictData} dataKey="count" innerRadius={30} outerRadius={45} strokeWidth={0}>
-                            {verdictData.map((d, i) => <Cell key={i} fill={d.color} />)}
-                          </Pie>
-                        </PieChart>
-                      </div>
-                      <div className="space-y-1.5">
-                        {verdictData.map((d) => (
-                          <div key={d.verdict} className="flex items-center gap-2 text-xs">
-                            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: d.color }} />
-                            <span className="text-muted-foreground">{d.verdict}:</span>
-                            <span className="font-semibold">{d.count}</span>
-                            <span className="text-muted-foreground">({((d.count / total) * 100).toFixed(0)}%)</span>
-                          </div>
-                        ))}
-                        <p className="text-[10px] text-muted-foreground pt-1">{total} toko dipantau</p>
+            {/* Performance Tracker Summary */}
+            {(perfLoad || perfData) && (
+              <Card className="shadow-sm">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-green-500" />
+                    Outcome Program Loyalty
+                  </CardTitle>
+                  <Link href="/performance" className="text-xs text-primary hover:underline">
+                    Lihat detail tracker →
+                  </Link>
+                </CardHeader>
+                <CardContent>
+                  {perfLoad ? (
+                    <div className="flex items-center gap-4">
+                      <Skeleton className="h-[100px] w-[100px] rounded-full shrink-0" />
+                      <div className="space-y-2 flex-1">
+                        {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-4 w-32 rounded" />)}
                       </div>
                     </div>
-                  );
-                })() : (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    Belum ada data performance. Login untuk melihat tracker.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          )}
+                  ) : perfData && perfData.total_dipantau > 0 ? (() => {
+                    const total = perfData.total_dipantau;
+                    const verdictData = [
+                      { verdict: "Membaik",          count: perfData.membaik,          color: "#22c55e" },
+                      { verdict: "Stabil",            count: perfData.stabil,           color: "#3b82f6" },
+                      { verdict: "Perlu Perhatian",   count: perfData.perlu_perhatian,  color: "#ef4444" },
+                      { verdict: "Dalam Pemantauan",  count: perfData.dalam_pemantauan, color: "#9ca3af" },
+                    ].filter((d) => d.count > 0);
+                    return (
+                      <div className="flex items-center gap-4">
+                        <div className="shrink-0">
+                          <PieChart width={84} height={84}>
+                            <Pie data={verdictData} dataKey="count" innerRadius={24} outerRadius={38} strokeWidth={0}>
+                              {verdictData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                            </Pie>
+                          </PieChart>
+                        </div>
+                        <div className="space-y-1.5 min-w-0">
+                          {verdictData.map((d) => (
+                            <div key={d.verdict} className="flex items-center gap-1.5 text-xs">
+                              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: d.color }} />
+                              <span className="text-muted-foreground truncate">{d.verdict}:</span>
+                              <span className="font-semibold shrink-0">{d.count}</span>
+                              <span className="text-muted-foreground shrink-0">({((d.count / total) * 100).toFixed(0)}%)</span>
+                            </div>
+                          ))}
+                          <p className="text-[10px] text-muted-foreground pt-1">{total} toko dipantau</p>
+                        </div>
+                      </div>
+                    );
+                  })() : (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      Belum ada data performance. Login untuk melihat tracker.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+          </div>
 
           {/* ── Section: Insight Pasar ──────────────────────────────────── */}
           <div>

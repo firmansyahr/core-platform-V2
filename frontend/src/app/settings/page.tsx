@@ -64,6 +64,14 @@ const AEGIS_DEFAULTS: AegisSettings = {
   wOrs: 10,
 };
 
+// Label kategori untuk display saja — KEY tetap nama brand asli (kompatibel
+// dengan brand_point_values yang sudah tersimpan di backend/database).
+const BRAND_CATEGORY_LABELS: { key: string; label: string; hint: string }[] = [
+  { key: "Semen Elang",   label: "Main Brand (MB)",      hint: "Berlaku untuk brand yang dikategorikan sebagai MB di Konfigurasi Brand per Wilayah" },
+  { key: "Semen Badak",   label: "Companion Brand (CB)", hint: "Berlaku untuk brand yang dikategorikan sebagai CB di Konfigurasi Brand per Wilayah" },
+  { key: "Semen Banteng", label: "Fighting Brand (FB)",  hint: "Berlaku untuk brand yang dikategorikan sebagai FB di Konfigurasi Brand per Wilayah" },
+];
+
 const ILP_DEFAULTS: IlpSettings = {
   defaultBudget: 2_000_000_000,
   defaultMaxToko: 100,
@@ -606,18 +614,22 @@ export default function SettingsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b">
                   <tr>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-600">Brand</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-600">Kategori</th>
                     <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-600">Nilai per Poin (Rp)</th>
                     <th className="px-4 py-2.5 text-center text-xs font-medium text-gray-600">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(brandPV).map(([brand, val]) => {
-                    const isDisabled = brand === "Semen Banteng" || !isAdmin;
+                  {BRAND_CATEGORY_LABELS.map(({ key, label, hint }) => {
+                    const val = brandPV[key] ?? 0;
+                    const isDisabled = !isAdmin;
                     return (
-                      <tr key={brand} className="border-t">
-                        <td className="px-4 py-3 font-medium">{brand}</td>
-                        <td className="px-4 py-3 text-right">
+                      <tr key={key} className="border-t">
+                        <td className="px-4 py-3">
+                          <p className="font-medium">{label}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{hint}</p>
+                        </td>
+                        <td className="px-4 py-3 text-right align-top">
                           <input
                             type="number"
                             min={0}
@@ -625,15 +637,11 @@ export default function SettingsPage() {
                             className={`w-32 border rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-purple-400 ${isDisabled ? "opacity-60 cursor-not-allowed bg-gray-100" : ""}`}
                             value={val}
                             disabled={isDisabled}
-                            onChange={e => setBrandPV(prev => ({ ...prev, [brand]: +e.target.value }))}
+                            onChange={e => setBrandPV(prev => ({ ...prev, [key]: +e.target.value }))}
                           />
                         </td>
-                        <td className="px-4 py-3 text-center">
-                          {brand === "Semen Banteng" ? (
-                            <span className="text-xs text-gray-500 italic">Fighting Brand — 0 poin</span>
-                          ) : (
-                            <span className="text-xs text-green-600 font-medium">Aktif</span>
-                          )}
+                        <td className="px-4 py-3 text-center align-top">
+                          <span className="text-xs text-green-600 font-medium">Aktif</span>
                         </td>
                       </tr>
                     );
