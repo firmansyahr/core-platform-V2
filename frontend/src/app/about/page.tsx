@@ -5,7 +5,7 @@ import {
   AlertTriangle, BarChart2, Users, TrendingUp,
   Brain, Cpu, Target, Zap, Layers, GitBranch,
   ShieldCheck, Activity, Swords, Bot, Sparkles,
-  CheckCircle2, XCircle, Scale,
+  CheckCircle2, XCircle, Scale, GitMerge,
   ExternalLink, Map, FileText, Award,
 } from "lucide-react";
 
@@ -73,6 +73,7 @@ const MODULES = [
       "Target & Achievement",
       "Re-enroll & Takeout",
       "Takeout Recommendations",
+      "Brand Config per Wilayah",
     ],
   },
   {
@@ -84,7 +85,7 @@ const MODULES = [
     icon:    TrendingUp,
     label:   "Outcome Monitor",
     name:    "Store Performance Tracker",
-    desc:    "Memantau outcome toko setelah intervensi program loyalty — menghubungkan AEGIS detection → ILP recommendation → Loyalty enrollment → hasil nyata di lapangan.",
+    desc:    "Memantau outcome toko setelah intervensi program loyalty — menutup loop AEGIS Detection + GMM Cannibalization + Competitor Intelligence → ILP Optimization → Loyalty Enrollment → hasil nyata di lapangan.",
     metric:  "End-to-end loop closure",
     features: [
       "Journey timeline 3-tahap",
@@ -196,6 +197,14 @@ const AI_CAPS = [
     color: "text-teal-600 dark:text-teal-400",
     bg: "bg-teal-50 dark:bg-teal-950/20",
   },
+  {
+    icon: GitMerge,
+    title: "Multi-Signal Priority Adjustment",
+    desc: "Menyesuaikan skor ILP dari sinyal GMM dan triangulasi kompetitor, dengan deteksi sinyal bertentangan",
+    detail: "GMM Cannibalization × Competitor Intelligence (ASPERSSI) · Verdict Kompetitor per provinsi · Sinyal Bertentangan → reset skor dasar + Validasi Lapangan TSO",
+    color: "text-fuchsia-600 dark:text-fuchsia-400",
+    bg: "bg-fuchsia-50 dark:bg-fuchsia-950/20",
+  },
 ];
 
 const GEN_AI_CAPS = [
@@ -277,6 +286,8 @@ const ACCESS_MATRIX = [
   { feature: "Conversational Analytics", admin: true,  viewer: true  },
   { feature: "Settings (view)",          admin: true,  viewer: true  },
   { feature: "Settings (edit)",          admin: true,  viewer: false },
+  { feature: "Brand Config (view)",      admin: true,  viewer: true  },
+  { feature: "Brand Config (tambah/edit/hapus)", admin: true,  viewer: false },
   { feature: "Reload Data",             admin: true,  viewer: true  },
 ];
 
@@ -328,6 +339,42 @@ const PROMO_TYPES = [
     borderCls: "border-orange-200/60 dark:border-orange-800/40",
     desc:  "Toko-toko bersaing membentuk papan peringkat berdasarkan volume total atau growth persentase, dengan scope per cluster atau global. Reward berbeda per posisi — poin maupun Rupiah tetap.",
     example: "Ranking Posisi 1 → Rp 5 jt · Posisi 2 → Rp 3 jt · Posisi 3 → Rp 1 jt",
+  },
+];
+
+const BRAND_CATEGORIES = [
+  {
+    id:    "mb",
+    label: "Kategori 1",
+    name:  "Main Brand (MB)",
+    tag:   "Reward 100%",
+    color: "#2563eb",
+    bgCls: "bg-blue-50 dark:bg-blue-950/20",
+    borderCls: "border-blue-200/60 dark:border-blue-800/40",
+    desc:  "Brand utama wilayah tersebut — tepat satu brand per konfigurasi. Volume brand ini dihitung penuh terhadap target dan reward loyalty.",
+    example: "Default: SEMEN ELANG",
+  },
+  {
+    id:    "cb",
+    label: "Kategori 2",
+    name:  "Companion Brand (CB)",
+    tag:   "Reward 50%",
+    color: "#16a34a",
+    bgCls: "bg-green-50 dark:bg-green-950/20",
+    borderCls: "border-green-200/60 dark:border-green-800/40",
+    desc:  "Brand pendukung — boleh lebih dari satu per wilayah, mendukung strategi multi-brand sesuai kondisi pasar setempat.",
+    example: "Default: SEMEN BADAK",
+  },
+  {
+    id:    "fb",
+    label: "Kategori 3",
+    name:  "Fighting Brand (FB)",
+    tag:   "Reward 50% · Opsional",
+    color: "#ea580c",
+    bgCls: "bg-orange-50 dark:bg-orange-950/20",
+    borderCls: "border-orange-200/60 dark:border-orange-800/40",
+    desc:  "Brand fighting/value untuk melawan kompetitor di kelas harga rendah. Dapat dikosongkan per wilayah jika tidak ingin diikutkan dalam kalkulasi.",
+    example: "Default: SEMEN BANTENG",
   },
 ];
 
@@ -500,6 +547,52 @@ export default function AboutPage() {
                 Ketiga tipe program menggunakan satuan <strong>Poin</strong> yang dikonversi ke Rupiah berdasarkan nilai per brand
                 yang dikonfigurasi terpusat di Settings — memungkinkan strategi insentif berbeda per brand tanpa mengubah
                 struktur program satu per satu.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* ══ 2.6. KONFIGURASI BRAND PER WILAYAH ══════════════════════════════ */}
+        <section className="py-16 px-6 border-t border-border">
+          <div className="max-w-6xl mx-auto">
+            <SectionLabel>Konfigurasi Brand per Wilayah (MB/CB/FB)</SectionLabel>
+            <p className="text-sm text-muted-foreground text-center mb-8 max-w-2xl mx-auto">
+              Sistem konfigurasi brand loyalty yang fleksibel per provinsi dan kabupaten, dengan
+              hierarki resolusi otomatis: setting kabupaten menggantikan provinsi, provinsi
+              menggantikan default global. Memungkinkan strategi brand yang berbeda per wilayah
+              sesuai kondisi pasar setempat.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {BRAND_CATEGORIES.map((c) => (
+                <div key={c.id} className={`rounded-xl border bg-card p-6 flex flex-col gap-4 ${c.borderCls}`}>
+                  <div>
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{c.label}</span>
+                    <h3 className="font-semibold leading-tight">{c.name}</h3>
+                  </div>
+                  <span
+                    className={`self-start px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${c.bgCls}`}
+                    style={{ color: c.color }}
+                  >
+                    {c.tag}
+                  </span>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{c.desc}</p>
+                  <div
+                    className={`rounded-lg px-3 py-2 text-xs font-medium ${c.bgCls}`}
+                    style={{ color: c.color }}
+                  >
+                    {c.example}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 rounded-xl border border-border bg-muted/30 p-5">
+              <p className="text-xs font-semibold text-foreground mb-1.5">Hierarki Resolusi &amp; Kalkulasi Volume</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Resolusi config mengikuti urutan <strong>Kabupaten → Provinsi → Default Global</strong>.
+                Volume dan target toko loyalty dihitung dari semua brand yang masuk kategori MB+CB+FB
+                sesuai konfigurasi wilayah yang berlaku — bukan statis dari satu brand saja. Perhitungan
+                ini menggunakan fork kalkulasi terpisah dari ILP Optimizer untuk menjaga independensi
+                kedua sistem.
               </p>
             </div>
           </div>
@@ -755,7 +848,7 @@ export default function AboutPage() {
             <SectionLabel>Tech Stack</SectionLabel>
             <div className="flex flex-col gap-4">
               {[
-                { category: "Backend",         items: ["Python 3.12", "FastAPI", "Uvicorn", "pandas", "PyArrow", "slowapi"] },
+                { category: "Backend",         items: ["Python 3.12", "FastAPI", "Uvicorn", "pandas", "PyArrow", "slowapi", "SQLAlchemy", "SQLite"] },
                 { category: "ML & Optimasi",   items: ["scikit-learn", "XGBoost", "Isolation Forest", "PuLP CBC", "Prophet", "SHAP", "SMOTE"] },
                 { category: "Frontend",        items: ["Next.js 14", "TypeScript", "Tailwind CSS", "shadcn/ui", "Recharts", "lucide-react", "HugeIcons"] },
                 { category: "Data",            items: ["Parquet", "2,15 jt baris", "36 kolom", "21.014 toko unik"] },
@@ -773,6 +866,17 @@ export default function AboutPage() {
                   </div>
                 </div>
               ))}
+            </div>
+
+            <div className="mt-6 rounded-xl border border-border bg-muted/30 p-5">
+              <p className="text-xs font-semibold text-foreground mb-1.5">Persistent Storage</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Data platform (loyalty members, program promo, CAD history, dan data ASPERSSI) disimpan
+                di SQLite database pada Railway persistent volume, memastikan data tidak hilang saat
+                redeploy. Setiap modul menggunakan feature flag{" "}
+                <code className="px-1 py-0.5 rounded bg-muted font-mono text-[10px]">USE_SQLITE_STORAGE</code>{" "}
+                untuk rollback aman jika diperlukan.
+              </p>
             </div>
           </div>
         </section>
