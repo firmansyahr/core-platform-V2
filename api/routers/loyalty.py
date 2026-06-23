@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from api.core.aegis_engine import get_store_crs
 from api.core.data_loader import load_data
 from api.core.ilp_engine import get_ilp_features
+from api.core.loyalty_brand_engine import compute_loyalty_features
 from api.core.loyalty_engine import (
     DEFAULT_CONFIG,
     REWARD_RATES,
@@ -366,6 +367,26 @@ def _meta(**kw: Any) -> dict:
     return {"generated_at": _now(), **kw}
 
 
+def _get_loyalty_ilp_idx(store_ids: set[str]) -> pd.DataFrame:
+    """avg_ton/avg_ton_elang/avg_ton_badak/estimated_cost untuk store_ids
+    yang diminta — BrandConfig-aware (kabupaten/provinsi/default) kalau
+    USE_SQLITE, fallback ke get_ilp_features() (hardcoded Elang/Badak-
+    Serbaguna, optimizer ILP TIDAK disentuh) kalau tidak."""
+    if USE_SQLITE:
+        db = SessionLocal()
+        try:
+            ilp = compute_loyalty_features(load_data(), store_ids, db)
+        finally:
+            db.close()
+    else:
+        ilp = get_ilp_features()
+    return (
+        ilp.set_index("ID Toko")
+        if not ilp.empty and "ID Toko" in ilp.columns
+        else pd.DataFrame()
+    )
+
+
 def _enrich_member(m: dict, crs_idx: pd.DataFrame, ilp_idx: pd.DataFrame) -> dict:
     """Add aegis_score, aegis_level, avg_ton_bulanan, est_budget to member dict."""
     out = dict(m)
@@ -505,18 +526,14 @@ def get_members(
     if reward_type:
         members = [m for m in members if m.get("reward_type") == reward_type]
 
-    crs     = get_store_crs()
-    crs_idx = crs.set_index("ID Toko") if "ID Toko" in crs.columns else pd.DataFrame()
-    ilp     = get_ilp_features()
-    ilp_idx = (
-        ilp.set_index("ID Toko")
-        if not ilp.empty and "ID Toko" in ilp.columns
-        else pd.DataFrame()
-    )
-
     total = len(members)
     page  = members[offset: offset + limit]
-    data  = [_enrich_member(m, crs_idx, ilp_idx) for m in page]
+
+    crs     = get_store_crs()
+    crs_idx = crs.set_index("ID Toko") if "ID Toko" in crs.columns else pd.DataFrame()
+    ilp_idx = _get_loyalty_ilp_idx({str(m["id_toko"]) for m in page})
+
+    data = [_enrich_member(m, crs_idx, ilp_idx) for m in page]
 
     return {"status": "ok", "data": data, "meta": _meta(total=total, limit=limit, offset=offset)}
 
@@ -532,12 +549,7 @@ def get_summary() -> dict:
 
     crs     = get_store_crs()
     crs_idx = crs.set_index("ID Toko") if "ID Toko" in crs.columns else pd.DataFrame()
-    ilp     = get_ilp_features()
-    ilp_idx = (
-        ilp.set_index("ID Toko")
-        if not ilp.empty and "ID Toko" in ilp.columns
-        else pd.DataFrame()
-    )
+    ilp_idx = _get_loyalty_ilp_idx({str(m["id_toko"]) for m in aktif})
 
     est_budget_total = 0.0
     per_reward_type: dict[str, int] = {}
@@ -825,10 +837,25 @@ def get_ilp_recs(limit: int = Query(50, ge=1, le=200)) -> dict:
     if recs.empty:
         return {"status": "ok", "data": [], "meta": _meta(total=0)}
 
+    # Ranking/score TIDAK disentuh (tetap dari ilp_engine, optimizer ILP
+    # tidak terdampak) — hanya field volume/biaya yang ditampilkan dihitung
+    # ulang dengan BrandConfig wilayah masing-masing kandidat.
+    candidate_ids = {str(x) for x in recs["ID Toko"]}
+    loyalty_idx = _get_loyalty_ilp_idx(candidate_ids)
+
     data: list[dict] = []
     for _, row in recs.iterrows():
+        id_toko = str(row.get("ID Toko", ""))
+        if not loyalty_idx.empty and id_toko in loyalty_idx.index:
+            avg_ton        = float(loyalty_idx.at[id_toko, "avg_ton"] or 0)
+            avg_ton_elang  = float(loyalty_idx.at[id_toko, "avg_ton_elang"] or 0)
+            avg_ton_badak  = float(loyalty_idx.at[id_toko, "avg_ton_badak"] or 0)
+            estimated_cost = float(loyalty_idx.at[id_toko, "estimated_cost"] or 0)
+        else:
+            avg_ton = avg_ton_elang = avg_ton_badak = estimated_cost = 0.0
+
         data.append({
-            "id_toko":        str(row.get("ID Toko", "")),
+            "id_toko":        id_toko,
             "nama_toko":      str(row.get("Nama Toko", "")),
             "kabupaten":      str(row.get("Kabupaten Toko", "")),
             "cluster_pareto": str(row.get("Cluster Pareto", "")),
@@ -836,10 +863,10 @@ def get_ilp_recs(limit: int = Query(50, ge=1, le=200)) -> dict:
             "ilp_score":        round(float(row.get("score", 0)), 2),
             "aegis_score":      round(float(row.get("aegis_score", 0)), 2),
             "aegis_level":      str(row.get("alert", "Normal")),
-            "avg_ton_bulanan":        round(float(row.get("avg_ton", 0)), 2),
-            "avg_ton_elang_bulanan":  round(float(row.get("avg_ton_elang", 0)), 2),
-            "avg_ton_badak_bulanan":  round(float(row.get("avg_ton_badak", 0)), 2),
-            "est_cost_bln":           round(float(row.get("estimated_cost", 0)) / 12),
+            "avg_ton_bulanan":        round(avg_ton, 2),
+            "avg_ton_elang_bulanan":  round(avg_ton_elang, 2),
+            "avg_ton_badak_bulanan":  round(avg_ton_badak, 2),
+            "est_cost_bln":           round(estimated_cost / 12),
         })
 
     return {"status": "ok", "data": data, "meta": _meta(total=len(data))}
@@ -903,12 +930,7 @@ def search_stores(q: str = Query("", min_length=1)) -> dict:
     )
     matched = crs[mask].head(10)
 
-    ilp     = get_ilp_features()
-    ilp_idx = (
-        ilp.set_index("ID Toko")
-        if not ilp.empty and "ID Toko" in ilp.columns
-        else pd.DataFrame()
-    )
+    ilp_idx = _get_loyalty_ilp_idx({str(x) for x in matched["ID Toko"]})
 
     data: list[dict] = []
     for _, row in matched.iterrows():

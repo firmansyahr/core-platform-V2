@@ -8,6 +8,7 @@ Lihat catatan "PERBEDAAN DARI ASUMSI AWAL" di setiap model yang relevan.
 """
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
 from sqlalchemy import (
@@ -106,6 +107,33 @@ class LoyaltyConfig(Base):
     growth_rates        = Column(JSON, nullable=False, default=dict)   # {default:{...}, overrides:[...]}
     brand_point_values  = Column(JSON, nullable=False, default=dict)   # {"Semen Elang": 5000, ...}
     updated_at          = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class BrandConfig(Base):
+    """
+    Setting brand MB/CB/FB per wilayah (provinsi/kabupaten), dengan hierarki
+    resolusi kabupaten → provinsi → default global (lihat brand_config_engine.py).
+    provinsi=None & kabupaten=None merepresentasikan baris "default global"
+    tersimpan di DB (berbeda dari DEFAULT_CONFIG hardcoded di engine, yang
+    cuma fallback kalau TIDAK ADA baris apa pun yang cocok sama sekali).
+    kabupaten tidak boleh terisi tanpa provinsi (selalu match sepasang).
+    """
+    __tablename__ = "brand_config"
+
+    id         = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    provinsi   = Column(String, nullable=True, index=True)
+    kabupaten  = Column(String, nullable=True, index=True)
+
+    mb_brands  = Column(JSON, nullable=False, default=lambda: ["SEMEN ELANG"])
+    cb_brands  = Column(JSON, nullable=False, default=lambda: ["SEMEN BADAK"])
+    fb_brands  = Column(JSON, nullable=False, default=lambda: ["SEMEN BANTENG"])
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("provinsi", "kabupaten", name="uq_brand_config_wilayah"),
+    )
 
 
 # ── Promo ────────────────────────────────────────────────────────────────────
