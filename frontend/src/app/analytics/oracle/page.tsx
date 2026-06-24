@@ -9,6 +9,7 @@ import {
   useOracleContextValue, type OracleMessage, type RenderCommand,
 } from "@/components/oracle/OracleContextProvider";
 import { streamOracleChat } from "@/lib/oracleStream";
+import { OracleMarkdown } from "@/components/oracle/OracleMarkdown";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
@@ -329,7 +330,11 @@ export default function OracleWorkspacePage() {
                       <div className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
                         msg.role === "user" ? "bg-primary text-primary-foreground rounded-br-sm" : "bg-muted text-foreground rounded-bl-sm"
                       }`}>
-                        <p className="whitespace-pre-wrap">{msg.content}</p>
+                        {msg.role === "assistant" ? (
+                          <OracleMarkdown content={msg.content} />
+                        ) : (
+                          <p className="whitespace-pre-wrap">{msg.content}</p>
+                        )}
                       </div>
                     </div>
                     {msg.role === "assistant" && msg.confidence_signals && msg.confidence_signals.length > 0 && (
@@ -361,7 +366,7 @@ export default function OracleWorkspacePage() {
                       </div>
                     )}
                     {draftText ? (
-                      <p className="whitespace-pre-wrap">{draftText}</p>
+                      <OracleMarkdown content={draftText} />
                     ) : activeTools.length === 0 ? (
                       <div className="flex items-center gap-2">
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />

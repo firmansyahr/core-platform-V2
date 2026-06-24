@@ -7,6 +7,7 @@ import { getUser } from "@/lib/auth";
 import { API } from "@/lib/fetch";
 import { useOracleContextValue, type OracleMessage } from "@/components/oracle/OracleContextProvider";
 import { streamOracleChat } from "@/lib/oracleStream";
+import { OracleMarkdown } from "@/components/oracle/OracleMarkdown";
 
 const DEFAULT_SUGGESTIONS = [
   "Berapa toko warning Merah saat ini?",
@@ -199,7 +200,11 @@ export default function OracleWidget() {
                         <Search className="h-3 w-3" /> RCA Mode
                       </span>
                     )}
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    {msg.role === "assistant" ? (
+                      <OracleMarkdown content={msg.content} />
+                    ) : (
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                    )}
                     {msg.role === "assistant" && (msg.render_commands?.length ?? 0) > 0 && (
                       <button
                         onClick={openWorkspace}
@@ -223,7 +228,7 @@ export default function OracleWidget() {
                     </div>
                   )}
                   {draftText ? (
-                    <p className="whitespace-pre-wrap">{draftText}</p>
+                    <OracleMarkdown content={draftText} />
                   ) : activeTools.length === 0 ? (
                     <div className="flex gap-1 items-center py-1">
                       <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:0ms]" />
