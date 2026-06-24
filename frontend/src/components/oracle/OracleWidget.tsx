@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, X, Send, Maximize2, Search } from "lucide-react";
+import { Sparkles, X, Send, Maximize2, Search, Loader2 } from "lucide-react";
 import { getUser } from "@/lib/auth";
-import { apiFetch, API } from "@/lib/fetch";
+import { API } from "@/lib/fetch";
 import { useOracleContextValue, type OracleMessage } from "@/components/oracle/OracleContextProvider";
+import { streamOracleChat } from "@/lib/oracleStream";
 
 const DEFAULT_SUGGESTIONS = [
   "Berapa toko warning Merah saat ini?",
@@ -28,7 +29,9 @@ export default function OracleWidget() {
   const [mounted, setMounted] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [draftText, setDraftText] = useState("");
+  const [activeTools, setActiveTools] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -43,7 +46,7 @@ export default function OracleWidget() {
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [history, isLoading]);
+  }, [history, isStreaming, draftText]);
 
   // Cmd+K / Ctrl+K — toggle ORACLE dari halaman mana pun.
   useEffect(() => {
@@ -63,40 +66,60 @@ export default function OracleWidget() {
 
   async function sendMessage(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || isLoading) return;
+    if (!trimmed || isStreaming) return;
 
     appendMessage({ role: "user", content: trimmed, timestamp: Date.now() });
     setInput("");
-    setIsLoading(true);
+    setIsStreaming(true);
+    setDraftText("");
+    setActiveTools([]);
+
+    const draft: Omit<OracleMessage, "timestamp"> = {
+      role: "assistant", content: "", render_commands: [], suggested_followups: [],
+      rca_mode: false, rca_steps: null, confidence_signals: null,
+    };
 
     try {
-      const res = await apiFetch(`${API}/api/oracle/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await streamOracleChat(
+        API,
+        {
           message: trimmed,
           conversation_history: history.map((m) => ({ role: m.role, content: m.content })),
           page_context: pageContext,
           session_id: getSessionId(),
-        }),
-      });
-      const json = await res.json();
-      const d = json.data ?? json;
-
-      appendMessage({
-        role: "assistant",
-        content: d.reply ?? "Maaf, tidak ada jawaban tersedia.",
-        render_commands: d.render_commands ?? [],
-        suggested_followups: d.suggested_followups ?? [],
-        rca_mode: d.rca_mode ?? false,
-        rca_steps: d.rca_steps ?? null,
-        confidence_signals: d.confidence_signals ?? null,
-        timestamp: Date.now(),
-      });
+        },
+        (event) => {
+          if (event.type === "text_delta") {
+            draft.content += String(event.text ?? "");
+            setDraftText(draft.content);
+          } else if (event.type === "tool_start") {
+            setActiveTools((prev) => [...prev, String(event.tool)]);
+          } else if (event.type === "tool_done") {
+            setActiveTools((prev) => prev.filter((t) => t !== event.tool));
+          } else if (event.type === "render_command") {
+            draft.render_commands = [...(draft.render_commands ?? []), event.command as never];
+          } else if (event.type === "confidence") {
+            draft.confidence_signals = event.findings as never;
+          } else if (event.type === "blocked") {
+            draft.content = String(event.text ?? draft.content);
+            setDraftText(draft.content);
+          } else if (event.type === "done") {
+            draft.content = String(event.reply ?? draft.content);
+            draft.render_commands = (event.render_commands as never) ?? draft.render_commands;
+            draft.suggested_followups = (event.suggested_followups as never) ?? [];
+            draft.rca_mode = Boolean(event.rca_mode);
+            draft.rca_steps = (event.rca_steps as never) ?? null;
+            draft.confidence_signals = (event.confidence_signals as never) ?? draft.confidence_signals;
+          }
+        },
+      );
     } catch {
-      appendMessage({ role: "assistant", content: "Maaf, terjadi kesalahan menghubungi ORACLE. Coba lagi.", timestamp: Date.now() });
+      draft.content = draft.content || "Maaf, terjadi kesalahan menghubungi ORACLE. Coba lagi.";
     } finally {
-      setIsLoading(false);
+      appendMessage({ ...draft, timestamp: Date.now() });
+      setDraftText("");
+      setActiveTools([]);
+      setIsStreaming(false);
     }
   }
 
@@ -146,7 +169,7 @@ export default function OracleWidget() {
 
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3 min-h-0">
-            {history.length === 0 ? (
+            {history.length === 0 && !isStreaming ? (
               <div className="text-center py-6">
                 <Sparkles className="h-8 w-8 text-primary mx-auto mb-3 opacity-70" />
                 <p className="text-sm font-medium">Tanya apa saja ke ORACLE</p>
@@ -190,19 +213,31 @@ export default function OracleWidget() {
               ))
             )}
 
-            {isLoading && (
+            {isStreaming && (
               <div className="flex justify-start">
-                <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1 items-center">
-                  <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:0ms]" />
-                  <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:150ms]" />
-                  <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:300ms]" />
+                <div className="max-w-[85%] rounded-2xl rounded-bl-sm px-3 py-2 text-sm leading-relaxed bg-muted text-foreground">
+                  {activeTools.length > 0 && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1.5">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <span>Mengambil data: {activeTools.join(", ")}…</span>
+                    </div>
+                  )}
+                  {draftText ? (
+                    <p className="whitespace-pre-wrap">{draftText}</p>
+                  ) : activeTools.length === 0 ? (
+                    <div className="flex gap-1 items-center py-1">
+                      <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:0ms]" />
+                      <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:150ms]" />
+                      <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:300ms]" />
+                    </div>
+                  ) : null}
                 </div>
               </div>
             )}
           </div>
 
           {/* Suggested follow-ups */}
-          {!isLoading && lastAssistant && (lastAssistant.suggested_followups?.length ?? 0) > 0 && (
+          {!isStreaming && lastAssistant && (lastAssistant.suggested_followups?.length ?? 0) > 0 && (
             <div className="px-4 pb-2 flex flex-wrap gap-1 shrink-0">
               {lastAssistant.suggested_followups!.map((q) => (
                 <button
@@ -225,14 +260,14 @@ export default function OracleWidget() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
                 placeholder="Tanya ORACLE…"
-                disabled={isLoading}
+                disabled={isStreaming}
                 rows={1}
                 className="flex-1 text-sm px-3 py-2 border border-border rounded-lg bg-background resize-none
                   placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
               />
               <button
                 onClick={() => sendMessage(input)}
-                disabled={!input.trim() || isLoading}
+                disabled={!input.trim() || isStreaming}
                 className="px-3 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-40 transition-colors shrink-0"
                 aria-label="Kirim"
               >

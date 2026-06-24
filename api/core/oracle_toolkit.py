@@ -10,11 +10,13 @@ per toko tidak pernah dipersist), method mengembalikan status eksplisit
 """
 from __future__ import annotations
 
-from typing import Any
+import functools
+from typing import Any, Callable
 
 import pandas as pd
 
 from api.core.aegis_engine import get_store_crs
+from api.core.oracle_guard import TTLCache
 from api.core.cad_storage import get_records as cad_get_records
 from api.core.cad_storage import get_toko_cad_history
 from api.core.cannibalization_engine import get_store_cannibalization_status, load_cached_result
@@ -32,6 +34,24 @@ from api.database import SessionLocal
 from api.models import LoyaltyHistory, LoyaltyMember
 
 
+def _cached(ttl_seconds: float) -> Callable:
+    """Cache hasil method (keyed dari nama method + args) di self._cache (TTLCache).
+    Hanya untuk tool read-only — data yang berubah dari aksi admin (mis. tambah
+    peserta promo) TIDAK dipakaikan decorator ini, supaya tidak basi."""
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(self: "OracleToolkit", *args: Any, **kwargs: Any) -> Any:
+            key = f"{func.__name__}:{args}:{sorted(kwargs.items())}"
+            cached = self._cache.get(key)
+            if cached is not None:
+                return cached
+            result = func(self, *args, **kwargs)
+            self._cache.set(key, result, ttl_seconds)
+            return result
+        return wrapper
+    return decorator
+
+
 def _promo_tipe(promo: dict) -> str:
     return promo.get("tipe_program") or ("multi_tier" if promo.get("reward_config") else "legacy")
 
@@ -39,8 +59,12 @@ def _promo_tipe(promo: dict) -> str:
 class OracleToolkit:
     """Tool implementations — satu method = satu tool yang bisa dipanggil Claude."""
 
+    def __init__(self) -> None:
+        self._cache = TTLCache()
+
     # ── Promo ────────────────────────────────────────────────────────────────
 
+    @_cached(300)  # 5 menit — peserta/config promo bisa berubah dari aksi admin
     def get_promo_detail(self, promo_id: str) -> dict:
         """Detail lengkap program promo termasuk peserta dan config."""
         from api.routers.promo import _get_promo_by_id  # lazy — hindari circular import saat startup
@@ -50,6 +74,7 @@ class OracleToolkit:
             return {"status": "not_found", "promo_id": promo_id}
         return {"status": "ok", "promo": promo, "tipe_program": _promo_tipe(promo)}
 
+    @_cached(300)  # 5 menit — sama alasan dengan get_promo_detail
     def get_program_roi_analysis(self, promo_id: str) -> dict:
         """ROI lengkap: baseline, incremental volume, cost per ton — semua tipe program."""
         from api.routers.promo import _get_promo_by_id
@@ -87,6 +112,7 @@ class OracleToolkit:
 
     # ── Volume & baseline ────────────────────────────────────────────────────
 
+    @_cached(1800)  # 30 menit — histori bulanan, cukup stabil dalam jangka pendek
     def get_toko_volume_history(self, toko_id: str, bulan_mulai: str, bulan_selesai: str) -> dict:
         """Volume bulanan toko dari data transaksi nyata, periode [bulan_mulai, bulan_selesai] (YYYY-MM)."""
         df = get_data()
@@ -107,6 +133,7 @@ class OracleToolkit:
             "monthly_volume": [{"bulan": k, "volume_ton": float(v)} for k, v in monthly.items()],
         }
 
+    @_cached(3600)  # 1 jam — data historis tidak berubah
     def get_baseline_comparison(self, toko_ids: list[str], periode_mulai: str, lookback_months: int = 3) -> dict:
         """Baseline vs realisasi volume per toko — pakai get_baseline_volume() yang sama dengan Analisis promo."""
         df = get_data()
@@ -133,6 +160,7 @@ class OracleToolkit:
 
     # ── Competitor ───────────────────────────────────────────────────────────
 
+    @_cached(3600)  # 1 jam — data ASPERSSI update bulanan, tidak perlu real-time
     def get_competitor_activity(self, area_ids: list[str], periode: str | None = None) -> dict:
         """Triangulasi AEGIS + ASPERSSI untuk provinsi tertentu (area_ids = nama provinsi)."""
         crs = get_store_crs()
@@ -142,6 +170,7 @@ class OracleToolkit:
         filtered = [t for t in triangulation if t.get("provinsi") in area_ids] if area_ids else triangulation
         return {"status": "ok", "periode": periode, "triangulation": filtered}
 
+    @_cached(3600)  # 1 jam — sama alasan dengan get_competitor_activity
     def get_market_share_trend(self, area_id: str, periode: str | None = None) -> dict:
         """Ranking brand kompetitor dari data ASPERSSI untuk satu provinsi."""
         ms_brand = load_marketshare_brand()
@@ -170,6 +199,7 @@ class OracleToolkit:
 
     # ── GMM / Cannibalization ────────────────────────────────────────────────
 
+    @_cached(3600)  # 1 jam — model GMM statis sampai re-training
     def get_cluster_migration(self, toko_id: str, periode: str | None = None) -> dict:
         """Status kanibalisasi/brand-shift toko dari model GMM ter-train terakhir."""
         training_result = load_cached_result()
@@ -193,6 +223,7 @@ class OracleToolkit:
             ),
         }
 
+    @_cached(900)  # 15 menit — AEGIS score update berkala, tidak perlu real-time
     def get_area_heatmap_data(self, metric: str, periode: str | None = None) -> dict:
         """Agregasi per kabupaten: 'risk' (AEGIS) atau 'volume'."""
         if metric == "risk":

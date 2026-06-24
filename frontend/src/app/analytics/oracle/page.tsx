@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { Sparkles, Send, Settings, RotateCcw, Search, CheckCircle2, Circle, Loader2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { getUser } from "@/lib/auth";
-import { apiFetch, API } from "@/lib/fetch";
+import { API } from "@/lib/fetch";
 import {
   useOracleContextValue, type OracleMessage, type RenderCommand,
 } from "@/components/oracle/OracleContextProvider";
+import { streamOracleChat } from "@/lib/oracleStream";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
@@ -162,7 +163,10 @@ export default function OracleWorkspacePage() {
   const [mounted, setMounted] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [draftText, setDraftText] = useState("");
+  const [activeTools, setActiveTools] = useState<string[]>([]);
+  const [draftRenderCommands, setDraftRenderCommands] = useState<RenderCommand[]>([]);
   const [dataTab, setDataTab] = useState<"charts" | "tables" | "summary">("summary");
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -175,7 +179,7 @@ export default function OracleWorkspacePage() {
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [history, isLoading]);
+  }, [history, isStreaming, draftText]);
 
   if (!mounted) {
     return (
@@ -198,51 +202,75 @@ export default function OracleWorkspacePage() {
 
   async function sendMessage(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || isLoading) return;
+    if (!trimmed || isStreaming) return;
 
     appendMessage({ role: "user", content: trimmed, timestamp: Date.now() });
     setInput("");
-    setIsLoading(true);
+    setIsStreaming(true);
+    setDraftText("");
+    setActiveTools([]);
+    setDraftRenderCommands([]);
+
+    const draft: Omit<OracleMessage, "timestamp"> = {
+      role: "assistant", content: "", render_commands: [], suggested_followups: [],
+      rca_mode: false, rca_steps: null, confidence_signals: null,
+    };
 
     try {
-      const res = await apiFetch(`${API}/api/oracle/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await streamOracleChat(
+        API,
+        {
           message: trimmed,
           conversation_history: history.map((m) => ({ role: m.role, content: m.content })),
           page_context: pageContext,
           session_id: getSessionId(),
-        }),
-      });
-      const json = await res.json();
-      const d = json.data ?? json;
-      const newMsg: OracleMessage = {
-        role: "assistant",
-        content: d.reply ?? "Maaf, tidak ada jawaban tersedia.",
-        render_commands: d.render_commands ?? [],
-        suggested_followups: d.suggested_followups ?? [],
-        rca_mode: d.rca_mode ?? false,
-        rca_steps: d.rca_steps ?? null,
-        confidence_signals: d.confidence_signals ?? null,
-        timestamp: Date.now(),
-      };
-      appendMessage(newMsg);
-      const cmds = newMsg.render_commands ?? [];
-      if (cmds.some((c) => c.type === "bar_chart" || c.type === "line_chart")) setDataTab("charts");
-      else if (cmds.some((c) => c.type === "table")) setDataTab("tables");
-      else if (cmds.length > 0) setDataTab("summary");
+        },
+        (event) => {
+          if (event.type === "text_delta") {
+            draft.content += String(event.text ?? "");
+            setDraftText(draft.content);
+          } else if (event.type === "tool_start") {
+            setActiveTools((prev) => [...prev, String(event.tool)]);
+          } else if (event.type === "tool_done") {
+            setActiveTools((prev) => prev.filter((t) => t !== event.tool));
+          } else if (event.type === "render_command") {
+            const cmd = event.command as RenderCommand;
+            draft.render_commands = [...(draft.render_commands ?? []), cmd];
+            setDraftRenderCommands((prev) => [...prev, cmd]);
+            if (cmd.type === "bar_chart" || cmd.type === "line_chart") setDataTab("charts");
+            else if (cmd.type === "table") setDataTab("tables");
+            else setDataTab("summary");
+          } else if (event.type === "confidence") {
+            draft.confidence_signals = event.findings as never;
+          } else if (event.type === "blocked") {
+            draft.content = String(event.text ?? draft.content);
+            setDraftText(draft.content);
+          } else if (event.type === "done") {
+            draft.content = String(event.reply ?? draft.content);
+            draft.render_commands = (event.render_commands as never) ?? draft.render_commands;
+            draft.suggested_followups = (event.suggested_followups as never) ?? [];
+            draft.rca_mode = Boolean(event.rca_mode);
+            draft.rca_steps = (event.rca_steps as never) ?? null;
+            draft.confidence_signals = (event.confidence_signals as never) ?? draft.confidence_signals;
+          }
+        },
+      );
     } catch {
-      appendMessage({ role: "assistant", content: "Maaf, terjadi kesalahan menghubungi ORACLE. Coba lagi.", timestamp: Date.now() });
+      draft.content = draft.content || "Maaf, terjadi kesalahan menghubungi ORACLE. Coba lagi.";
     } finally {
-      setIsLoading(false);
+      appendMessage({ ...draft, timestamp: Date.now() });
+      setDraftText("");
+      setActiveTools([]);
+      setDraftRenderCommands([]);
+      setIsStreaming(false);
     }
   }
 
   const lastAssistant = [...history].reverse().find((m) => m.role === "assistant");
 
-  // Akumulasi semua render_commands dari seluruh percakapan, dikelompokkan per kategori tab.
-  const allCommands = history.flatMap((m) => m.render_commands ?? []);
+  // Akumulasi semua render_commands dari seluruh percakapan + draft yang sedang
+  // streaming (supaya chart/tabel muncul live di data panel, bukan menunggu "done").
+  const allCommands = [...history.flatMap((m) => m.render_commands ?? []), ...draftRenderCommands];
   const chartsCmds = allCommands.filter((c) => c.type === "bar_chart" || c.type === "line_chart");
   const tablesCmds = allCommands.filter((c) => c.type === "table");
   const summaryCmds = allCommands.filter((c) => c.type === "kpi_cards" || c.type === "comparison");
@@ -323,17 +351,29 @@ export default function OracleWorkspacePage() {
                   </div>
                 ))
               )}
-              {isLoading && (
+              {isStreaming && (
                 <div className="flex justify-start">
-                  <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-3 flex items-center gap-2">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    <span className="text-xs text-muted-foreground">ORACLE sedang menganalisis…</span>
+                  <div className="max-w-[90%] rounded-2xl rounded-bl-sm px-3 py-2 text-sm leading-relaxed bg-muted text-foreground">
+                    {activeTools.length > 0 && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1.5">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <span>Mengambil data: {activeTools.join(", ")}…</span>
+                      </div>
+                    )}
+                    {draftText ? (
+                      <p className="whitespace-pre-wrap">{draftText}</p>
+                    ) : activeTools.length === 0 ? (
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        <span className="text-xs text-muted-foreground">ORACLE sedang menganalisis…</span>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               )}
             </div>
 
-            {!isLoading && lastAssistant && (lastAssistant.suggested_followups?.length ?? 0) > 0 && (
+            {!isStreaming && lastAssistant && (lastAssistant.suggested_followups?.length ?? 0) > 0 && (
               <div className="px-4 pb-2 flex flex-wrap gap-1 shrink-0">
                 {lastAssistant.suggested_followups!.map((q) => (
                   <button
@@ -354,14 +394,14 @@ export default function OracleWorkspacePage() {
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
                   placeholder="Tanya ORACLE…"
-                  disabled={isLoading}
+                  disabled={isStreaming}
                   rows={2}
                   className="flex-1 text-sm px-3 py-2 border border-border rounded-lg bg-background resize-none
                     placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50"
                 />
                 <button
                   onClick={() => sendMessage(input)}
-                  disabled={!input.trim() || isLoading}
+                  disabled={!input.trim() || isStreaming}
                   className="px-3 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-40 transition-colors shrink-0 self-end"
                   aria-label="Kirim"
                 >
