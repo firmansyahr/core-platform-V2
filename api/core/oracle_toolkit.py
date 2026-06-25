@@ -362,3 +362,232 @@ class OracleToolkit:
             "status": "error",
             "message": f"scenario_type '{scenario_type}' belum didukung — pakai 'budget_change' atau 'reward_rate_change'",
         }
+
+    # ── ORACLE Phase 2.5 — sinyal untuk CAD auto-validation ──────────────────
+    #
+    # CAD alert beroperasi di level KABUPATEN (id format "CAD-YYYYMMDD-
+    # KABUPATEN", lihat CADAlert di models.py), bukan per-toko — semua sinyal
+    # di bawah ini diagregasi dari toko-toko di kabupaten alert tersebut.
+
+    def get_volume_trend(self, cad_id: str) -> dict:
+        """Trend volume bulanan (6 bulan terakhir) kabupaten dari CAD alert."""
+        from api.core.cad_storage import get_record_by_id
+
+        alert = get_record_by_id(cad_id)
+        if not alert:
+            return {"status": "not_found", "cad_id": cad_id}
+        kabupaten = alert["kabupaten"]
+        df = get_data()
+        sub = df[df["Kabupaten Toko"] == kabupaten]
+        if sub.empty:
+            return {"status": "not_found", "kabupaten": kabupaten}
+        monthly = sub.groupby(sub["Tanggal Transaksi"].dt.to_period("M"))["TON Quantity"].sum().sort_index().tail(6)
+        trend = [{"bulan": str(p), "volume_ton": round(float(v), 2)} for p, v in monthly.items()]
+        mom_change_pct = None
+        if len(trend) >= 2 and trend[-2]["volume_ton"] > 0:
+            mom_change_pct = round((trend[-1]["volume_ton"] - trend[-2]["volume_ton"]) / trend[-2]["volume_ton"] * 100, 1)
+        return {"status": "ok", "kabupaten": kabupaten, "trend": trend, "mom_change_pct": mom_change_pct}
+
+    def get_gmm_cluster_history(self, cad_id: str) -> dict:
+        """Distribusi cluster GMM toko-toko di kabupaten dari CAD alert ini."""
+        from api.core.cad_storage import get_record_by_id
+
+        alert = get_record_by_id(cad_id)
+        if not alert:
+            return {"status": "not_found", "cad_id": cad_id}
+        training_result = load_cached_result()
+        if not training_result:
+            return {"status": "not_tracked", "message": "Model GMM belum pernah di-training"}
+        kabupaten = alert["kabupaten"]
+        df = get_data()
+        toko_ids = df[df["Kabupaten Toko"] == kabupaten]["ID Toko"].unique().tolist()
+        labels = []
+        for tid in toko_ids:
+            r = get_store_cannibalization_status(tid, training_result)
+            if r.get("status") == "ok":
+                labels.append(r["cluster_label"])
+        if not labels:
+            return {"status": "not_found", "kabupaten": kabupaten}
+        counts = pd.Series(labels).value_counts().to_dict()
+        return {
+            "status": "ok", "kabupaten": kabupaten, "cluster_distribution": counts,
+            "dominant_cluster": max(counts, key=counts.get), "total_toko_dianalisis": len(labels),
+        }
+
+    def get_competitor_activity_nearby(self, cad_id: str) -> dict:
+        """Delegasi ke get_competitor_activity untuk provinsi dari CAD alert ini."""
+        from api.core.cad_storage import get_record_by_id
+
+        alert = get_record_by_id(cad_id)
+        if not alert:
+            return {"status": "not_found", "cad_id": cad_id}
+        provinsi = alert.get("provinsi")
+        if not provinsi:
+            return {"status": "not_tracked", "message": "Provinsi tidak tercatat di CAD alert ini"}
+        return self.get_competitor_activity([provinsi])
+
+    def get_seasonal_pattern(self, cad_id: str) -> dict:
+        return {
+            "status": "not_tracked",
+            "message": "Tidak ada engine seasonal decomposition di sistem ini — pola musiman tidak tersedia.",
+        }
+
+    def get_peer_comparison(self, cad_id: str) -> dict:
+        """Bandingkan AEGIS score rata-rata kabupaten vs provinsi vs nasional."""
+        from api.core.cad_storage import get_record_by_id
+
+        alert = get_record_by_id(cad_id)
+        if not alert:
+            return {"status": "not_found", "cad_id": cad_id}
+        kabupaten, provinsi = alert["kabupaten"], alert.get("provinsi")
+        crs = get_store_crs()
+        if crs.empty:
+            return {"status": "not_found", "kabupaten": kabupaten}
+        kab_avg = crs.loc[crs["Kabupaten Toko"] == kabupaten, "aegis_score"].mean()
+        prov_avg = crs.loc[crs["Provinsi Toko"] == provinsi, "aegis_score"].mean() if provinsi else None
+        nat_avg = crs["aegis_score"].mean()
+        return {
+            "status": "ok", "kabupaten": kabupaten, "provinsi": provinsi,
+            "avg_aegis_kabupaten": round(float(kab_avg), 1) if pd.notna(kab_avg) else None,
+            "avg_aegis_provinsi": round(float(prov_avg), 1) if provinsi and pd.notna(prov_avg) else None,
+            "avg_aegis_nasional": round(float(nat_avg), 1),
+        }
+
+    def get_program_status(self, cad_id: str) -> dict:
+        """Persentase toko di kabupaten ini yang aktif dalam program loyalty."""
+        from api.core.cad_storage import get_record_by_id
+
+        alert = get_record_by_id(cad_id)
+        if not alert:
+            return {"status": "not_found", "cad_id": cad_id}
+        kabupaten = alert["kabupaten"]
+        df = get_data()
+        toko_ids = set(df[df["Kabupaten Toko"] == kabupaten]["ID Toko"].unique().tolist())
+        if not toko_ids:
+            return {"status": "not_found", "kabupaten": kabupaten}
+        db = SessionLocal()
+        try:
+            n_aktif = db.query(LoyaltyMember).filter(
+                LoyaltyMember.id_toko.in_(toko_ids), LoyaltyMember.status == "Aktif",
+            ).count()
+        finally:
+            db.close()
+        return {
+            "status": "ok", "kabupaten": kabupaten, "total_toko_kabupaten": len(toko_ids),
+            "toko_program_aktif": n_aktif, "pct_dalam_program": round(n_aktif / len(toko_ids) * 100, 1),
+        }
+
+    def get_payment_history(self, cad_id: str) -> dict:
+        return {
+            "status": "not_tracked",
+            "message": "CORE Platform tidak punya modul billing/kredit — riwayat pembayaran toko tidak tersedia.",
+        }
+
+    # ── ORACLE Phase 2.5 — sinyal untuk daily monitoring ─────────────────────
+
+    def get_promo_deadlines(self, days_threshold: int = 7) -> dict:
+        """Promo Aktif yang periode_selesai-nya dalam N hari ke depan."""
+        from datetime import date, timedelta
+
+        from api.routers.promo import _get_promos
+
+        today = date.today()
+        cutoff = today + timedelta(days=days_threshold)
+        deadlines = []
+        for p in _get_promos():
+            if p.get("status") != "Aktif":
+                continue
+            selesai_raw = p.get("periode_selesai")
+            if not selesai_raw:
+                continue
+            selesai = selesai_raw if isinstance(selesai_raw, date) else date.fromisoformat(str(selesai_raw)[:10])
+            if today <= selesai <= cutoff:
+                deadlines.append({
+                    "promo_id": p["id"], "nama_promo": p["nama_promo"],
+                    "periode_selesai": str(selesai), "hari_tersisa": (selesai - today).days,
+                })
+        return {"status": "ok", "deadlines": sorted(deadlines, key=lambda x: x["hari_tersisa"])}
+
+    def get_roi_drops(self, threshold_pct: float = -20.0, period_days: int = 7) -> dict:
+        """Promo Aktif dengan ROI kumulatif saat ini di bawah threshold.
+        CATATAN: ini snapshot ROI TERKINI, bukan delta dalam period_days —
+        sistem tidak menyimpan time-series ROI historis untuk dibandingkan."""
+        from api.routers.promo import _get_promos
+
+        drops = []
+        for p in _get_promos():
+            if p.get("status") != "Aktif":
+                continue
+            result = self.get_program_roi_analysis(p["id"])
+            if result.get("status") != "ok":
+                continue
+            roi_pct = ((result.get("analytics") or {}).get("roi") or {}).get("roi_pct")
+            if roi_pct is not None and roi_pct < threshold_pct:
+                drops.append({"promo_id": p["id"], "nama_promo": p["nama_promo"], "roi_pct": roi_pct})
+        return {
+            "status": "ok",
+            "note": "Snapshot ROI saat ini — bukan perubahan dalam period_days (tidak ada time-series ROI historis)",
+            "threshold_pct": threshold_pct, "drops": sorted(drops, key=lambda x: x["roi_pct"]),
+        }
+
+    def get_unvalidated_cad(self, max_age_hours: int = 24) -> dict:
+        """CAD alert dalam N jam terakhir yang belum punya verdict ORACLE."""
+        from datetime import datetime, timedelta
+
+        from api.core.cad_storage import get_records as cad_list_records
+        from api.models import OracleCadVerdict
+
+        cutoff = datetime.utcnow() - timedelta(hours=max_age_hours)
+        records, _total = cad_list_records(limit=200)  # sudah sorted terbaru dulu
+        db = SessionLocal()
+        try:
+            verdicted_ids = {row[0] for row in db.query(OracleCadVerdict.cad_id).all()}
+        finally:
+            db.close()
+        unvalidated = []
+        for a in records:
+            tgl = a.get("tgl_alert") or a.get("tanggal_alert")
+            if not tgl:
+                continue
+            try:
+                alert_dt = datetime.fromisoformat(str(tgl)[:19])
+            except ValueError:
+                continue
+            if alert_dt < cutoff:
+                break  # records sorted descending — sisanya pasti lebih tua
+            if a["id"] in verdicted_ids:
+                continue
+            unvalidated.append({
+                "cad_id": a["id"], "kabupaten": a["kabupaten"], "status_alert": a["status_alert"], "tgl_alert": str(tgl),
+            })
+        return {"status": "ok", "unvalidated": unvalidated}
+
+    def get_budget_warnings(self, threshold_pct: float = 10.0) -> dict:
+        return {
+            "status": "not_tracked",
+            "message": "ILP adalah optimizer on-demand tanpa budget pool ter-persist — tidak ada sisa budget yang bisa dipantau lintas waktu.",
+        }
+
+    def get_ms_movements(self, threshold_pp: float = 2.0) -> dict:
+        """Provinsi dengan perubahan market share nasional >= threshold_pp
+        antar 2 periode ASPERSSI terbaru yang tersedia."""
+        share = load_share_provinsi()
+        data = [e for e in share.get("data", []) if e.get("tersedia") and e.get("share_nasional_pct") is not None]
+        if not data:
+            return {"status": "not_tracked", "message": "Data ASPERSSI share_provinsi tidak tersedia"}
+        by_provinsi: dict[str, list[dict]] = {}
+        for e in data:
+            by_provinsi.setdefault(e["provinsi"], []).append(e)
+        movements = []
+        for provinsi, entries in by_provinsi.items():
+            entries.sort(key=lambda e: e["periode"])
+            if len(entries) < 2:
+                continue
+            latest, prev = entries[-1], entries[-2]
+            delta = round(latest["share_nasional_pct"] - prev["share_nasional_pct"], 2)
+            if abs(delta) >= threshold_pp:
+                movements.append({
+                    "provinsi": provinsi, "periode_sebelum": prev["periode"], "periode_terbaru": latest["periode"],
+                    "delta_pp": delta, "arah": "naik" if delta > 0 else "turun",
+                })
+        return {"status": "ok", "threshold_pp": threshold_pp, "movements": sorted(movements, key=lambda m: -abs(m["delta_pp"]))}

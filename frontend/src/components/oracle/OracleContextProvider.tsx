@@ -46,6 +46,7 @@ interface OracleContextValue {
   history: OracleMessage[];
   appendMessage: (m: OracleMessage) => void;
   clearHistory: () => void;
+  replaceHistory: (messages: OracleMessage[]) => void;
   isWidgetOpen: boolean;
   setWidgetOpen: (v: boolean) => void;
   isWidgetExpanded: boolean;
@@ -96,13 +97,14 @@ export function OracleContextProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearHistory = useCallback(() => setHistory([]), []);
+  const replaceHistory = useCallback((messages: OracleMessage[]) => setHistory(messages), []);
 
   const value = useMemo<OracleContextValue>(() => ({
     pageContext, setOracleContext, setPageMeta,
-    history, appendMessage, clearHistory,
+    history, appendMessage, clearHistory, replaceHistory,
     isWidgetOpen, setWidgetOpen,
     isWidgetExpanded, setWidgetExpanded,
-  }), [pageContext, setOracleContext, setPageMeta, history, appendMessage, clearHistory, isWidgetOpen, isWidgetExpanded]);
+  }), [pageContext, setOracleContext, setPageMeta, history, appendMessage, clearHistory, replaceHistory, isWidgetOpen, isWidgetExpanded]);
 
   return <OracleContext.Provider value={value}>{children}</OracleContext.Provider>;
 }

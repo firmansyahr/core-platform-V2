@@ -3,7 +3,8 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
-import { Moon, Sun, Settings, LogOut, Info, Menu, X, ChevronDown, FileText, Sparkles } from "lucide-react";
+import { Moon, Sun, Settings, LogOut, Info, Menu, X, ChevronDown, FileText, Sparkles, Bell } from "lucide-react";
+import { useOracleNotifications } from "@/hooks/useOracleNotifications";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
 import {
@@ -89,6 +90,7 @@ export default function Navbar() {
   const [loyaltyOpen,  setLoyaltyOpen]  = useState(false);
   const [aegisOpen,    setAegisOpen]    = useState(false);
   const [openCount,    setOpenCount]    = useState(0);
+  const { notifications, unreadCount, markRead } = useOracleNotifications();
 
   useEffect(() => {
     setMounted(true);
@@ -282,6 +284,50 @@ export default function Navbar() {
 
           {/* Right side */}
           <div className="ml-auto flex items-center gap-1">
+            {/* ORACLE notifications */}
+            {mounted && user && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    aria-label="Notifikasi ORACLE"
+                    className="relative w-8 h-8 rounded-lg flex items-center justify-center
+                      text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-150"
+                  >
+                    <Bell size={16} strokeWidth={1.75} />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-destructive text-white text-[10px]
+                        rounded-full h-4 w-4 flex items-center justify-center leading-none">
+                        {unreadCount > 9 ? "9+" : unreadCount}
+                      </span>
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-80">
+                  <DropdownMenuLabel>Notifikasi ORACLE</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {notifications.length === 0 ? (
+                    <div className="px-2 py-3 text-xs text-muted-foreground text-center">Belum ada notifikasi</div>
+                  ) : (
+                    notifications.slice(0, 8).map((n) => (
+                      <DropdownMenuItem
+                        key={n.id}
+                        onClick={() => !n.is_read && markRead(n.id)}
+                        className={`flex flex-col items-start gap-0.5 py-2 ${!n.is_read ? "bg-muted/50" : ""}`}
+                      >
+                        <div className="flex items-center gap-1.5 w-full">
+                          <span className="text-xs">
+                            {n.severity === "critical" ? "🔴" : n.severity === "warning" ? "⚠️" : "ℹ️"}
+                          </span>
+                          <span className="text-xs font-medium truncate">{n.title}</span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground line-clamp-2">{n.summary}</p>
+                      </DropdownMenuItem>
+                    ))
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
             {/* Theme toggle */}
             <button
               onClick={toggleTheme}

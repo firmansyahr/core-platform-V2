@@ -15,20 +15,22 @@ export interface OracleChatBody {
 }
 
 /**
- * Konsumsi SSE dari POST /api/oracle/chat/stream, satu event per callback.
+ * Konsumsi SSE generik dari endpoint manapun yang mem-stream "data: {json}\n\n"
+ * diakhiri "data: [DONE]\n\n" — dipakai streamOracleChat (di bawah) dan fitur
+ * agentic lain (mis. validasi CAD batch) yang punya bentuk event berbeda.
  *
  * Buffering chunk yang belum lengkap (bukan split-per-chunk naif) — satu
  * "data: {...}\n\n" message SSE bisa terpotong di tengah oleh batas paket
  * network antar dua panggilan reader.read(); tanpa buffer, baris yang
  * terpotong gagal di-parse dan DIAM-DIAM hilang (bukan error yang terlihat).
  */
-export async function streamOracleChat(
-  apiBase: string,
-  body: OracleChatBody,
-  onEvent: (event: OracleStreamEvent) => void,
+export async function streamSSE<T = Record<string, unknown>>(
+  url: string,
+  body: unknown,
+  onEvent: (event: T) => void,
 ): Promise<void> {
   const token = getToken();
-  const res = await fetch(`${apiBase}/api/oracle/chat/stream`, {
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -59,10 +61,18 @@ export async function streamOracleChat(
       const data = line.slice("data: ".length);
       if (data === "[DONE]") return;
       try {
-        onEvent(JSON.parse(data) as OracleStreamEvent);
+        onEvent(JSON.parse(data) as T);
       } catch {
         // chunk malformed — lewati, jangan crash seluruh stream
       }
     }
   }
+}
+
+export async function streamOracleChat(
+  apiBase: string,
+  body: OracleChatBody,
+  onEvent: (event: OracleStreamEvent) => void,
+): Promise<void> {
+  return streamSSE<OracleStreamEvent>(`${apiBase}/api/oracle/chat/stream`, body, onEvent);
 }

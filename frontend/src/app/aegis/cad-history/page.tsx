@@ -16,7 +16,11 @@ import {
 } from "@/components/ui/table";
 import { useAuth } from "@/hooks/useAuth";
 import { getToken, getUser } from "@/lib/auth";
+import { apiFetch } from "@/lib/fetch";
 import { downloadFile } from "@/lib/download";
+import { streamSSE } from "@/lib/oracleStream";
+import { OracleTaskProgress, type ActiveTaskState } from "@/components/oracle/OracleTaskProgress";
+import { OracleApprovalPanel, type ApprovalAction, type PendingApproval } from "@/components/oracle/OracleApprovalPanel";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
 import {
@@ -40,6 +44,22 @@ interface Summary {
   avg_toko_dikunjungi: number;
   kategori_distribution: Record<string, number>;
 }
+
+interface CadVerdict {
+  cad_id: string;
+  verdict: "genuine_threat" | "false_alarm" | "needs_review";
+  confidence_score: number;
+  evidence: string[];
+  recommendations: string[];
+  primary_reason?: string;
+  user_decision: string | null;
+}
+
+const VERDICT_BADGE: Record<string, { label: string; cls: string }> = {
+  genuine_threat: { label: "✅ Genuine", cls: "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400" },
+  false_alarm:    { label: "⚠️ False Alarm", cls: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
+  needs_review:   { label: "🔍 Review", cls: "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400" },
+};
 
 interface CADRecordExt extends CADRecord {
   status?: string;
@@ -123,6 +143,13 @@ export default function CADHistoryPage() {
   const [genResult,    setGenResult]    = useState("");
   const [exportingCsv, setExportingCsv] = useState(false);
 
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [verdicts, setVerdicts] = useState<Record<string, CadVerdict>>({});
+  const [validating, setValidating] = useState(false);
+  const [activeTask, setActiveTask] = useState<ActiveTaskState | null>(null);
+  const [pendingApproval, setPendingApproval] = useState<PendingApproval | null>(null);
+  const [approvalCadIds, setApprovalCadIds] = useState<Record<string, string[]>>({});
+
   // ─── Fetchers ─────────────────────────────────────────────────────────────
 
   const fetchSummary = useCallback(() => {
@@ -154,6 +181,90 @@ export default function CADHistoryPage() {
 
   useEffect(() => { fetchSummary(); }, [fetchSummary]);
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
+
+  const fetchVerdicts = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) return;
+    try {
+      const res = await apiFetch(`${API}/api/oracle/agent/validate-cad/lookup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cad_ids: ids }),
+      });
+      const json = await res.json();
+      setVerdicts((prev) => ({ ...prev, ...(json.data ?? {}) }));
+    } catch {
+      // badge ORACLE bukan fitur kritikal — gagal diam-diam
+    }
+  }, []);
+
+  useEffect(() => {
+    if (records.length > 0) fetchVerdicts(records.map((r) => r.id));
+  }, [records, fetchVerdicts]);
+
+  // ─── ORACLE batch validation ────────────────────────────────────────────────
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function runOracleValidation() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setValidating(true);
+    setPendingApproval(null);
+    setActiveTask({
+      task_id: "pending", task_name: `Validasi ${ids.length} CAD Alert`,
+      steps: ids.map((id) => ({ description: id })), steps_completed: 0, steps_total: ids.length,
+    });
+
+    try {
+      await streamSSE<Record<string, unknown>>(
+        `${API}/api/oracle/agent/validate-cad`,
+        { cad_ids: ids },
+        (event) => {
+          if (event.type === "task_start") {
+            setActiveTask((prev) => prev && { ...prev, task_id: String(event.task_id) });
+          } else if (event.type === "validation_complete") {
+            const summary = event.summary as { total: number; genuine_threat: number; false_alarm: number; needs_review: number };
+            const actions = (event.approval_actions as ApprovalAction[]) ?? [];
+            const cadIdsByAction: Record<string, string[]> = {};
+            for (const a of actions) cadIdsByAction[a.action] = a.cad_ids ?? [];
+            setApprovalCadIds(cadIdsByAction);
+            setPendingApproval({
+              description: `${summary.total} alert dianalisis — ${summary.genuine_threat} genuine threat, ${summary.false_alarm} false alarm, ${summary.needs_review} perlu review manual.`,
+              actions,
+            });
+            setActiveTask(null);
+            fetchVerdicts(ids);
+          }
+        },
+      );
+    } catch {
+      window.alert("Validasi ORACLE gagal. Coba lagi.");
+      setActiveTask(null);
+    } finally {
+      setValidating(false);
+      setSelectedIds(new Set());
+    }
+  }
+
+  async function handleApprovalAction(action: ApprovalAction) {
+    try {
+      await apiFetch(`${API}/api/oracle/agent/validate-cad/batch-approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: action.action, cad_ids: approvalCadIds[action.action] ?? [] }),
+      });
+      setPendingApproval(null);
+      fetchVerdicts(Array.from(new Set(Object.values(approvalCadIds).flat())));
+    } catch {
+      window.alert("Gagal menyimpan keputusan approval.");
+    }
+  }
 
   // ─── Actions ──────────────────────────────────────────────────────────────
 
@@ -278,6 +389,13 @@ export default function CADHistoryPage() {
                   {generating ? "Generating…" : "Generate dari Data Terkini"}
                 </button>
               )}
+              {isAdmin && (
+                <button onClick={runOracleValidation} disabled={selectedIds.size === 0 || validating}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
+                    bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-40">
+                  🤖 Validasi dengan ORACLE {selectedIds.size > 0 && `(${selectedIds.size})`}
+                </button>
+              )}
             </div>
             {genResult && (
               <p className={`text-xs ${genResult.startsWith("✓") ? "text-green-600 dark:text-green-400" : "text-destructive"}`}>
@@ -286,6 +404,9 @@ export default function CADHistoryPage() {
             )}
           </div>
         </div>
+
+        {activeTask && <OracleTaskProgress activeTask={activeTask} onCancel={() => setActiveTask(null)} />}
+        {pendingApproval && <OracleApprovalPanel pendingApproval={pendingApproval} onAction={handleApprovalAction} />}
 
         {/* Summary cards */}
         {summLoading ? (
@@ -384,19 +505,21 @@ export default function CADHistoryPage() {
                   <Table>
                     <TableHeader className="sticky top-0 bg-muted/50 backdrop-blur-sm">
                       <TableRow className="border-b border-muted/50 hover:bg-transparent">
-                        <TableHead className="pl-4 text-xs uppercase tracking-wider">Kabupaten</TableHead>
+                        {isAdmin && <TableHead className="w-8 pl-4"></TableHead>}
+                        <TableHead className={isAdmin ? "text-xs uppercase tracking-wider" : "pl-4 text-xs uppercase tracking-wider"}>Kabupaten</TableHead>
                         <TableHead className="text-xs uppercase tracking-wider">Tgl Alert</TableHead>
                         <TableHead className="text-right text-xs uppercase tracking-wider">Warning</TableHead>
                         <TableHead className="text-right text-xs uppercase tracking-wider">Dikunjungi</TableHead>
                         <TableHead className="text-xs uppercase tracking-wider">Kategori Utama</TableHead>
                         <TableHead className="text-xs uppercase tracking-wider">Status</TableHead>
+                        <TableHead className="text-xs uppercase tracking-wider">ORACLE</TableHead>
                         <TableHead className="w-36 pr-4 text-right text-xs uppercase tracking-wider">Aksi</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {records.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="text-center py-14 text-muted-foreground">
+                          <TableCell colSpan={isAdmin ? 9 : 7} className="text-center py-14 text-muted-foreground">
                             <p className="text-sm font-medium">Tidak ada record yang sesuai</p>
                             <button onClick={resetFilter} className="text-xs underline underline-offset-2 mt-1">Reset filter</button>
                           </TableCell>
@@ -406,10 +529,21 @@ export default function CADHistoryPage() {
                         const badge       = STATUS_BADGE[statusLabel] ?? STATUS_BADGE["Pending Validasi"];
                         const kategori    = getKategoriUtama(rec);
                         const dikunjungi  = getDikunjungi(rec);
+                        const verdict     = verdicts[rec.id];
 
                         return (
                           <TableRow key={rec.id} className="hover:bg-muted/30 border-b border-muted/50">
-                            <TableCell className="pl-4 font-medium max-w-[180px]">
+                            {isAdmin && (
+                              <TableCell className="pl-4">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedIds.has(rec.id)}
+                                  onChange={() => toggleSelect(rec.id)}
+                                  className="h-3.5 w-3.5 rounded border-border"
+                                />
+                              </TableCell>
+                            )}
+                            <TableCell className={isAdmin ? "font-medium max-w-[180px]" : "pl-4 font-medium max-w-[180px]"}>
                               <p className="truncate" title={rec.kabupaten}>
                                 {rec.kabupaten.replace(/^KABUPATEN /, "KAB. ")}
                               </p>
@@ -448,6 +582,17 @@ export default function CADHistoryPage() {
                               <span className={`text-[10px] font-medium px-2 py-0.5 rounded whitespace-nowrap ${badge.cls}`}>
                                 {badge.label}
                               </span>
+                            </TableCell>
+                            <TableCell>
+                              {verdict ? (
+                                <Link href={`/aegis/cad-history/${rec.id}`} className="hover:underline">
+                                  <span className={`text-[10px] font-medium px-2 py-0.5 rounded whitespace-nowrap ${VERDICT_BADGE[verdict.verdict]?.cls ?? ""}`}>
+                                    {VERDICT_BADGE[verdict.verdict]?.label ?? verdict.verdict}
+                                  </span>
+                                </Link>
+                              ) : (
+                                <span className="text-[10px] text-muted-foreground/50">⏳ Belum dianalisis</span>
+                              )}
                             </TableCell>
                             <TableCell className="pr-4 text-right">
                               <div className="flex items-center justify-end gap-1.5">

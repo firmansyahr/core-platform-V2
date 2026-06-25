@@ -351,3 +351,102 @@ class AsperssiMeta(Base):
 
     dataset      = Column(String, primary_key=True)
     last_updated = Column(DateTime, nullable=True)
+
+
+# ── ORACLE Phase 2.5 — Agentic (isolated dari tabel produksi) ────────────────
+#
+# Prinsip: write operations ORACLE HANYA ke tabel-tabel di bawah ini. Draft
+# yang sudah di-approve user ditulis ke tabel produksi (Promo/CADAlert/dst)
+# lewat endpoint router yang sudah ada — bukan dari sini langsung.
+
+class OracleDraft(Base):
+    """Draft hasil kerja ORACLE (program promo/skenario ILP/laporan/
+    rekomendasi) — TIDAK PERNAH otomatis masuk ke tabel produksi, harus
+    di-approve user dulu (lihat POST /api/oracle/agent/drafts/{id}/approve)."""
+    __tablename__ = "oracle_drafts"
+
+    id              = Column(String, primary_key=True)
+    draft_type      = Column(String, nullable=False)  # program_promo | ilp_scenario | laporan | rekomendasi
+    title           = Column(String, nullable=False)
+    content_json    = Column(JSON, nullable=False)
+    source_analysis = Column(String, nullable=True)
+    status          = Column(String, nullable=False, default="pending_review")  # pending_review|approved|rejected|expired
+    created_by      = Column(String, nullable=False, default="oracle")
+    reviewed_by     = Column(String, nullable=True)
+    reviewed_at     = Column(DateTime, nullable=True)
+    review_notes    = Column(String, nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+    expires_at      = Column(DateTime, nullable=True)
+
+
+class OracleNotification(Base):
+    """Notifikasi proaktif ORACLE (daily briefing, anomaly, deadline, dst)."""
+    __tablename__ = "oracle_notifications"
+
+    id                = Column(String, primary_key=True)
+    notif_type        = Column(String, nullable=False)  # daily_briefing|anomaly_alert|deadline_warning|budget_warning|performance_drop
+    title             = Column(String, nullable=False)
+    summary           = Column(String, nullable=False)
+    detail_json       = Column(JSON, nullable=True)
+    severity          = Column(String, nullable=False, default="info")  # info|warning|critical
+    is_read           = Column(Boolean, nullable=False, default=False)
+    is_dismissed      = Column(Boolean, nullable=False, default=False)
+    related_module    = Column(String, nullable=True)
+    related_entity_id = Column(String, nullable=True)
+    created_at        = Column(DateTime, server_default=func.now())
+
+
+class OracleSession(Base):
+    """Saved conversation session — riwayat percakapan ORACLE yang disimpan
+    user secara eksplisit (bukan auto-save tiap percakapan)."""
+    __tablename__ = "oracle_sessions"
+
+    id                 = Column(String, primary_key=True)
+    title              = Column(String, nullable=False)
+    summary            = Column(String, nullable=True)
+    history_json       = Column(JSON, nullable=False)
+    page_context_json  = Column(JSON, nullable=True)
+    model_stats_json   = Column(JSON, nullable=True)
+    total_tokens_used  = Column(Integer, nullable=False, default=0)
+    created_at         = Column(DateTime, server_default=func.now())
+    updated_at         = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class OracleTask(Base):
+    """Tracking progress agentic task (multi-step analysis, validasi CAD
+    batch, dll) — dipakai frontend untuk polling/streaming status."""
+    __tablename__ = "oracle_tasks"
+
+    id              = Column(String, primary_key=True)
+    task_type       = Column(String, nullable=False)  # cad_validation|multi_step_analysis|daily_briefing|draft_creation
+    task_name       = Column(String, nullable=False)
+    status          = Column(String, nullable=False, default="running")  # running|completed|failed|cancelled|awaiting_approval
+    steps_total     = Column(Integer, nullable=False, default=0)
+    steps_completed = Column(Integer, nullable=False, default=0)
+    current_step    = Column(String, nullable=True)
+    result_json     = Column(JSON, nullable=True)
+    error_message   = Column(String, nullable=True)
+    triggered_by    = Column(String, nullable=False, default="user")  # user|scheduler|oracle_proactive
+    created_at      = Column(DateTime, server_default=func.now())
+    updated_at      = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class OracleCadVerdict(Base):
+    """Hasil validasi ORACLE untuk satu CAD Alert (kabupaten, bukan toko
+    individual — lihat CADAlert.id format 'CAD-YYYYMMDD-KABUPATEN'). Verdict
+    ini TIDAK otomatis mengubah CADAlert.status_resolusi — user_decision
+    diisi lewat endpoint approve/override, baru itu yang menyentuh tabel
+    cad_alerts produksi."""
+    __tablename__ = "oracle_cad_verdicts"
+
+    id                   = Column(String, primary_key=True)
+    cad_id               = Column(String, ForeignKey("cad_alerts.id"), nullable=False, unique=True, index=True)
+    verdict              = Column(String, nullable=False)  # genuine_threat|false_alarm|needs_review
+    confidence_score     = Column(Float, nullable=False)
+    evidence_json        = Column(JSON, nullable=False)
+    recommendations_json = Column(JSON, nullable=True)
+    model_used           = Column(String, nullable=True)
+    analyzed_at          = Column(DateTime, server_default=func.now())
+    user_decision        = Column(String, nullable=True)  # confirmed|overridden|dismissed
+    user_notes           = Column(String, nullable=True)
+    decided_at           = Column(DateTime, nullable=True)

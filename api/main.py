@@ -7,7 +7,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
 from api.core.limiter import limiter
-from api.routers import aegis, auth, brand_config, cad_history, cannibalization, causal, competitor, export, health, home, ilp, loyalty, oracle, performance, promo, settings
+from api.routers import aegis, auth, brand_config, cad_history, cannibalization, causal, competitor, export, health, home, ilp, loyalty, oracle, oracle_agent, performance, promo, settings
 
 
 @asynccontextmanager
@@ -20,7 +20,13 @@ async def lifespan(app: FastAPI):
     from api.core.data_loader import preload_data
     preload_data()
     print("[startup] Data siap, server ready", flush=True)
+
+    from api.core.oracle_scheduler import shutdown_scheduler, start_scheduler
+    start_scheduler()
+
     yield
+
+    shutdown_scheduler()
 
 
 app = FastAPI(title="CORE Platform v2", version="2.0.0", lifespan=lifespan)
@@ -60,3 +66,4 @@ app.include_router(competitor.router)
 app.include_router(cannibalization.router)
 app.include_router(causal.router)
 app.include_router(oracle.router)
+app.include_router(oracle_agent.router, prefix="/api/oracle/agent", tags=["oracle-agent"])

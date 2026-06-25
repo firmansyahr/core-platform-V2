@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Sparkles, Send, Settings, RotateCcw, Search, CheckCircle2, Circle, Loader2 } from "lucide-react";
+import { Sparkles, Send, Settings, RotateCcw, Search, CheckCircle2, Circle, Loader2, Save, FolderOpen } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { getUser } from "@/lib/auth";
-import { API } from "@/lib/fetch";
+import { apiFetch, API } from "@/lib/fetch";
 import {
   useOracleContextValue, type OracleMessage, type RenderCommand,
 } from "@/components/oracle/OracleContextProvider";
@@ -16,6 +16,21 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+interface SavedSessionSummary {
+  id: string;
+  title: string;
+  summary: string | null;
+  updated_at: string | null;
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString("id-ID", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
 
 const fmtNum = (n: unknown) => typeof n === "number" ? new Intl.NumberFormat("id-ID").format(n) : String(n ?? "");
 
@@ -169,14 +184,60 @@ export default function OracleWorkspacePage() {
   const [activeTools, setActiveTools] = useState<string[]>([]);
   const [draftRenderCommands, setDraftRenderCommands] = useState<RenderCommand[]>([]);
   const [dataTab, setDataTab] = useState<"charts" | "tables" | "summary">("summary");
+  const [savedSessions, setSavedSessions] = useState<SavedSessionSummary[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const { pageContext, history, appendMessage, clearHistory } = useOracleContextValue();
+  const { pageContext, history, appendMessage, clearHistory, replaceHistory } = useOracleContextValue();
 
   useEffect(() => {
     setMounted(true);
     setIsLoggedIn(!!getUser());
   }, []);
+
+  async function refreshSavedSessions() {
+    try {
+      const res = await apiFetch(`${API}/api/oracle/agent/sessions`);
+      const json = await res.json();
+      setSavedSessions(json.data ?? []);
+    } catch {
+      // sesi tersimpan bukan fitur kritikal — gagal diam-diam
+    }
+  }
+
+  useEffect(() => {
+    refreshSavedSessions();
+  }, []);
+
+  function startNewSession() {
+    clearHistory();
+  }
+
+  async function saveCurrentSession() {
+    if (history.length === 0) return;
+    const defaultTitle = history.find((m) => m.role === "user")?.content.slice(0, 60) ?? "Sesi ORACLE";
+    const title = window.prompt("Nama sesi:", defaultTitle);
+    if (!title) return;
+    try {
+      await apiFetch(`${API}/api/oracle/agent/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, history, page_context: pageContext }),
+      });
+      await refreshSavedSessions();
+    } catch {
+      window.alert("Gagal menyimpan sesi. Coba lagi.");
+    }
+  }
+
+  async function loadSession(sessionId: string) {
+    try {
+      const res = await apiFetch(`${API}/api/oracle/agent/sessions/${sessionId}`);
+      const json = await res.json();
+      replaceHistory(json.data?.history ?? []);
+    } catch {
+      window.alert("Gagal memuat sesi.");
+    }
+  }
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -296,11 +357,39 @@ export default function OracleWorkspacePage() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={clearHistory}
+              onClick={startNewSession}
               className="text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-muted transition-colors flex items-center gap-1.5"
             >
-              <RotateCcw className="h-3 w-3" /> New Session
+              <RotateCcw className="h-3 w-3" /> Sesi Baru
             </button>
+            <button
+              onClick={saveCurrentSession}
+              disabled={history.length === 0}
+              className="text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-muted transition-colors flex items-center gap-1.5 disabled:opacity-40"
+            >
+              <Save className="h-3 w-3" /> Simpan
+            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-muted transition-colors flex items-center gap-1.5">
+                  <FolderOpen className="h-3 w-3" /> Sesi Tersimpan
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuLabel>Sesi Tersimpan</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {savedSessions.length === 0 ? (
+                  <div className="px-2 py-3 text-xs text-muted-foreground text-center">Belum ada sesi tersimpan</div>
+                ) : (
+                  savedSessions.map((s) => (
+                    <DropdownMenuItem key={s.id} onClick={() => loadSession(s.id)} className="flex flex-col items-start gap-0.5">
+                      <p className="text-sm truncate w-full">{s.title}</p>
+                      <p className="text-xs text-muted-foreground">{formatDate(s.updated_at)}</p>
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
             <button className="p-1.5 rounded-lg border border-border hover:bg-muted transition-colors" aria-label="Settings">
               <Settings className="h-3.5 w-3.5" />
             </button>

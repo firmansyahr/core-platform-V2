@@ -14,6 +14,25 @@ import { getUser } from "@/lib/auth";
 import TokoValidasiModal, { KONDISI_COLOR, KONDISI_CHOICES } from "@/components/TokoValidasiModal";
 import ValidasiModal, { type CADRecordFull } from "@/components/ValidasiModal";
 import UpdateCADModal, { type CADRecord as UpdateCADRecord } from "@/components/UpdateCADModal";
+import { apiFetch } from "@/lib/fetch";
+import { streamSSE } from "@/lib/oracleStream";
+
+interface CadVerdict {
+  cad_id: string;
+  verdict: "genuine_threat" | "false_alarm" | "needs_review";
+  confidence_score: number;
+  evidence: string[];
+  recommendations: string[];
+  primary_reason?: string;
+  user_decision: string | null;
+  user_notes: string | null;
+}
+
+const VERDICT_BADGE: Record<string, { label: string; cls: string }> = {
+  genuine_threat: { label: "✅ Genuine Threat", cls: "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400" },
+  false_alarm:    { label: "⚠️ False Alarm", cls: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
+  needs_review:   { label: "🔍 Perlu Review", cls: "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400" },
+};
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -137,6 +156,11 @@ export default function CADHistoryDetailPage() {
 
   const currentUser = getUser()?.name || getUser()?.username || "";
 
+  const [verdict, setVerdict] = useState<CadVerdict | null>(null);
+  const [verdictLoading, setVerdictLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [deciding, setDeciding] = useState(false);
+
   const fetchRecord = useCallback(() => {
     if (!id) return;
     setLoading(true);
@@ -147,7 +171,56 @@ export default function CADHistoryDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  const fetchVerdict = useCallback(async () => {
+    if (!id) return;
+    setVerdictLoading(true);
+    try {
+      const res = await apiFetch(`${API}/api/oracle/agent/validate-cad/${encodeURIComponent(id)}`);
+      const json = await res.json();
+      setVerdict(json.data ?? null);
+    } catch {
+      setVerdict(null);
+    } finally {
+      setVerdictLoading(false);
+    }
+  }, [id]);
+
   useEffect(() => { fetchRecord(); }, [fetchRecord]);
+  useEffect(() => { fetchVerdict(); }, [fetchVerdict]);
+
+  async function runOracleAnalysis() {
+    if (!id) return;
+    setAnalyzing(true);
+    try {
+      await streamSSE<Record<string, unknown>>(
+        `${API}/api/oracle/agent/validate-cad`,
+        { cad_ids: [id] },
+        () => {},
+      );
+      await fetchVerdict();
+    } catch {
+      window.alert("Analisis ORACLE gagal. Coba lagi.");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  async function decideVerdict(decision: "confirmed" | "overridden" | "dismissed") {
+    if (!id) return;
+    setDeciding(true);
+    try {
+      await apiFetch(`${API}/api/oracle/agent/validate-cad/${encodeURIComponent(id)}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, decided_by: currentUser }),
+      });
+      await fetchVerdict();
+    } catch {
+      window.alert("Gagal menyimpan keputusan.");
+    } finally {
+      setDeciding(false);
+    }
+  }
 
   if (loading) return (
     <div className="min-h-screen bg-background">
@@ -235,6 +308,86 @@ export default function CADHistoryDetailPage() {
           <span>/</span>
           <span className="text-foreground font-medium truncate">{record.kabupaten}</span>
         </div>
+
+        {/* ── ORACLE Analysis ──────────────────────────────────────── */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2">🤖 ORACLE Analysis</span>
+              {isAdmin && (
+                <button
+                  onClick={runOracleAnalysis}
+                  disabled={analyzing}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-muted transition-colors disabled:opacity-50"
+                >
+                  {analyzing ? "Menganalisis…" : verdict ? "Analisis Ulang" : "Validasi dengan ORACLE"}
+                </button>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {verdictLoading ? (
+              <Skeleton className="h-16 rounded" />
+            ) : !verdict ? (
+              <p className="text-sm text-muted-foreground">Belum dianalisis ORACLE.</p>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${VERDICT_BADGE[verdict.verdict]?.cls ?? ""}`}>
+                    {VERDICT_BADGE[verdict.verdict]?.label ?? verdict.verdict}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Confidence: {Math.round(verdict.confidence_score * 100)}%
+                  </span>
+                  {verdict.user_decision && (
+                    <span className="text-xs text-muted-foreground">
+                      · Keputusan user: <span className="font-medium">{verdict.user_decision}</span>
+                    </span>
+                  )}
+                </div>
+
+                {verdict.primary_reason && (
+                  <p className="text-sm">{verdict.primary_reason}</p>
+                )}
+
+                {verdict.evidence?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Evidence:</p>
+                    <ul className="text-xs space-y-0.5 list-disc list-inside text-muted-foreground">
+                      {verdict.evidence.map((e, i) => <li key={i}>{e}</li>)}
+                    </ul>
+                  </div>
+                )}
+
+                {verdict.recommendations?.length > 0 && (
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Rekomendasi:</p>
+                    <ul className="text-xs space-y-0.5 list-disc list-inside text-muted-foreground">
+                      {verdict.recommendations.map((r, i) => <li key={i}>{r}</li>)}
+                    </ul>
+                  </div>
+                )}
+
+                {isAdmin && !verdict.user_decision && (
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={() => decideVerdict("confirmed")} disabled={deciding}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
+                      Konfirmasi
+                    </button>
+                    <button onClick={() => decideVerdict("dismissed")} disabled={deciding}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-50">
+                      Mark False Alarm
+                    </button>
+                    <button onClick={() => decideVerdict("overridden")} disabled={deciding}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-destructive text-destructive hover:bg-destructive/10 disabled:opacity-50">
+                      Override
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* ── Section 1 — Overview ──────────────────────────────── */}
         <Card>
