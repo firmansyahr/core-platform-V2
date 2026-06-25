@@ -527,3 +527,141 @@ class MarketShareMomentum(Base):
     __table_args__ = (
         UniqueConstraint("granularity", "kabupaten", "provinsi", "periode", name="uq_msm_area_periode"),
     )
+
+
+# ── Competitor Intelligence — CPI, Win/Loss, Early Warning, Counter-Strategy ──
+
+class CompetitivePressureIndex(Base):
+    """
+    CPI per toko per periode — skor komposit tekanan kompetitif (0-100).
+    Komponen: FBSI level (35%), volume trend Elang (30%), HE pressure (20%), CRS score (15%).
+    Dihitung dari output compute_store_crs() — bukan dari histori GMM cluster
+    atau data kompetitor external per toko (ASPERSSI hanya provinsi-level).
+    """
+    __tablename__ = "competitive_pressure_index"
+
+    id        = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id_toko   = Column(String, nullable=False, index=True)
+    nama_toko = Column(String, nullable=True)
+    kabupaten = Column(String, nullable=True, index=True)
+    provinsi  = Column(String, nullable=True, index=True)
+    periode   = Column(String, nullable=False)  # "YYYY-MM"
+
+    # Component scores (0-100)
+    score_fbsi         = Column(Float, default=0)  # FBSI level — 35%
+    score_volume_trend = Column(Float, default=0)  # MoM Elang vol change — 30%
+    score_he           = Column(Float, default=0)  # HE pressure — 20%
+    score_crs          = Column(Float, default=0)  # raw CRS — 15%
+
+    cpi_score = Column(Float, default=0)  # weighted composite 0-100
+    cpi_label = Column(String)            # low | medium | high | critical
+
+    # Raw inputs
+    fbsi_latest    = Column(Float, nullable=True)
+    delta_fbsi     = Column(Float, nullable=True)
+    delta_he_pct   = Column(Float, nullable=True)
+    crs_raw        = Column(Float, nullable=True)
+    elang_vol_cur  = Column(Float, nullable=True)
+    elang_vol_prev = Column(Float, nullable=True)
+    elang_vol_pct  = Column(Float, nullable=True)  # % change vs prev period
+    alert_level    = Column(String, nullable=True)  # Hijau | Kuning | Oranye | Merah
+
+    computed_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+
+    __table_args__ = (
+        UniqueConstraint("id_toko", "periode", name="uq_cpi_toko_periode"),
+    )
+
+
+class WinLossRecord(Base):
+    """
+    Klasifikasi win/loss per toko per periode berdasarkan pergerakan
+    volume Elang dan FBSI Banteng.
+    """
+    __tablename__ = "win_loss_record"
+
+    id        = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    id_toko   = Column(String, nullable=False, index=True)
+    nama_toko = Column(String, nullable=True)
+    kabupaten = Column(String, nullable=True)
+    provinsi  = Column(String, nullable=True)
+    periode   = Column(String, nullable=False)
+
+    outcome        = Column(String, nullable=False)  # win | loss | neutral
+    outcome_detail = Column(String, nullable=True)   # elang_gaining | banteng_retreating | elang_losing | banteng_surging | mixed
+
+    elang_vol_cur      = Column(Float, nullable=True)
+    elang_vol_prev     = Column(Float, nullable=True)
+    elang_vol_pct      = Column(Float, nullable=True)
+    banteng_fbsi_cur   = Column(Float, nullable=True)
+    banteng_fbsi_prev  = Column(Float, nullable=True)
+    banteng_fbsi_delta = Column(Float, nullable=True)
+
+    primary_factor = Column(String, nullable=True)  # banteng_pressure | elang_growth | price_pressure | external
+
+    computed_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+
+    __table_args__ = (
+        UniqueConstraint("id_toko", "periode", name="uq_wl_toko_periode"),
+    )
+
+
+class EarlyWarningAlert(Base):
+    """Alert otomatis saat tripwire threshold dilewati — level toko, kabupaten, atau provinsi."""
+    __tablename__ = "early_warning_alert"
+
+    id         = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    scope      = Column(String, nullable=False)   # toko | kabupaten | provinsi
+    scope_id   = Column(String, nullable=False)   # id_toko / nama kabupaten / nama provinsi
+    scope_name = Column(String, nullable=True)
+    provinsi   = Column(String, nullable=True, index=True)
+    periode    = Column(String, nullable=False)
+
+    alert_type       = Column(String, nullable=False)  # cpi_critical | banteng_surge | ms_erosion_accelerating | elang_vol_drop
+    severity         = Column(String, nullable=False)  # low | medium | high | critical
+    title            = Column(String, nullable=False)
+    description      = Column(String, nullable=True)
+    metric_value     = Column(Float, nullable=True)
+    metric_threshold = Column(Float, nullable=True)
+    metric_label     = Column(String, nullable=True)
+
+    is_active   = Column(Integer, default=1)  # 1=active, 0=resolved
+    resolved_at = Column(String, nullable=True)
+    triggered_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+
+    __table_args__ = (
+        UniqueConstraint("scope", "scope_id", "periode", "alert_type", name="uq_ewa_scope_periode_type"),
+    )
+
+
+class CounterStrategyResult(Base):
+    """Rekomendasi counter-strategy per area dan periode dari agregasi CPI + MSM + EWA."""
+    __tablename__ = "counter_strategy_result"
+
+    id       = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    scope    = Column(String, nullable=False)  # kabupaten | provinsi
+    scope_id = Column(String, nullable=False)
+    provinsi = Column(String, nullable=True, index=True)
+    periode  = Column(String, nullable=False)
+
+    strategy_type = Column(String, nullable=False)  # retain_banteng | recover_elang | defend_market | expand_territory
+    priority      = Column(String, nullable=False)  # low | medium | high | urgent
+
+    trigger_cpi_avg        = Column(Float, nullable=True)
+    trigger_ms_elang_trend = Column(Float, nullable=True)
+    trigger_primary_threat = Column(String, nullable=True)
+
+    n_stores_critical = Column(Integer, default=0)
+    n_stores_high     = Column(Integer, default=0)
+    n_stores_win      = Column(Integer, default=0)
+    n_stores_loss     = Column(Integer, default=0)
+
+    recommended_actions = Column(JSON, nullable=True)  # list[str]
+    target_metrics      = Column(JSON, nullable=True)  # {metric: value}
+    ilp_suggestion      = Column(String, nullable=True)
+
+    computed_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+
+    __table_args__ = (
+        UniqueConstraint("scope", "scope_id", "periode", "strategy_type", name="uq_csr_scope_periode_type"),
+    )

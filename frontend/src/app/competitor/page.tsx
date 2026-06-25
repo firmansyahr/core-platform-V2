@@ -110,6 +110,54 @@ interface SpRow {
   share_nasional_pct: number;
 }
 
+interface CpiRow {
+  id_toko: string; nama_toko: string | null; kabupaten: string | null; provinsi: string | null;
+  cpi_score: number; cpi_label: string;
+  score_fbsi: number; score_volume_trend: number; score_he: number; score_crs: number;
+  fbsi_latest: number | null; delta_fbsi: number | null; elang_vol_pct: number | null;
+  alert_level: string | null; periode: string;
+}
+interface CpiSummary {
+  periode: string; total_stores: number; avg_cpi: number;
+  by_label: Record<string, number>; critical_stores: CpiRow[]; high_stores: CpiRow[];
+}
+interface WlRow {
+  id_toko: string; nama_toko: string | null; kabupaten: string | null;
+  outcome: string; outcome_detail: string | null; primary_factor: string | null;
+  elang_vol_pct: number | null; banteng_fbsi_delta: number | null; periode: string;
+}
+interface WlSummary {
+  periode: string; total: number; by_outcome: Record<string, number>; win_rate_pct: number;
+  top_wins: WlRow[]; top_losses: WlRow[];
+}
+interface EwaAlert {
+  id: string; scope: string; scope_id: string; scope_name: string | null; provinsi: string | null;
+  alert_type: string; severity: string; title: string; description: string | null;
+  metric_value: number | null; metric_threshold: number | null; metric_label: string | null;
+  is_active: number; triggered_at: string;
+}
+interface EwaSummary { total_active: number; by_severity: Record<string, number>; alerts: EwaAlert[]; }
+interface CsrResult {
+  id: string; scope_id: string; provinsi: string | null;
+  strategy_type: string; priority: string; trigger_cpi_avg: number | null;
+  trigger_primary_threat: string | null; n_stores_critical: number; n_stores_loss: number;
+  recommended_actions: string[] | null; ilp_suggestion: string | null; periode: string;
+}
+interface CsrSummary {
+  periode: string | null; total_areas: number;
+  by_strategy: Record<string, number>; by_priority: Record<string, number>;
+  urgent_areas: CsrResult[];
+}
+interface ForecastSummary {
+  available: boolean;
+  meta: { generated_at: string | null; model: string | null; horizon_months: number; areas_forecast: number; };
+  total_kabupaten?: number; total_provinsi?: number;
+  by_trend_label?: Record<string, number>;
+  threat_count?: number; at_risk_count?: number; expansion_count?: number;
+}
+interface ForecastAtRisk { area: string; provinsi: string | null; scope: string; trend_elang: string; current_elang_pct: number; forecast_end_elang_pct: number; }
+interface ForecastExpansion { area: string; provinsi: string | null; scope: string; current_elang_pct: number; forecast_end_elang_pct: number; }
+
 // ─── Style helpers ────────────────────────────────────────────────────────────
 
 const VERDICT_CFG: Record<string, { label: string; cls: string; dot: string }> = {
@@ -1117,71 +1165,175 @@ function SpDataTable({ onDataChanged }: { onDataChanged: () => void }) {
   );
 }
 
+// ─── Shared small components (Threat Map) ─────────────────────────────────────
+
+const CPI_CFG: Record<string, { cls: string; dot: string; label: string }> = {
+  critical: { cls: "bg-red-50 text-red-700 border-red-300 dark:bg-red-950/30 dark:text-red-400 dark:border-red-700/40", dot: "bg-red-500", label: "Kritis" },
+  high:     { cls: "bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-700/40", dot: "bg-orange-500", label: "Tinggi" },
+  medium:   { cls: "bg-yellow-50 text-yellow-700 border-yellow-300 dark:bg-yellow-950/30 dark:text-yellow-500 dark:border-yellow-600/40", dot: "bg-yellow-400", label: "Sedang" },
+  low:      { cls: "bg-green-50 text-green-700 border-green-300 dark:bg-green-950/30 dark:text-green-400 dark:border-green-700/40", dot: "bg-green-400", label: "Rendah" },
+};
+
+function ThreatScoreBadge({ label }: { label: string }) {
+  const cfg = CPI_CFG[label] ?? CPI_CFG.low;
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded border ${cfg.cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  );
+}
+
+const MOMENTUM_CFG: Record<string, { arrow: string; cls: string }> = {
+  accelerating_loss: { arrow: "↓↓", cls: "text-red-600 dark:text-red-400 font-bold" },
+  slow_erosion:      { arrow: "↓",  cls: "text-orange-500 dark:text-orange-400" },
+  stable:            { arrow: "→",  cls: "text-muted-foreground" },
+  gaining:           { arrow: "↑",  cls: "text-green-600 dark:text-green-400 font-bold" },
+};
+
+function MomentumIndicator({ label }: { label: string | null }) {
+  const cfg = MOMENTUM_CFG[label ?? "stable"] ?? MOMENTUM_CFG.stable;
+  return <span className={`text-xs ${cfg.cls}`}>{cfg.arrow} {label?.replace(/_/g, " ") ?? "stable"}</span>;
+}
+
+const SEVERITY_CFG: Record<string, { cls: string; dot: string }> = {
+  critical: { cls: "bg-red-50 text-red-700 border-red-300 dark:bg-red-950/30 dark:text-red-400 dark:border-red-700/40", dot: "bg-red-500" },
+  high:     { cls: "bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-700/40", dot: "bg-orange-500" },
+  medium:   { cls: "bg-yellow-50 text-yellow-700 border-yellow-300 dark:bg-yellow-950/30 dark:text-yellow-500 dark:border-yellow-600/40", dot: "bg-yellow-400" },
+  low:      { cls: "bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-700/40", dot: "bg-blue-400" },
+};
+
+function SeverityBadge({ severity }: { severity: string }) {
+  const cfg = SEVERITY_CFG[severity] ?? SEVERITY_CFG.low;
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded border ${cfg.cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+      {severity}
+    </span>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
+
+type TabId = "overview" | "threat" | "winloss" | "warning" | "strategi" | "prediksi" | "ekspansi" | "data";
 
 export default function CompetitorPage() {
   const { isAdmin } = useAuth();
 
+  // ── Existing state ──────────────────────────────────────────────────────
   const [overview,        setOverview]        = useState<Overview | null>(null);
   const [triList,         setTriList]         = useState<TriRow[]>([]);
   const [loading,         setLoading]         = useState(true);
   const [triLoading,      setTL]              = useState(true);
-  const [activeTab,       setActiveTab]       = useState<"tri" | "rank" | "upload">("tri");
+  const [activeTab,       setActiveTab]       = useState<TabId>("overview");
   const [expandedRow,     setExpandedRow]     = useState<string | null>(null);
   const [insight,         setInsight]         = useState<{ status: string; narasi: string | null; generated_at?: string; cached?: boolean } | null>(null);
   const [insightLoading,  setInsightLoading]  = useState(true);
   const [rankingData,     setRankingData]     = useState<RankRow[]>([]);
   const [aggregateOthers, setAggregateOthers] = useState<AggregateOthers | null>(null);
 
+  // ── New state (lazy loaded per tab) ────────────────────────────────────
+  const [cpiSummary,      setCpiSummary]      = useState<CpiSummary | null>(null);
+  const [cpiLoading,      setCpiLoading]      = useState(false);
+  const [wlSummary,       setWlSummary]       = useState<WlSummary | null>(null);
+  const [wlLoading,       setWlLoading]       = useState(false);
+  const [ewaSummary,      setEwaSummary]      = useState<EwaSummary | null>(null);
+  const [ewaLoading,      setEwaLoading]      = useState(false);
+  const [csrSummary,      setCsrSummary]      = useState<CsrSummary | null>(null);
+  const [csrLoading,      setCsrLoading]      = useState(false);
+  const [forecastSummary, setForecastSummary] = useState<ForecastSummary | null>(null);
+  const [forecastThreats, setForecastThreats] = useState<unknown[]>([]);
+  const [forecastAtRisk,  setForecastAtRisk]  = useState<ForecastAtRisk[]>([]);
+  const [forecastExp,     setForecastExp]     = useState<ForecastExpansion[]>([]);
+  const [forecastLoading, setForecastLoading] = useState(false);
+
   const fetchOverview = useCallback(() => {
     setLoading(true);
     fetch(`${API}/api/competitor/overview`)
-      .then((r) => r.json())
-      .then((r) => setOverview(r.data ?? null))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .then((r) => r.json()).then((r) => setOverview(r.data ?? null))
+      .catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   const fetchTriangulation = useCallback(() => {
     setTL(true);
     fetch(`${API}/api/competitor/triangulation`)
-      .then((r) => r.json())
-      .then((r) => setTriList(r.data ?? []))
-      .catch(() => {})
-      .finally(() => setTL(false));
+      .then((r) => r.json()).then((r) => setTriList(r.data ?? []))
+      .catch(() => {}).finally(() => setTL(false));
   }, []);
 
   const fetchInsight = useCallback(() => {
     setInsightLoading(true);
     fetch(`${API}/api/competitor/insight`)
-      .then((r) => r.json())
-      .then((r) => setInsight(r.data ?? null))
-      .catch(() => {})
-      .finally(() => setInsightLoading(false));
+      .then((r) => r.json()).then((r) => setInsight(r.data ?? null))
+      .catch(() => {}).finally(() => setInsightLoading(false));
   }, []);
 
   const fetchRanking = useCallback(() => {
-    fetch(`${API}/api/competitor/ranking`)
-      .then((r) => r.json())
-      .then((r) => {
-        setRankingData(r.data?.rankings ?? []);
-        setAggregateOthers(r.data?.aggregate_others ?? null);
-      })
-      .catch(() => {});
+    fetch(`${API}/api/competitor/ranking`).then((r) => r.json()).then((r) => {
+      setRankingData(r.data?.rankings ?? []);
+      setAggregateOthers(r.data?.aggregate_others ?? null);
+    }).catch(() => {});
   }, []);
 
+  const fetchCpi = useCallback(() => {
+    if (cpiSummary) return;
+    setCpiLoading(true);
+    fetch(`${API}/api/competitor/cpi/summary`).then(r => r.json())
+      .then(r => setCpiSummary(r.data ?? null)).catch(() => {}).finally(() => setCpiLoading(false));
+  }, [cpiSummary]);
+
+  const fetchWl = useCallback(() => {
+    if (wlSummary) return;
+    setWlLoading(true);
+    fetch(`${API}/api/competitor/win-loss/summary`).then(r => r.json())
+      .then(r => setWlSummary(r.data ?? null)).catch(() => {}).finally(() => setWlLoading(false));
+  }, [wlSummary]);
+
+  const fetchEwa = useCallback(() => {
+    if (ewaSummary) return;
+    setEwaLoading(true);
+    fetch(`${API}/api/competitor/early-warning/active`).then(r => r.json())
+      .then(r => setEwaSummary(r.data ?? null)).catch(() => {}).finally(() => setEwaLoading(false));
+  }, [ewaSummary]);
+
+  const fetchCsr = useCallback(() => {
+    if (csrSummary) return;
+    setCsrLoading(true);
+    fetch(`${API}/api/competitor/counter-strategy/summary`).then(r => r.json())
+      .then(r => setCsrSummary(r.data ?? null)).catch(() => {}).finally(() => setCsrLoading(false));
+  }, [csrSummary]);
+
+  const fetchForecast = useCallback(() => {
+    if (forecastSummary) return;
+    setForecastLoading(true);
+    Promise.all([
+      fetch(`${API}/api/competitor/forecast/threat/summary`).then(r => r.json()),
+      fetch(`${API}/api/competitor/forecast/threat`).then(r => r.json()),
+      fetch(`${API}/api/competitor/forecast/at-risk`).then(r => r.json()),
+      fetch(`${API}/api/competitor/forecast/expansion`).then(r => r.json()),
+    ]).then(([sum, thr, risk, exp]) => {
+      setForecastSummary(sum.data ?? null);
+      setForecastThreats(thr.data?.threats ?? []);
+      setForecastAtRisk(risk.data?.areas ?? []);
+      setForecastExp(exp.data?.candidates ?? []);
+    }).catch(() => {}).finally(() => setForecastLoading(false));
+  }, [forecastSummary]);
+
   useEffect(() => {
-    fetchOverview();
-    fetchTriangulation();
-    fetchInsight();
-    fetchRanking();
+    fetchOverview(); fetchTriangulation(); fetchInsight(); fetchRanking();
   }, [fetchOverview, fetchTriangulation, fetchInsight, fetchRanking]);
 
+  useEffect(() => {
+    if (activeTab === "threat") fetchCpi();
+    if (activeTab === "winloss") fetchWl();
+    if (activeTab === "warning") fetchEwa();
+    if (activeTab === "strategi") fetchCsr();
+    if (activeTab === "prediksi" || activeTab === "ekspansi") fetchForecast();
+  }, [activeTab, fetchCpi, fetchWl, fetchEwa, fetchCsr, fetchForecast]);
+
   const refreshAll = useCallback(() => {
-    fetchOverview();
-    fetchTriangulation();
-    fetchInsight();
-    fetchRanking();
+    fetchOverview(); fetchTriangulation(); fetchInsight(); fetchRanking();
+    setCpiSummary(null); setWlSummary(null); setEwaSummary(null); setCsrSummary(null); setForecastSummary(null);
   }, [fetchOverview, fetchTriangulation, fetchInsight, fetchRanking]);
 
   const summary = useMemo(() => ({
@@ -1310,16 +1462,21 @@ export default function CompetitorPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1 border-b border-border pb-0">
-          {[
-            { id: "tri",    label: "Triangulasi per Wilayah" },
-            { id: "rank",   label: "Ranking Kompetitor" },
-            ...(isAdmin ? [{ id: "upload", label: "Upload & Kelola Data" }] : []),
-          ].map(({ id, label }) => (
+        <div className="flex items-center gap-1 border-b border-border pb-0 overflow-x-auto">
+          {([
+            { id: "overview",  label: "Overview" },
+            { id: "threat",    label: "Threat Map" },
+            { id: "winloss",   label: "Win/Loss" },
+            { id: "warning",   label: `Early Warning${ewaSummary?.total_active ? ` (${ewaSummary.total_active})` : ""}` },
+            { id: "strategi",  label: "Counter-Strategy" },
+            { id: "prediksi",  label: "Prediksi" },
+            { id: "ekspansi",  label: "Ekspansi" },
+            ...(isAdmin ? [{ id: "data", label: "Data ASPERSSI" }] : []),
+          ] as { id: TabId; label: string }[]).map(({ id, label }) => (
             <button
               key={id}
-              onClick={() => setActiveTab(id as typeof activeTab)}
-              className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors -mb-px ${
+              onClick={() => setActiveTab(id)}
+              className={`shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors -mb-px ${
                 activeTab === id
                   ? "border-foreground text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -1330,8 +1487,8 @@ export default function CompetitorPage() {
           ))}
         </div>
 
-        {/* ── TAB 1: Triangulasi ────────────────────────────────────────────── */}
-        {activeTab === "tri" && (
+        {/* ── TAB 1: Overview ─────────────────────────────────────────────── */}
+        {activeTab === "overview" && (
           <Card>
             <CardHeader className="border-b border-border pb-3">
               <CardTitle className="text-sm flex items-center gap-2">
@@ -1442,165 +1599,528 @@ export default function CompetitorPage() {
           </Card>
         )}
 
-        {/* ── TAB 2: Ranking ───────────────────────────────────────────────── */}
-        {activeTab === "rank" && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* ASPERSSI ranking */}
-            <Card>
-              <CardHeader className="border-b border-border pb-3">
-                <CardTitle className="text-sm">Berdasarkan Data ASPERSSI (Resmi)</CardTitle>
-                <p className="text-[11px] text-muted-foreground">
-                  Data {cov?.marketshare_brand.periode_tersedia.join(" – ") ?? "Des 2025 – Jan 2026"} ({cov?.marketshare_brand.periode_tersedia.length ?? 2} periode)
-                </p>
-              </CardHeader>
-              <CardContent className="pt-3 space-y-2">
-                <div className="rounded-lg border border-yellow-300/60 dark:border-yellow-700/30 bg-yellow-50/50 dark:bg-yellow-950/20 px-3 py-2">
-                  <p className="text-[10px] text-yellow-700 dark:text-yellow-400">
-                    ⚠ Tren dihitung dari 2 titik saja — interpretasi hati-hati
-                  </p>
+        {/* ── TAB 2: Threat Map ────────────────────────────────────────────── */}
+        {activeTab === "threat" && (
+          <div className="space-y-5">
+            {/* CPI Summary */}
+            {cpiLoading ? (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+              </div>
+            ) : cpiSummary ? (
+              <>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  {(["critical", "high", "medium", "low"] as const).map(lbl => (
+                    <Card key={lbl}>
+                      <CardContent className="pt-4 pb-4">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">CPI {CPI_CFG[lbl].label}</p>
+                        <p className="text-3xl font-bold leading-none mt-1" style={{ color: lbl === "critical" ? "#DC2626" : lbl === "high" ? "#EA580C" : lbl === "medium" ? "#CA8A04" : "#16a34a" }}>
+                          {cpiSummary.by_label[lbl] ?? 0}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-1">dari {cpiSummary.total_stores} toko</p>
+                      </CardContent>
+                    </Card>
+                  ))}
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
-                        <th className="py-2 text-left font-semibold">Brand</th>
-                        <th className="py-2 text-right font-semibold">Avg MS%</th>
-                        <th className="py-2 text-right font-semibold">Tren (pp)</th>
-                        <th className="py-2 text-right font-semibold">Provinsi</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/50">
-                      {rankingData.map((r, i) => (
-                        <tr key={r.brand} className="hover:bg-muted/20">
-                          <td className="py-2 font-medium flex items-center gap-1.5">
-                            <span className="text-muted-foreground/50 text-[9px] w-4">{i + 1}</span>
-                            {r.brand}
-                          </td>
-                          <td className="py-2 text-right tabular-nums font-semibold">{r.avg_ms_pct.toFixed(1)}%</td>
-                          <td className="py-2 text-right">
-                            <span className={`font-semibold tabular-nums ${TREND_CLS[r.trend_label]}`}>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                  <Card>
+                    <CardHeader className="border-b border-border pb-3">
+                      <CardTitle className="text-sm">Toko CPI Kritis ({cpiSummary.critical_stores.length})</CardTitle>
+                      <p className="text-[11px] text-muted-foreground">Tekanan kompetitif tertinggi — prioritas utama</p>
+                    </CardHeader>
+                    <CardContent className="pt-0 px-0">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-muted/50 border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
+                              <th className="px-4 py-2 text-left">Toko</th>
+                              <th className="px-4 py-2 text-right">CPI</th>
+                              <th className="px-4 py-2 text-right">FBSI</th>
+                              <th className="px-4 py-2 text-right">Vol Elang</th>
+                              <th className="px-4 py-2 text-left">Alert</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/50">
+                            {cpiSummary.critical_stores.slice(0, 8).map(r => (
+                              <tr key={r.id_toko} className="hover:bg-muted/20">
+                                <td className="px-4 py-2 font-medium max-w-[140px] truncate" title={r.nama_toko ?? r.id_toko}>
+                                  {r.nama_toko ?? r.id_toko}
+                                  {r.kabupaten && <span className="block text-[10px] text-muted-foreground">{r.kabupaten}</span>}
+                                </td>
+                                <td className="px-4 py-2 text-right"><ThreatScoreBadge label="critical" /></td>
+                                <td className="px-4 py-2 text-right tabular-nums">{r.fbsi_latest?.toFixed(1) ?? "—"}%</td>
+                                <td className="px-4 py-2 text-right tabular-nums">
+                                  <span className={`font-semibold ${(r.elang_vol_pct ?? 0) < 0 ? "text-red-600 dark:text-red-400" : "text-green-600"}`}>
+                                    {r.elang_vol_pct != null ? `${r.elang_vol_pct > 0 ? "+" : ""}${r.elang_vol_pct.toFixed(1)}%` : "—"}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 text-[10px] text-muted-foreground">{r.alert_level ?? "—"}</td>
+                              </tr>
+                            ))}
+                            {!cpiSummary.critical_stores.length && (
+                              <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">Tidak ada toko CPI critical</td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="border-b border-border pb-3">
+                      <CardTitle className="text-sm">Ranking Kompetitor (ASPERSSI)</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-3 space-y-1.5">
+                      {rankingData.slice(0, 8).map((r, i) => (
+                        <div key={r.brand} className="flex items-center justify-between px-3 py-2 bg-muted/30 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-muted-foreground/50 w-4">{i + 1}</span>
+                            <span className="text-xs font-medium truncate max-w-[160px]">{r.brand}</span>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span className="text-xs font-bold">{r.avg_ms_pct.toFixed(1)}%</span>
+                            <span className={`ml-2 text-[10px] ${TREND_CLS[r.trend_label]}`}>
                               {r.avg_trend_pp > 0 ? "+" : ""}{r.avg_trend_pp.toFixed(2)}pp
                             </span>
-                          </td>
-                          <td className="py-2 text-right text-muted-foreground">{r.provinsi_count}</td>
-                        </tr>
-                      ))}
-                      {!rankingData.length && (
-                        <tr><td colSpan={4} className="py-6 text-center text-muted-foreground">Tidak ada data</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Aggregate others card */}
-                {aggregateOthers && (
-                  <div className="mt-3 border border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                          <span className="text-base leading-none">?</span>
-                          <span>{aggregateOthers.label}</span>
+                          </div>
                         </div>
-                        <p className="text-[10px] text-muted-foreground/70 mt-1 leading-relaxed">
-                          Tidak dihitung dalam ranking individual karena merupakan gabungan banyak
-                          brand lokal/kecil yang tidak teridentifikasi secara spesifik di data ASPERSSI
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <div className="text-xl font-bold tabular-nums">{aggregateOthers.avg_ms_pct.toFixed(1)}%</div>
-                        <div className={`text-xs font-semibold tabular-nums mt-0.5 ${TREND_CLS[aggregateOthers.trend_label]}`}>
-                          {aggregateOthers.avg_trend_pp > 0 ? "+" : ""}{aggregateOthers.avg_trend_pp.toFixed(2)}pp
-                        </div>
-                        <span className="text-[10px] text-muted-foreground px-1.5 py-0.5 border border-border rounded mt-1 inline-block">
-                          {aggregateOthers.trend_label}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* CAD / TSO ranking */}
-            <Card>
-              <CardHeader className="border-b border-border pb-3">
-                <CardTitle className="text-sm">Berdasarkan Laporan TSO (Lapangan)</CardTitle>
-                <p className="text-[11px] text-muted-foreground">Dari hasil validasi CAD Alert oleh TSO</p>
-              </CardHeader>
-              <CardContent className="pt-3 space-y-3">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
-                        <th className="py-2 text-left font-semibold">Brand</th>
-                        <th className="py-2 text-right font-semibold">Frekuensi</th>
-                        <th className="py-2 text-right font-semibold">Toko</th>
-                        <th className="py-2 text-right font-semibold">Gap Harga</th>
-                        <th className="py-2 text-left font-semibold">Metode</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/50">
-                      {(overview?.competitor_ranking_cad ?? []).map((r, i) => (
-                        <tr key={r.brand} className="hover:bg-muted/20">
-                          <td className="py-2 font-medium flex items-center gap-1.5">
-                            <span className="text-muted-foreground/50 text-[9px] w-4">{i + 1}</span>
-                            <span className="truncate max-w-[120px]" title={r.brand}>{r.brand}</span>
-                          </td>
-                          <td className="py-2 text-right tabular-nums font-semibold">{r.kejadian_cad}x</td>
-                          <td className="py-2 text-right tabular-nums text-muted-foreground">{r.toko_terdampak}</td>
-                          <td className="py-2 text-right tabular-nums text-muted-foreground">
-                            {r.avg_gap_harga_per_zak != null
-                              ? `Rp ${new Intl.NumberFormat("id-ID").format(r.avg_gap_harga_per_zak)}`
-                              : "—"}
-                          </td>
-                          <td className="py-2 text-muted-foreground max-w-[100px] truncate" title={r.metode_dominan ?? ""}>
-                            {r.metode_dominan ?? "—"}
-                          </td>
-                        </tr>
                       ))}
-                      {!overview?.competitor_ranking_cad?.length && (
-                        <tr><td colSpan={5} className="py-6 text-center text-muted-foreground">Belum ada data CAD kompetitor</td></tr>
-                      )}
-                    </tbody>
-                  </table>
+                      {!rankingData.length && <p className="text-xs text-muted-foreground text-center py-4">Tidak ada data ASPERSSI</p>}
+                    </CardContent>
+                  </Card>
                 </div>
-                <p className="text-[10px] text-muted-foreground/70 italic leading-relaxed">
-                  Data subjektif dari laporan TSO — bukan data resmi pasar.
-                  Brand yang muncul di sini belum tentu ada di data ASPERSSI
-                  (bisa distributor tidak resmi atau brand lokal).
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Discrepancy insight */}
-            {(overview?.competitor_ranking_cad?.length ?? 0) > 0 &&
-             rankingData.length > 0 && (() => {
-              const asperssiNames = new Set(rankingData.map((r) => r.brand.toLowerCase()));
-              const cadOnly = (overview?.competitor_ranking_cad ?? []).filter(
-                (r) => !asperssiNames.has(r.brand.toLowerCase())
-              );
-              if (!cadOnly.length) return null;
-              return (
-                <Card className="border-amber-300/60 dark:border-amber-700/40 bg-amber-50/50 dark:bg-amber-950/20 col-span-full">
-                  <CardContent className="pt-3 pb-3">
-                    <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-2">
-                      Brand muncul di laporan TSO tapi tidak ada di ASPERSSI
-                    </p>
-                    {cadOnly.map((r) => (
-                      <p key={r.brand} className="text-[11px] text-amber-700 dark:text-amber-400">
-                        <span className="font-semibold">{r.brand}</span> muncul {r.kejadian_cad}x di laporan TSO →
-                        Kemungkinan distributor tidak resmi atau brand regional yang belum terdata ASPERSSI
-                      </p>
-                    ))}
-                  </CardContent>
-                </Card>
-              );
-            })()}
+              </>
+            ) : (
+              <Card>
+                <CardContent className="pt-6 pb-6 text-center">
+                  <p className="text-sm text-muted-foreground">Data CPI belum tersedia.</p>
+                  <p className="text-xs text-muted-foreground mt-1">Jalankan analisis via POST /api/competitor/refresh (admin) atau tunggu jadwal harian 06:30.</p>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 
-        {/* ── TAB 3: Upload (admin only) ────────────────────────────────────── */}
-        {activeTab === "upload" && isAdmin && (
+        {/* ── TAB 5: Win/Loss ──────────────────────────────────────────────── */}
+        {activeTab === "winloss" && (
+          <div className="space-y-5">
+            {wlLoading ? (
+              <Skeleton className="h-48 rounded-xl" />
+            ) : wlSummary ? (
+              <>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[
+                    { label: "Total Toko", value: wlSummary.total, color: "#6b7280", sub: "dianalisis" },
+                    { label: "Win", value: wlSummary.by_outcome.win ?? 0, color: "#16a34a", sub: "Elang naik / Banteng turun" },
+                    { label: "Loss", value: wlSummary.by_outcome.loss ?? 0, color: "#DC2626", sub: "Elang turun / Banteng naik" },
+                    { label: "Win Rate", value: `${wlSummary.win_rate_pct.toFixed(1)}%`, color: wlSummary.win_rate_pct >= 50 ? "#16a34a" : "#DC2626", sub: `periode ${wlSummary.periode}` },
+                  ].map(k => (
+                    <Card key={k.label}>
+                      <CardContent className="pt-4 pb-4">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{k.label}</p>
+                        <p className="text-3xl font-bold leading-none mt-1" style={{ color: k.color }}>{k.value}</p>
+                        <p className="text-[11px] text-muted-foreground mt-1">{k.sub}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                  <Card>
+                    <CardHeader className="border-b border-border pb-3">
+                      <CardTitle className="text-sm text-green-700 dark:text-green-400">Top Win — Volume Elang Naik</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0 px-0">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-muted/50 border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
+                            <th className="px-4 py-2 text-left">Toko</th>
+                            <th className="px-4 py-2 text-right">Vol Elang MoM</th>
+                            <th className="px-4 py-2 text-right">FBSI Delta</th>
+                            <th className="px-4 py-2 text-left">Detail</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/50">
+                          {wlSummary.top_wins.slice(0, 6).map(r => (
+                            <tr key={r.id_toko} className="hover:bg-muted/20">
+                              <td className="px-4 py-2 font-medium max-w-[140px] truncate" title={r.nama_toko ?? r.id_toko}>
+                                {r.nama_toko ?? r.id_toko}
+                                {r.kabupaten && <span className="block text-[10px] text-muted-foreground">{r.kabupaten}</span>}
+                              </td>
+                              <td className="px-4 py-2 text-right font-bold text-green-600 dark:text-green-400 tabular-nums">
+                                +{r.elang_vol_pct?.toFixed(1) ?? "—"}%
+                              </td>
+                              <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
+                                {r.banteng_fbsi_delta != null ? `${r.banteng_fbsi_delta > 0 ? "+" : ""}${r.banteng_fbsi_delta.toFixed(1)}pp` : "—"}
+                              </td>
+                              <td className="px-4 py-2 text-[10px] text-muted-foreground">{r.outcome_detail?.replace(/_/g, " ") ?? "—"}</td>
+                            </tr>
+                          ))}
+                          {!wlSummary.top_wins.length && (
+                            <tr><td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">Tidak ada data win</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="border-b border-border pb-3">
+                      <CardTitle className="text-sm text-red-700 dark:text-red-400">Top Loss — Volume Elang Turun</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-0 px-0">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-muted/50 border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
+                            <th className="px-4 py-2 text-left">Toko</th>
+                            <th className="px-4 py-2 text-right">Vol Elang MoM</th>
+                            <th className="px-4 py-2 text-right">FBSI Delta</th>
+                            <th className="px-4 py-2 text-left">Faktor</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/50">
+                          {wlSummary.top_losses.slice(0, 6).map(r => (
+                            <tr key={r.id_toko} className="hover:bg-muted/20">
+                              <td className="px-4 py-2 font-medium max-w-[140px] truncate" title={r.nama_toko ?? r.id_toko}>
+                                {r.nama_toko ?? r.id_toko}
+                                {r.kabupaten && <span className="block text-[10px] text-muted-foreground">{r.kabupaten}</span>}
+                              </td>
+                              <td className="px-4 py-2 text-right font-bold text-red-600 dark:text-red-400 tabular-nums">
+                                {r.elang_vol_pct?.toFixed(1) ?? "—"}%
+                              </td>
+                              <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
+                                {r.banteng_fbsi_delta != null ? `${r.banteng_fbsi_delta > 0 ? "+" : ""}${r.banteng_fbsi_delta.toFixed(1)}pp` : "—"}
+                              </td>
+                              <td className="px-4 py-2 text-[10px] text-muted-foreground">{r.primary_factor?.replace(/_/g, " ") ?? "—"}</td>
+                            </tr>
+                          ))}
+                          {!wlSummary.top_losses.length && (
+                            <tr><td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">Tidak ada data loss</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </CardContent>
+                  </Card>
+                </div>
+              </>
+            ) : (
+              <Card>
+                <CardContent className="pt-6 pb-6 text-center">
+                  <p className="text-sm text-muted-foreground">Data Win/Loss belum tersedia. Jalankan analisis via POST /api/competitor/refresh.</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* ── TAB 6: Early Warning ─────────────────────────────────────────── */}
+        {activeTab === "warning" && (
+          <div className="space-y-4">
+            {ewaLoading ? (
+              <Skeleton className="h-48 rounded-xl" />
+            ) : ewaSummary ? (
+              <>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  {(["critical","high","medium","low"] as const).map(sev => (
+                    <Card key={sev}>
+                      <CardContent className="pt-4 pb-4">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{sev}</p>
+                        <p className="text-3xl font-bold leading-none mt-1" style={{ color: sev==="critical"?"#DC2626":sev==="high"?"#EA580C":sev==="medium"?"#CA8A04":"#3b82f6" }}>
+                          {ewaSummary.by_severity[sev] ?? 0}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-1">alerts aktif</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                <Card>
+                  <CardHeader className="border-b border-border pb-3">
+                    <CardTitle className="text-sm">Alert Aktif ({ewaSummary.total_active})</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0 px-0">
+                    {!ewaSummary.alerts.length ? (
+                      <p className="px-4 py-8 text-center text-sm text-green-600 dark:text-green-400">Tidak ada alert aktif saat ini</p>
+                    ) : (
+                      <div className="divide-y divide-border/50">
+                        {ewaSummary.alerts.map(a => (
+                          <div key={a.id} className="px-4 py-3 hover:bg-muted/20">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <SeverityBadge severity={a.severity} />
+                                  <span className="text-[10px] text-muted-foreground">{a.scope} · {a.scope_name ?? a.scope_id}</span>
+                                  {a.provinsi && <span className="text-[10px] text-muted-foreground">· {a.provinsi}</span>}
+                                </div>
+                                <p className="text-sm font-medium">{a.title}</p>
+                                {a.description && <p className="text-xs text-muted-foreground mt-0.5">{a.description}</p>}
+                                {a.metric_value != null && (
+                                  <p className="text-xs text-muted-foreground mt-0.5">
+                                    {a.metric_label}: <span className="font-medium text-foreground">{a.metric_value.toFixed(1)}</span>
+                                    {a.metric_threshold != null && ` (threshold: ${a.metric_threshold})`}
+                                  </p>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-muted-foreground shrink-0">
+                                {new Date(a.triggered_at).toLocaleDateString("id-ID")}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <Card>
+                <CardContent className="pt-6 pb-6 text-center">
+                  <p className="text-sm text-muted-foreground">Data Early Warning belum tersedia. Jalankan analisis via POST /api/competitor/refresh.</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* ── TAB 7: Counter-Strategy ──────────────────────────────────────── */}
+        {activeTab === "strategi" && (
+          <div className="space-y-4">
+            {csrLoading ? (
+              <Skeleton className="h-48 rounded-xl" />
+            ) : csrSummary ? (
+              <>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  {(["urgent","high","medium","low"] as const).map(pri => (
+                    <Card key={pri}>
+                      <CardContent className="pt-4 pb-4">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Prioritas {pri}</p>
+                        <p className="text-3xl font-bold leading-none mt-1" style={{ color: pri==="urgent"?"#DC2626":pri==="high"?"#EA580C":pri==="medium"?"#CA8A04":"#6b7280" }}>
+                          {csrSummary.by_priority[pri] ?? 0}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-1">kabupaten</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                <Card>
+                  <CardHeader className="border-b border-border pb-3">
+                    <CardTitle className="text-sm">Area Prioritas Tertinggi</CardTitle>
+                    <p className="text-[11px] text-muted-foreground">Rekomendasi action per kabupaten berdasarkan CPI + MSM + Win/Loss</p>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    {!csrSummary.urgent_areas.length ? (
+                      <p className="py-8 text-center text-sm text-muted-foreground">Belum ada rekomendasi strategy tersedia</p>
+                    ) : (
+                      <div className="space-y-3 pt-3">
+                        {csrSummary.urgent_areas.map(r => (
+                          <div key={r.id} className="border border-border rounded-xl p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-semibold ${r.priority==="urgent"?"bg-red-100 text-red-700":r.priority==="high"?"bg-orange-100 text-orange-700":"bg-yellow-100 text-yellow-700"}`}>
+                                    {r.priority.toUpperCase()}
+                                  </span>
+                                  <span className="text-xs font-semibold text-muted-foreground">{r.strategy_type.replace(/_/g, " ")}</span>
+                                </div>
+                                <p className="text-sm font-semibold">{r.scope_id}</p>
+                                {r.provinsi && <p className="text-[11px] text-muted-foreground">{r.provinsi}</p>}
+                              </div>
+                              <div className="text-right shrink-0">
+                                {r.trigger_cpi_avg != null && (
+                                  <p className="text-xs text-muted-foreground">Avg CPI: <span className="font-bold text-foreground">{r.trigger_cpi_avg.toFixed(1)}</span></p>
+                                )}
+                                <p className="text-xs text-muted-foreground">
+                                  {r.n_stores_critical} kritis · {r.n_stores_loss} loss
+                                </p>
+                              </div>
+                            </div>
+                            {r.recommended_actions && r.recommended_actions.length > 0 && (
+                              <ul className="space-y-1">
+                                {r.recommended_actions.map((act, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                                    <span className="shrink-0 text-foreground/40 mt-0.5">•</span>
+                                    {act}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                            {r.ilp_suggestion && (
+                              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-2">
+                                <p className="text-[10px] font-semibold text-blue-700 dark:text-blue-400 mb-0.5">ILP Hint</p>
+                                <p className="text-xs text-blue-700 dark:text-blue-300">{r.ilp_suggestion}</p>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <Card>
+                <CardContent className="pt-6 pb-6 text-center">
+                  <p className="text-sm text-muted-foreground">Data Counter-Strategy belum tersedia. Jalankan analisis via POST /api/competitor/refresh.</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* ── TAB 8: Prediksi ──────────────────────────────────────────────── */}
+        {activeTab === "prediksi" && (
+          <div className="space-y-4">
+            {forecastLoading ? (
+              <Skeleton className="h-48 rounded-xl" />
+            ) : forecastSummary?.available ? (
+              <>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[
+                    { label: "Area Forecast", value: forecastSummary.meta.areas_forecast, color: "#6b7280", sub: `model: ${forecastSummary.meta.model ?? "—"}` },
+                    { label: "Threat Provinsi", value: forecastSummary.threat_count ?? 0, color: "#DC2626", sub: "tren turun signifikan" },
+                    { label: "At Risk Kabupaten", value: forecastSummary.at_risk_count ?? 0, color: "#EA580C", sub: "perlu perhatian" },
+                    { label: "Horizon", value: `${forecastSummary.meta.horizon_months} bln`, color: "#3b82f6", sub: forecastSummary.meta.generated_at ? new Date(forecastSummary.meta.generated_at).toLocaleDateString("id-ID") : "—" },
+                  ].map(k => (
+                    <Card key={k.label}>
+                      <CardContent className="pt-4 pb-4">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{k.label}</p>
+                        <p className="text-3xl font-bold leading-none mt-1" style={{ color: k.color }}>{k.value}</p>
+                        <p className="text-[11px] text-muted-foreground mt-1">{k.sub}</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                {(forecastThreats as { provinsi: string; threat_level: string; current_elang_pct: number; forecast_end_elang_pct: number }[]).length > 0 && (
+                  <Card>
+                    <CardHeader className="border-b border-border pb-3">
+                      <CardTitle className="text-sm">Ancaman Tren Provinsi</CardTitle>
+                      <p className="text-[11px] text-muted-foreground">Provinsi dengan prediksi penurunan share Elang paling signifikan</p>
+                    </CardHeader>
+                    <CardContent className="pt-3 space-y-2">
+                      {(forecastThreats as { provinsi: string; threat_level: string; current_elang_pct: number; forecast_end_elang_pct: number }[]).map(t => (
+                        <div key={t.provinsi} className="flex items-center justify-between px-3 py-2 bg-red-50/60 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg">
+                          <div>
+                            <span className="text-xs font-semibold">{t.provinsi}</span>
+                            <SeverityBadge severity={t.threat_level} />
+                          </div>
+                          <div className="text-right text-xs">
+                            <span className="text-muted-foreground">Saat ini: </span>
+                            <span className="font-bold">{t.current_elang_pct.toFixed(1)}%</span>
+                            <span className="text-muted-foreground"> → </span>
+                            <span className="font-bold text-red-600 dark:text-red-400">{t.forecast_end_elang_pct.toFixed(1)}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            ) : (
+              <Card>
+                <CardContent className="pt-6 pb-6 text-center space-y-2">
+                  <p className="text-sm font-medium">Cache Forecast Belum Tersedia</p>
+                  <p className="text-xs text-muted-foreground">Jalankan <code className="bg-muted px-1 rounded text-xs">scripts/competitor_forecast.py</code> di lokal atau Google Colab, lalu upload hasilnya ke <code className="bg-muted px-1 rounded text-xs">api/data/competitor_forecast_cache.json</code>.</p>
+                  <p className="text-xs text-muted-foreground">Script tersedia di: <span className="font-mono">scripts/competitor_forecast.py</span></p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* ── TAB 9: Ekspansi ──────────────────────────────────────────────── */}
+        {activeTab === "ekspansi" && (
+          <div className="space-y-4">
+            {forecastLoading ? (
+              <Skeleton className="h-48 rounded-xl" />
+            ) : forecastSummary?.available ? (
+              <>
+                <Card>
+                  <CardHeader className="border-b border-border pb-3">
+                    <CardTitle className="text-sm">Area At-Risk ({forecastAtRisk.length})</CardTitle>
+                    <p className="text-[11px] text-muted-foreground">Kabupaten yang diprediksi mengalami penurunan share Elang</p>
+                  </CardHeader>
+                  <CardContent className="pt-0 px-0">
+                    {!forecastAtRisk.length ? (
+                      <p className="px-4 py-6 text-center text-sm text-muted-foreground">Tidak ada area at-risk ditemukan</p>
+                    ) : (
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-muted/50 border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
+                            <th className="px-4 py-2 text-left">Area</th>
+                            <th className="px-4 py-2 text-left">Provinsi</th>
+                            <th className="px-4 py-2 text-right">Elang% Sekarang</th>
+                            <th className="px-4 py-2 text-right">Prediksi Akhir</th>
+                            <th className="px-4 py-2 text-left">Tren</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/50">
+                          {forecastAtRisk.map(r => (
+                            <tr key={r.area} className="hover:bg-muted/20">
+                              <td className="px-4 py-2 font-medium">{r.area}</td>
+                              <td className="px-4 py-2 text-muted-foreground">{r.provinsi ?? "—"}</td>
+                              <td className="px-4 py-2 text-right font-semibold tabular-nums">{r.current_elang_pct.toFixed(1)}%</td>
+                              <td className="px-4 py-2 text-right font-bold tabular-nums text-red-600 dark:text-red-400">{r.forecast_end_elang_pct.toFixed(1)}%</td>
+                              <td className="px-4 py-2"><MomentumIndicator label={r.trend_elang} /></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="border-b border-border pb-3">
+                    <CardTitle className="text-sm">Peluang Ekspansi ({forecastExp.length})</CardTitle>
+                    <p className="text-[11px] text-muted-foreground">Area dengan potensi pertumbuhan Elang terbesar</p>
+                  </CardHeader>
+                  <CardContent className="pt-0 px-0">
+                    {!forecastExp.length ? (
+                      <p className="px-4 py-6 text-center text-sm text-muted-foreground">Tidak ada kandidat ekspansi ditemukan</p>
+                    ) : (
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-muted/50 border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
+                            <th className="px-4 py-2 text-left">Area</th>
+                            <th className="px-4 py-2 text-left">Provinsi</th>
+                            <th className="px-4 py-2 text-right">Elang% Sekarang</th>
+                            <th className="px-4 py-2 text-right">Prediksi Akhir</th>
+                            <th className="px-4 py-2 text-right">Potensi Naik</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/50">
+                          {forecastExp.map(r => (
+                            <tr key={r.area} className="hover:bg-muted/20">
+                              <td className="px-4 py-2 font-medium">{r.area}</td>
+                              <td className="px-4 py-2 text-muted-foreground">{r.provinsi ?? "—"}</td>
+                              <td className="px-4 py-2 text-right tabular-nums">{r.current_elang_pct.toFixed(1)}%</td>
+                              <td className="px-4 py-2 text-right font-bold tabular-nums text-green-600 dark:text-green-400">{r.forecast_end_elang_pct.toFixed(1)}%</td>
+                              <td className="px-4 py-2 text-right font-bold tabular-nums text-green-600 dark:text-green-400">
+                                +{(r.forecast_end_elang_pct - r.current_elang_pct).toFixed(1)}pp
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <Card>
+                <CardContent className="pt-6 pb-6 text-center">
+                  <p className="text-sm text-muted-foreground">Cache forecast belum tersedia. Jalankan <code className="bg-muted px-1 rounded">scripts/competitor_forecast.py</code> dulu.</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* ── TAB 10: Data ASPERSSI (admin only) ───────────────────────────── */}
+        {activeTab === "data" && isAdmin && (
           <div className="space-y-8">
             {/* Excel upload sections */}
             <div className="space-y-5">

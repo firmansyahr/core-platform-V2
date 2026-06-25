@@ -41,6 +41,26 @@ async def _run_oracle_daily_monitoring() -> None:
         logger.exception("[oracle_scheduler] Daily monitoring error")
 
 
+async def _run_competitor_analysis() -> None:
+    try:
+        from api.core.competitor_analyzer import CompetitorAnalyzer
+        from api.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            analyzer = CompetitorAnalyzer(db)
+            result = analyzer.run_full_analysis()
+            logger.info(
+                "[oracle_scheduler] Competitor analysis selesai: CPI %d stores, EWA %d alerts",
+                result["competitive_pressure_index"].get("stores_processed", 0),
+                result["early_warning_alerts"].get("alerts_created", 0),
+            )
+        finally:
+            db.close()
+    except Exception:
+        logger.exception("[oracle_scheduler] Competitor analysis error")
+
+
 async def _run_oracle_cad_auto_validate() -> None:
     if not _api_key_ready():
         return
@@ -67,8 +87,16 @@ async def _run_oracle_cad_auto_validate() -> None:
 
 
 def start_scheduler() -> None:
+    # Competitor analysis berjalan tanpa API key — hanya butuh data transaksi
+    _scheduler.add_job(
+        _run_competitor_analysis, trigger=CronTrigger(hour=6, minute=30),
+        id="competitor_analysis", replace_existing=True,
+    )
+
     if not _api_key_ready():
         logger.warning("[oracle_scheduler] ANTHROPIC_API_KEY tidak diset — background job ORACLE TIDAK dijalankan")
+        _scheduler.start()
+        logger.info("[oracle_scheduler] Started — competitor analysis 06:30 (oracle jobs skip tanpa API key)")
         return
 
     _scheduler.add_job(
@@ -80,7 +108,7 @@ def start_scheduler() -> None:
         id="oracle_cad_auto_validate", replace_existing=True,
     )
     _scheduler.start()
-    logger.info("[oracle_scheduler] Started — daily monitoring 07:00, CAD auto-validate 07:15 (1x/hari, portfolio mode)")
+    logger.info("[oracle_scheduler] Started — competitor analysis 06:30, daily monitoring 07:00, CAD auto-validate 07:15")
 
 
 def shutdown_scheduler() -> None:

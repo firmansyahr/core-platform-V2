@@ -21,7 +21,13 @@ from api.core.auth import get_current_admin_user
 from api.core.competitor_analyzer import CompetitorAnalyzer
 from api.core.data_loader import get_data
 from api.database import SessionLocal
-from api.models import MarketShareMomentum
+from api.models import (
+    CompetitivePressureIndex,
+    CounterStrategyResult,
+    EarlyWarningAlert,
+    MarketShareMomentum,
+    WinLossRecord,
+)
 
 router = APIRouter(prefix="/api/competitor", tags=["competitor"])
 
@@ -832,3 +838,384 @@ def momentum_provinsi_detail(provinsi: str) -> dict:
         })
     finally:
         db.close()
+
+
+# ── CPI — Competitive Pressure Index ─────────────────────────────────────────
+
+def _cpi_to_dict(r: CompetitivePressureIndex) -> dict:
+    return {
+        "id_toko": r.id_toko, "nama_toko": r.nama_toko,
+        "kabupaten": r.kabupaten, "provinsi": r.provinsi, "periode": r.periode,
+        "cpi_score": r.cpi_score, "cpi_label": r.cpi_label,
+        "score_fbsi": r.score_fbsi, "score_volume_trend": r.score_volume_trend,
+        "score_he": r.score_he, "score_crs": r.score_crs,
+        "fbsi_latest": r.fbsi_latest, "delta_fbsi": r.delta_fbsi,
+        "delta_he_pct": r.delta_he_pct, "crs_raw": r.crs_raw,
+        "elang_vol_cur": r.elang_vol_cur, "elang_vol_prev": r.elang_vol_prev,
+        "elang_vol_pct": r.elang_vol_pct, "alert_level": r.alert_level,
+        "computed_at": r.computed_at,
+    }
+
+
+@router.get("/cpi/summary")
+def cpi_summary() -> dict:
+    db = SessionLocal()
+    try:
+        from sqlalchemy import func as sql_func
+        latest = db.query(sql_func.max(CompetitivePressureIndex.periode)).scalar()
+        if not latest:
+            return _ok({"periode": None, "total_stores": 0, "by_label": {}, "critical_stores": [], "high_stores": []})
+
+        rows = db.query(CompetitivePressureIndex).filter(
+            CompetitivePressureIndex.periode == latest,
+        ).order_by(CompetitivePressureIndex.cpi_score.desc()).all()
+
+        by_label: dict[str, int] = {}
+        for r in rows:
+            by_label[r.cpi_label or "low"] = by_label.get(r.cpi_label or "low", 0) + 1
+
+        critical = [r for r in rows if r.cpi_label == "critical"]
+        high     = [r for r in rows if r.cpi_label == "high"]
+
+        return _ok({
+            "periode": latest,
+            "total_stores": len(rows),
+            "by_label": by_label,
+            "avg_cpi": round(sum(r.cpi_score or 0 for r in rows) / len(rows), 2) if rows else 0,
+            "critical_stores": [_cpi_to_dict(r) for r in critical[:10]],
+            "high_stores": [_cpi_to_dict(r) for r in high[:10]],
+        })
+    finally:
+        db.close()
+
+
+@router.get("/cpi/kabupaten/{kabupaten}")
+def cpi_kabupaten(kabupaten: str) -> dict:
+    db = SessionLocal()
+    try:
+        from sqlalchemy import func as sql_func
+        latest = db.query(sql_func.max(CompetitivePressureIndex.periode)).scalar()
+        kab = kabupaten.strip().upper()
+        rows = db.query(CompetitivePressureIndex).filter(
+            CompetitivePressureIndex.kabupaten == kab,
+            CompetitivePressureIndex.periode == latest,
+        ).order_by(CompetitivePressureIndex.cpi_score.desc()).all()
+
+        if not rows:
+            raise HTTPException(404, f"Tidak ada data CPI untuk kabupaten '{kabupaten}'")
+
+        return _ok({
+            "kabupaten": kab, "periode": latest,
+            "stores": [_cpi_to_dict(r) for r in rows],
+            "avg_cpi": round(sum(r.cpi_score or 0 for r in rows) / len(rows), 2),
+            "by_label": {lbl: sum(1 for r in rows if r.cpi_label == lbl) for lbl in ("critical","high","medium","low")},
+        })
+    finally:
+        db.close()
+
+
+@router.get("/cpi/toko/{id_toko}")
+def cpi_toko(id_toko: str) -> dict:
+    db = SessionLocal()
+    try:
+        rows = db.query(CompetitivePressureIndex).filter(
+            CompetitivePressureIndex.id_toko == id_toko,
+        ).order_by(CompetitivePressureIndex.periode.desc()).limit(12).all()
+
+        if not rows:
+            raise HTTPException(404, f"Tidak ada data CPI untuk toko '{id_toko}'")
+
+        return _ok({
+            "id_toko": id_toko,
+            "nama_toko": rows[0].nama_toko,
+            "history": [_cpi_to_dict(r) for r in reversed(rows)],
+        })
+    finally:
+        db.close()
+
+
+# ── Win/Loss ──────────────────────────────────────────────────────────────────
+
+def _wl_to_dict(r: WinLossRecord) -> dict:
+    return {
+        "id_toko": r.id_toko, "nama_toko": r.nama_toko,
+        "kabupaten": r.kabupaten, "provinsi": r.provinsi, "periode": r.periode,
+        "outcome": r.outcome, "outcome_detail": r.outcome_detail, "primary_factor": r.primary_factor,
+        "elang_vol_cur": r.elang_vol_cur, "elang_vol_prev": r.elang_vol_prev,
+        "elang_vol_pct": r.elang_vol_pct,
+        "banteng_fbsi_cur": r.banteng_fbsi_cur, "banteng_fbsi_delta": r.banteng_fbsi_delta,
+        "computed_at": r.computed_at,
+    }
+
+
+@router.get("/win-loss/summary")
+def win_loss_summary() -> dict:
+    db = SessionLocal()
+    try:
+        from sqlalchemy import func as sql_func
+        latest = db.query(sql_func.max(WinLossRecord.periode)).scalar()
+        if not latest:
+            return _ok({"periode": None, "total": 0, "by_outcome": {}})
+
+        rows = db.query(WinLossRecord).filter(WinLossRecord.periode == latest).all()
+        by_outcome: dict[str, int] = {}
+        for r in rows:
+            by_outcome[r.outcome] = by_outcome.get(r.outcome, 0) + 1
+
+        wins  = [r for r in rows if r.outcome == "win"]
+        losses = [r for r in rows if r.outcome == "loss"]
+
+        return _ok({
+            "periode": latest, "total": len(rows), "by_outcome": by_outcome,
+            "win_rate_pct": round(len(wins) / len(rows) * 100, 1) if rows else 0,
+            "top_wins": [_wl_to_dict(r) for r in sorted(wins, key=lambda x: x.elang_vol_pct or 0, reverse=True)[:10]],
+            "top_losses": [_wl_to_dict(r) for r in sorted(losses, key=lambda x: x.elang_vol_pct or 0)[:10]],
+        })
+    finally:
+        db.close()
+
+
+@router.get("/win-loss/kabupaten/{kabupaten}")
+def win_loss_kabupaten(kabupaten: str) -> dict:
+    db = SessionLocal()
+    try:
+        from sqlalchemy import func as sql_func
+        latest = db.query(sql_func.max(WinLossRecord.periode)).scalar()
+        kab = kabupaten.strip().upper()
+        rows = db.query(WinLossRecord).filter(
+            WinLossRecord.kabupaten == kab, WinLossRecord.periode == latest,
+        ).order_by(WinLossRecord.elang_vol_pct).all()
+
+        if not rows:
+            raise HTTPException(404, f"Tidak ada data Win/Loss untuk kabupaten '{kabupaten}'")
+
+        by_outcome = {}
+        for r in rows:
+            by_outcome[r.outcome] = by_outcome.get(r.outcome, 0) + 1
+
+        return _ok({
+            "kabupaten": kab, "periode": latest,
+            "by_outcome": by_outcome,
+            "stores": [_wl_to_dict(r) for r in rows],
+        })
+    finally:
+        db.close()
+
+
+# ── Early Warning ─────────────────────────────────────────────────────────────
+
+def _ewa_to_dict(r: EarlyWarningAlert) -> dict:
+    return {
+        "id": r.id, "scope": r.scope, "scope_id": r.scope_id, "scope_name": r.scope_name,
+        "provinsi": r.provinsi, "periode": r.periode,
+        "alert_type": r.alert_type, "severity": r.severity,
+        "title": r.title, "description": r.description,
+        "metric_value": r.metric_value, "metric_threshold": r.metric_threshold,
+        "metric_label": r.metric_label, "is_active": r.is_active,
+        "triggered_at": r.triggered_at,
+    }
+
+
+@router.get("/early-warning/active")
+def early_warning_active(provinsi: str | None = None, scope: str | None = None) -> dict:
+    db = SessionLocal()
+    try:
+        q = db.query(EarlyWarningAlert).filter(EarlyWarningAlert.is_active == 1)
+        if provinsi:
+            q = q.filter(EarlyWarningAlert.provinsi == provinsi.strip().upper())
+        if scope:
+            q = q.filter(EarlyWarningAlert.scope == scope)
+        rows = q.order_by(EarlyWarningAlert.triggered_at.desc()).all()
+
+        severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        rows.sort(key=lambda r: (severity_order.get(r.severity, 9), r.triggered_at or ""))
+
+        by_severity: dict[str, int] = {}
+        for r in rows:
+            by_severity[r.severity] = by_severity.get(r.severity, 0) + 1
+
+        return _ok({
+            "total_active": len(rows),
+            "by_severity": by_severity,
+            "alerts": [_ewa_to_dict(r) for r in rows],
+        })
+    finally:
+        db.close()
+
+
+@router.get("/early-warning/history")
+def early_warning_history(provinsi: str | None = None, limit: int = 50) -> dict:
+    db = SessionLocal()
+    try:
+        q = db.query(EarlyWarningAlert)
+        if provinsi:
+            q = q.filter(EarlyWarningAlert.provinsi == provinsi.strip().upper())
+        rows = q.order_by(EarlyWarningAlert.triggered_at.desc()).limit(min(limit, 200)).all()
+        return _ok({"total": len(rows), "alerts": [_ewa_to_dict(r) for r in rows]})
+    finally:
+        db.close()
+
+
+# ── Counter-Strategy ──────────────────────────────────────────────────────────
+
+def _csr_to_dict(r: CounterStrategyResult) -> dict:
+    return {
+        "id": r.id, "scope": r.scope, "scope_id": r.scope_id,
+        "provinsi": r.provinsi, "periode": r.periode,
+        "strategy_type": r.strategy_type, "priority": r.priority,
+        "trigger_cpi_avg": r.trigger_cpi_avg,
+        "trigger_ms_elang_trend": r.trigger_ms_elang_trend,
+        "trigger_primary_threat": r.trigger_primary_threat,
+        "n_stores_critical": r.n_stores_critical, "n_stores_high": r.n_stores_high,
+        "n_stores_win": r.n_stores_win, "n_stores_loss": r.n_stores_loss,
+        "recommended_actions": r.recommended_actions,
+        "target_metrics": r.target_metrics,
+        "ilp_suggestion": r.ilp_suggestion,
+        "computed_at": r.computed_at,
+    }
+
+
+@router.get("/counter-strategy/summary")
+def counter_strategy_summary() -> dict:
+    db = SessionLocal()
+    try:
+        from sqlalchemy import func as sql_func
+        latest = db.query(sql_func.max(CounterStrategyResult.periode)).scalar()
+        if not latest:
+            return _ok({"periode": None, "total_areas": 0, "by_strategy": {}, "urgent_areas": []})
+
+        rows = db.query(CounterStrategyResult).filter(
+            CounterStrategyResult.periode == latest,
+            CounterStrategyResult.scope == "kabupaten",
+        ).all()
+
+        by_strategy: dict[str, int] = {}
+        by_priority: dict[str, int] = {}
+        for r in rows:
+            by_strategy[r.strategy_type] = by_strategy.get(r.strategy_type, 0) + 1
+            by_priority[r.priority] = by_priority.get(r.priority, 0) + 1
+
+        priority_order = {"urgent": 0, "high": 1, "medium": 2, "low": 3}
+        urgent = sorted(
+            [r for r in rows if r.priority in ("urgent", "high")],
+            key=lambda r: (priority_order.get(r.priority, 9), -(r.trigger_cpi_avg or 0)),
+        )
+
+        return _ok({
+            "periode": latest, "total_areas": len(rows),
+            "by_strategy": by_strategy, "by_priority": by_priority,
+            "urgent_areas": [_csr_to_dict(r) for r in urgent[:10]],
+        })
+    finally:
+        db.close()
+
+
+@router.get("/counter-strategy/kabupaten/{kabupaten}")
+def counter_strategy_kabupaten(kabupaten: str) -> dict:
+    db = SessionLocal()
+    try:
+        kab = kabupaten.strip().upper()
+        rows = db.query(CounterStrategyResult).filter(
+            CounterStrategyResult.scope == "kabupaten",
+            CounterStrategyResult.scope_id == kab,
+        ).order_by(CounterStrategyResult.periode.desc()).limit(6).all()
+
+        if not rows:
+            raise HTTPException(404, f"Tidak ada strategi untuk kabupaten '{kabupaten}'")
+
+        return _ok({"kabupaten": kab, "strategies": [_csr_to_dict(r) for r in rows]})
+    finally:
+        db.close()
+
+
+# ── Manual Refresh ────────────────────────────────────────────────────────────
+
+@router.post("/refresh")
+def manual_refresh(current_user: dict = Depends(get_current_admin_user)) -> dict:
+    """Trigger full competitor analysis — admin only."""
+    db = SessionLocal()
+    try:
+        analyzer = CompetitorAnalyzer(db)
+        result = analyzer.run_full_analysis()
+        return _ok(result)
+    finally:
+        db.close()
+
+
+# ── Forecast endpoints ────────────────────────────────────────────────────────
+
+@router.get("/forecast/threat")
+def forecast_threat() -> dict:
+    """Provinsi dengan tren elang yang memburuk — dari cache forecast."""
+    from api.core.competitor_forecast_loader import CompetitorForecastLoader
+    cache = CompetitorForecastLoader.load()
+    if not cache["meta"].get("available"):
+        return _ok({"available": False, "threats": [], "message": "Jalankan scripts/competitor_forecast.py untuk generate cache"})
+    return _ok({
+        "available": True,
+        "meta": cache["meta"],
+        "threats": cache.get("threat_summary", []),
+    })
+
+
+@router.get("/forecast/threat/summary")
+def forecast_threat_summary() -> dict:
+    """Overview forecast — total areas, by_trend_label."""
+    from api.core.competitor_forecast_loader import CompetitorForecastLoader
+    cache = CompetitorForecastLoader.load()
+    if not cache["meta"].get("available"):
+        return _ok({"available": False})
+
+    kab = cache.get("kabupaten_forecasts", [])
+    prov = cache.get("provinsi_forecasts", [])
+
+    by_trend: dict[str, int] = {}
+    for item in kab + prov:
+        t = item.get("trend_elang", "stable")
+        by_trend[t] = by_trend.get(t, 0) + 1
+
+    return _ok({
+        "available": True,
+        "meta": cache["meta"],
+        "total_kabupaten": len(kab),
+        "total_provinsi": len(prov),
+        "by_trend_label": by_trend,
+        "threat_count": len(cache.get("threat_summary", [])),
+        "at_risk_count": len(cache.get("at_risk_areas", [])),
+        "expansion_count": len(cache.get("expansion_candidates", [])),
+    })
+
+
+@router.get("/forecast/expansion")
+def forecast_expansion() -> dict:
+    """Kabupaten/provinsi dengan potensi pertumbuhan Elang."""
+    from api.core.competitor_forecast_loader import CompetitorForecastLoader
+    cache = CompetitorForecastLoader.load()
+    if not cache["meta"].get("available"):
+        return _ok({"available": False, "candidates": []})
+    return _ok({
+        "available": True,
+        "meta": cache["meta"],
+        "candidates": cache.get("expansion_candidates", []),
+    })
+
+
+@router.get("/forecast/at-risk")
+def forecast_at_risk(provinsi: str | None = None) -> dict:
+    """Area yang diprediksi mengalami penurunan share Elang."""
+    from api.core.competitor_forecast_loader import CompetitorForecastLoader
+    cache = CompetitorForecastLoader.load()
+    if not cache["meta"].get("available"):
+        return _ok({"available": False, "areas": []})
+
+    areas = cache.get("at_risk_areas", [])
+    if provinsi:
+        prov_upper = provinsi.strip().upper()
+        areas = [a for a in areas if (a.get("provinsi") or "").upper() == prov_upper]
+
+    return _ok({
+        "available": True,
+        "meta": cache["meta"],
+        "total": len(areas),
+        "areas": areas,
+    })
