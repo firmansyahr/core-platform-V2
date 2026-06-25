@@ -127,9 +127,6 @@ function LoginContent() {
           </form>
         </div>
 
-        {/* Demo quick-fill */}
-        
-        </div>
       </div>
     </div>
   );
