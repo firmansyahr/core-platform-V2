@@ -36,6 +36,8 @@ export interface OracleMessage {
   rca_mode?: boolean;
   rca_steps?: { step: number; label: string; status: string }[] | null;
   confidence_signals?: { finding: string; confidence: string; evidence: string }[] | null;
+  model_used?: string | null;
+  routing_reason?: string | null;
   timestamp: number;
 }
 

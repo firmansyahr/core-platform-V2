@@ -10,6 +10,7 @@ import {
 } from "@/components/oracle/OracleContextProvider";
 import { streamOracleChat } from "@/lib/oracleStream";
 import { OracleMarkdown } from "@/components/oracle/OracleMarkdown";
+import { OracleModelBadge } from "@/components/oracle/OracleModelBadge";
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
@@ -314,6 +315,8 @@ export default function OracleWorkspacePage() {
             draft.rca_mode = Boolean(event.rca_mode);
             draft.rca_steps = (event.rca_steps as never) ?? null;
             draft.confidence_signals = (event.confidence_signals as never) ?? draft.confidence_signals;
+            draft.model_used = (event.model_used as string | null) ?? null;
+            draft.routing_reason = (event.routing_reason as string | null) ?? null;
           }
         },
       );
@@ -423,6 +426,9 @@ export default function OracleWorkspacePage() {
                           <OracleMarkdown content={msg.content} />
                         ) : (
                           <p className="whitespace-pre-wrap">{msg.content}</p>
+                        )}
+                        {msg.role === "assistant" && (
+                          <OracleModelBadge modelUsed={msg.model_used} routingReason={msg.routing_reason} />
                         )}
                       </div>
                     </div>

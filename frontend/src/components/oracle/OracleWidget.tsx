@@ -8,6 +8,7 @@ import { API } from "@/lib/fetch";
 import { useOracleContextValue, type OracleMessage } from "@/components/oracle/OracleContextProvider";
 import { streamOracleChat } from "@/lib/oracleStream";
 import { OracleMarkdown } from "@/components/oracle/OracleMarkdown";
+import { OracleModelBadge } from "@/components/oracle/OracleModelBadge";
 
 const DEFAULT_SUGGESTIONS = [
   "Berapa toko warning Merah saat ini?",
@@ -111,6 +112,8 @@ export default function OracleWidget() {
             draft.rca_mode = Boolean(event.rca_mode);
             draft.rca_steps = (event.rca_steps as never) ?? null;
             draft.confidence_signals = (event.confidence_signals as never) ?? draft.confidence_signals;
+            draft.model_used = (event.model_used as string | null) ?? null;
+            draft.routing_reason = (event.routing_reason as string | null) ?? null;
           }
         },
       );
@@ -204,6 +207,9 @@ export default function OracleWidget() {
                       <OracleMarkdown content={msg.content} />
                     ) : (
                       <p className="whitespace-pre-wrap">{msg.content}</p>
+                    )}
+                    {msg.role === "assistant" && (
+                      <OracleModelBadge modelUsed={msg.model_used} routingReason={msg.routing_reason} />
                     )}
                     {msg.role === "assistant" && (msg.render_commands?.length ?? 0) > 0 && (
                       <button

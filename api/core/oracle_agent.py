@@ -37,6 +37,7 @@ from anthropic import Anthropic
 
 from api.core.oracle_engine import MODEL_HAIKU, MODEL_SONNET, OracleEngine, select_model
 from api.core.oracle_guard import OracleInputGuard
+from api.core.oracle_router import OracleModelRouter
 from api.core.oracle_toolkit import OracleToolkit
 from api.database import SessionLocal
 from api.models import OracleCadVerdict, OracleDraft, OracleNotification, OracleTask
@@ -73,6 +74,7 @@ class OracleAgent:
         self.toolkit = OracleToolkit()
         self.guard = OracleInputGuard()
         self.engine = OracleEngine()
+        self.router = OracleModelRouter()
         self._client: Anthropic | None = None
 
     def _get_client(self) -> Anthropic:
@@ -291,6 +293,47 @@ Respond HANYA dengan JSON, tidak ada teks lain:
             logger.warning("CAD verdict JSON parse gagal untuk %s: %r", cad_id, raw_text[:200])
             verdict_data = {"confidence": 0.5, "verdict": "needs_review", "key_evidence": [], "primary_reason": "Gagal mem-parse respons model"}
 
+        model_used = MODEL_HAIKU
+        confidence = float(verdict_data.get("confidence", 0.5))
+
+        # Kasus jelas (confidence tinggi/rendah) tetap 1 call Haiku — cukup
+        # dan murah. Kasus AMBIGU (0.35-0.85) di-escalate ke Sonnet untuk
+        # judgment yang lebih nuanced, bukan langsung dipercaya Haiku begitu
+        # saja — trade-off: +1 call Sonnet HANYA untuk kasus ambigu, supaya
+        # mayoritas validasi (kasus jelas) tetap 1 call sesuai target 80%
+        # Haiku, bukan 2x call untuk SEMUA alert yang akan membalik target
+        # distribusi biaya.
+        if 0.35 <= confidence <= 0.85:
+            refined_model = self.router.route_for_agentic_step("multi_tool_synthesis")
+            refined = await asyncio.to_thread(
+                self._get_client().messages.create,
+                model=refined_model,
+                max_tokens=500,
+                system="""Kamu adalah validator CAD Alert senior untuk sistem distribusi semen.
+Validator junior (model lebih kecil) sudah memberi confidence awal yang AMBIGU (0.35-0.85) — kasus
+ini butuh judgment lebih nuanced. Review ulang signal data dan confidence awal, beri keputusan final.
+Field status "not_tracked"/"not_found" pada sebuah signal berarti signal itu TIDAK BISA dipakai
+sebagai evidence — JANGAN jadikan ketidaktersediaan data sebagai alasan.
+Respond HANYA dengan JSON, tidak ada teks lain:
+{"confidence": float, "verdict": "genuine_threat|false_alarm|needs_review", "key_evidence": [], "primary_reason": ""}""",
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f"Signals untuk CAD Alert {cad_id}:\n{json.dumps(signal_map, ensure_ascii=False, default=str, indent=2)}\n\n"
+                        f"Confidence awal dari validator junior: {confidence} ({verdict_data.get('primary_reason', '')})"
+                    ),
+                }],
+            )
+            refined_text = "".join(b.text for b in refined.content if b.type == "text")
+            try:
+                refined_data = json.loads(_strip_json_fence(refined_text))
+                verdict_data = refined_data
+                confidence = float(refined_data.get("confidence", confidence))
+                model_used = refined_model
+            except json.JSONDecodeError:
+                logger.warning("CAD verdict refinement JSON parse gagal untuk %s: %r", cad_id, refined_text[:200])
+                # parsing gagal — pertahankan verdict Haiku awal, jangan timpa dengan data rusak
+
         recommendations: list[str] = []
         if verdict_data.get("verdict") == "genuine_threat":
             recommendations = await self._generate_recommendations(cad_id, signal_map)
@@ -298,12 +341,12 @@ Respond HANYA dengan JSON, tidak ada teks lain:
         return {
             "cad_id": cad_id,
             "verdict": verdict_data.get("verdict", "needs_review"),
-            "confidence_score": float(verdict_data.get("confidence", 0.5)),
+            "confidence_score": confidence,
             "evidence": verdict_data.get("key_evidence", []),
             "primary_reason": verdict_data.get("primary_reason", ""),
             "recommendations": recommendations,
             "signal_data": signal_map,
-            "model_used": MODEL_HAIKU,
+            "model_used": model_used,
             "analyzed_at": datetime.now(timezone.utc).isoformat(),
         }
 

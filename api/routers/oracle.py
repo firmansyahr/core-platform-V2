@@ -27,6 +27,7 @@ class PageContext(BaseModel):
     entity_id:       str | None = None
     entity_name:     str | None = None
     entity_snapshot: dict[str, Any] | None = None
+    task_type:       str | None = None  # hint opsional untuk OracleModelRouter (mis. "draft_creation")
 
 
 class ChatRequest(BaseModel):

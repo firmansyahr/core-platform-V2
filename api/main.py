@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -8,6 +9,13 @@ from slowapi import _rate_limit_exceeded_handler
 
 from api.core.limiter import limiter
 from api.routers import aegis, auth, brand_config, cad_history, cannibalization, causal, competitor, export, health, home, ilp, loyalty, oracle, oracle_agent, performance, promo, settings
+
+# Tanpa basicConfig, semua logging.getLogger(__name__).info/.warning di modul
+# lain (oracle_guard injection warning, oracle_scheduler job status, token
+# usage tracking) DIAM-DIAM tidak pernah keluar — root logger default WARNING
+# tanpa handler. Ditemukan saat verifikasi token usage logging (LANGKAH 4
+# smart routing) tidak muncul di log padahal kode-nya jalan.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
 
 
 @asynccontextmanager

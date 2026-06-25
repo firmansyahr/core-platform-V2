@@ -12,49 +12,40 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
+import re
 from typing import Any, AsyncIterator
 
 from anthropic import Anthropic, AsyncAnthropic
 
 from api.core.oracle_guard import OracleInputGuard
+from api.core.oracle_router import OracleModelRouter, RoutingDecision
 from api.core.oracle_toolkit import OracleToolkit
 
-# Smart model routing — claude-opus-4-5 di brief bukan ID model yang valid,
-# dikoreksi ke claude-opus-4-8 (model terkuat yang sebenarnya tersedia).
-MODEL_OPUS   = "claude-opus-4-8"
-MODEL_SONNET = "claude-sonnet-4-6"
-MODEL_HAIKU  = "claude-haiku-4-5-20251001"
+# Model constants — single source of truth ada di OracleModelRouter (re-export
+# di sini supaya call site lama, mis. oracle_agent.py, tidak perlu diubah).
+MODEL_OPUS   = OracleModelRouter.OPUS
+MODEL_SONNET = OracleModelRouter.SONNET
+MODEL_HAIKU  = OracleModelRouter.HAIKU
 MODEL = MODEL_OPUS  # dipakai sebagai fallback/default di tempat yang belum pakai routing
 MAX_TOOL_ITERATIONS = 6
 
 RCA_KEYWORDS = ["kenapa", "mengapa", "penyebab", "root cause", "kok bisa", "apa sebabnya"]
-_RCA_MODEL_SIGNALS = [
-    "kenapa", "mengapa", "penyebab", "rca", "root cause", "analisis mendalam",
-    "investigasi", "simulasi", "bandingkan", "compare",
-]
-_MEDIUM_MODEL_SIGNALS = [
-    "trend", "bulan lalu", "periode", "top", "bottom",
-    "ranking", "terbaik", "terburuk", "rata-rata",
-]
+
+_module_router = OracleModelRouter()
+logger = logging.getLogger(__name__)
 
 
 def select_model(message: str) -> str:
     """
-    Routing model berdasar kompleksitas pertanyaan. CATATAN TRADE-OFF: guard
-    regex (oracle_guard.py) sudah menyaring sebagian besar prompt injection
-    SEBELUM model dipanggil, jadi proteksi inti tidak bergantung pada model
-    mana yang dipilih — tapi model lebih kecil (Haiku) secara umum lebih
-    rentan terhadap jailbreak yang lolos dari filter regex dibanding Opus,
-    dan lebih kurang konsisten mematuhi instruksi wajib (suggest_followups,
-    dst). Trade-off ini diterima demi kecepatan/biaya sesuai permintaan.
+    Shim backward-compat untuk call site yang cuma butuh model string dari
+    sebuah message (mis. oracle_agent.py) — sekarang delegasi penuh ke
+    OracleModelRouter.route() (LANGKAH 1 smart routing) supaya logic
+    routing-nya satu sumber kebenaran, bukan duplikasi heuristik terpisah
+    yang bisa drift dari OracleModelRouter.
     """
-    message_lower = message.lower()
-    if any(s in message_lower for s in _RCA_MODEL_SIGNALS):
-        return MODEL_OPUS
-    if any(s in message_lower for s in _MEDIUM_MODEL_SIGNALS):
-        return MODEL_SONNET
-    return MODEL_HAIKU
+    return _module_router.route(message).model
 
 SYSTEM_PROMPT = """Kamu adalah ORACLE — AI Intelligence Analyst eksklusif untuk
 CORE Platform milik PT Semen Indonesia.
@@ -283,6 +274,7 @@ class OracleEngine:
     def __init__(self) -> None:
         self.toolkit = OracleToolkit()
         self.guard = OracleInputGuard()
+        self.router = OracleModelRouter()
         self._client: Anthropic | None = None
         self._async_client: AsyncAnthropic | None = None
 
@@ -295,6 +287,45 @@ class OracleEngine:
         if self._async_client is None:
             self._async_client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
         return self._async_client
+
+    def _detect_complexity(
+        self, message: str, page_context: dict | None, conversation_history: list[dict],
+    ) -> dict:
+        """Deteksi sinyal kompleksitas dari message/context untuk OracleModelRouter.
+        page_context bisa None (mis. widget tanpa context halaman) — brief asli
+        memanggil page_context.get(...) langsung tanpa guard, akan crash
+        AttributeError kalau None; di-guard di sini."""
+        message_lower = message.lower()
+        signals: dict[str, bool] = {}
+
+        entity_count = len(re.findall(r"toko|promo|area|program|cluster", message_lower))
+        signals["multi_entity_gt3"] = entity_count > 3
+
+        module_keywords = {
+            "aegis": ["aegis", "cad", "alert", "market share"],
+            "promo": ["promo", "program", "reward", "peserta"],
+            "ilp": ["ilp", "budget", "alokasi", "optimasi"],
+            "loyalty": ["loyalty", "poin", "tier", "member"],
+        }
+        modules_mentioned = sum(1 for kws in module_keywords.values() if any(kw in message_lower for kw in kws))
+        signals["cross_module"] = modules_mentioned > 1
+
+        period_pattern = (
+            r"(januari|februari|maret|april|mei|juni|juli|agustus|september|oktober|november|desember"
+            r"|q1|q2|q3|q4|bulan lalu|minggu lalu)"
+        )
+        period_count = len(re.findall(period_pattern, message_lower))
+        signals["multi_period"] = period_count > 2
+
+        return signals
+
+    def _route_message(self, message: str, page_context: dict | None, conversation_history: list[dict]) -> RoutingDecision:
+        complexity_signals = self._detect_complexity(message, page_context, conversation_history)
+        task_type = (page_context or {}).get("task_type")
+        return self.router.route(
+            message=message, task_type=task_type,
+            complexity_signals=complexity_signals, conversation_length=len(conversation_history),
+        )
 
     def _compute_rca(self, message: str, tools_used: list[str]) -> tuple[bool, list[dict] | None]:
         is_rca = any(k in message.lower() for k in RCA_KEYWORDS) or len(set(tools_used)) >= 3
@@ -338,6 +369,7 @@ class OracleEngine:
                 "reply": "ORACLE tidak aktif — ANTHROPIC_API_KEY belum diset di server.",
                 "tool_calls_made": [], "render_commands": [], "suggested_followups": [],
                 "rca_mode": False, "rca_steps": None, "confidence_signals": None,
+                "model_used": None, "routing_reason": None,
             }
 
         input_check = self.guard.validate_input(message)
@@ -351,7 +383,7 @@ class OracleEngine:
                     "Bagaimana ROI program loyalty secara keseluruhan?",
                 ],
                 "rca_mode": False, "rca_steps": None, "confidence_signals": None,
-                "blocked": True,
+                "blocked": True, "model_used": None, "routing_reason": None,
             }
 
         if page_context and page_context.get("entity_snapshot"):
@@ -368,13 +400,18 @@ class OracleEngine:
         followups: list[str] = []
         confidence_signals: list[dict] | None = None
         final_text = ""
-        model = select_model(message)
+        routing = self._route_message(message, page_context, conversation_history)
+        model = routing.model
+        total_input_tokens = 0
+        total_output_tokens = 0
 
         for _ in range(MAX_TOOL_ITERATIONS):
             response = self._get_client().messages.create(
                 model=model, max_tokens=4096, system=SYSTEM_PROMPT,
                 tools=_tool_definitions(), messages=messages,
             )
+            total_input_tokens += response.usage.input_tokens
+            total_output_tokens += response.usage.output_tokens
 
             text_blocks = [b.text for b in response.content if b.type == "text"]
             if text_blocks:
@@ -417,6 +454,11 @@ class OracleEngine:
         is_rca, rca_steps = self._compute_rca(message, tools_used)
         reply = self.guard.validate_output(final_text or "Maaf, tidak ada jawaban yang bisa diberikan saat ini.")
 
+        logger.info(
+            "ORACLE token usage | model=%s | input=%d | output=%d | reason=%s",
+            model, total_input_tokens, total_output_tokens, routing.reason,
+        )
+
         return {
             "reply": reply,
             "tool_calls_made": tools_used,
@@ -425,6 +467,8 @@ class OracleEngine:
             "rca_mode": is_rca,
             "rca_steps": rca_steps,
             "confidence_signals": confidence_signals,
+            "model_used": model,
+            "routing_reason": routing.reason,
         }
 
     async def _dispatch_tool_async(self, name: str, tool_input: dict) -> Any:
@@ -454,6 +498,7 @@ class OracleEngine:
                     "Bagaimana ROI program loyalty secara keseluruhan?",
                 ],
                 "rca_mode": False, "rca_steps": None, "confidence_signals": None, "blocked": True,
+                "model_used": None, "routing_reason": None,
             }
             return
 
@@ -471,7 +516,10 @@ class OracleEngine:
         followups: list[str] = []
         confidence_signals: list[dict] | None = None
         text_parts: list[str] = []
-        model = select_model(message)
+        routing = self._route_message(message, page_context, conversation_history)
+        model = routing.model
+        total_input_tokens = 0
+        total_output_tokens = 0
 
         for _ in range(MAX_TOOL_ITERATIONS):
             async with self._get_async_client().messages.stream(
@@ -486,6 +534,9 @@ class OracleEngine:
                         if event.content_block.name not in _RENDER_TOOL_NAMES and event.content_block.name not in ("suggest_followups", "report_confidence"):
                             yield {"type": "tool_start", "tool": event.content_block.name}
                 final_message = await stream.get_final_message()
+
+            total_input_tokens += final_message.usage.input_tokens
+            total_output_tokens += final_message.usage.output_tokens
 
             if final_message.stop_reason != "tool_use":
                 break
@@ -559,6 +610,11 @@ class OracleEngine:
         # keterbatasan ini karena baru kirim respons setelah validate_output.
         reply = self.guard.validate_output(final_text)
 
+        logger.info(
+            "ORACLE token usage | model=%s | input=%d | output=%d | reason=%s",
+            model, total_input_tokens, total_output_tokens, routing.reason,
+        )
+
         yield {
             "type": "done",
             "reply": reply,
@@ -568,4 +624,6 @@ class OracleEngine:
             "rca_mode": is_rca,
             "rca_steps": rca_steps,
             "confidence_signals": confidence_signals,
+            "model_used": model,
+            "routing_reason": routing.reason,
         }
