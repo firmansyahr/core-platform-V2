@@ -57,6 +57,13 @@ def migrate_add_columns_if_missing() -> None:
         for table, column, col_type in migrations:
             cursor.execute(f"PRAGMA table_info({table})")
             existing_columns = [row[1] for row in cursor.fetchall()]
+            if not existing_columns:
+                # PRAGMA table_info() pada tabel yang tidak ada return EMPTY
+                # (bukan error) — tanpa cek ini, ALTER TABLE di bawah akan
+                # gagal dengan "no such table" dan menghentikan SISA migrasi
+                # dalam list ini juga (satu connection, satu try block).
+                print(f"[migration] Skip {table}.{column} — tabel {table} tidak ada")
+                continue
             if column not in existing_columns:
                 cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
                 print(f"[migration] Added column {column} to {table}")
