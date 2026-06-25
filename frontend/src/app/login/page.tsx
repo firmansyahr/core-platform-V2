@@ -128,26 +128,7 @@ function LoginContent() {
         </div>
 
         {/* Demo quick-fill */}
-        <div className="mt-5 space-y-2.5">
-          <p className="text-center text-xs text-muted-foreground">Coba langsung tanpa daftar:</p>
-          <div className="grid grid-cols-2 gap-2.5">
-            <button
-              type="button"
-              onClick={() => { setUsername("viewer"); setPassword("viewer123"); }}
-              className="px-3.5 py-2.5 rounded-xl text-sm font-medium border border-border
-                bg-card hover:bg-muted transition-colors duration-150 text-muted-foreground hover:text-foreground shadow-sm"
-            >
-              👁 Demo Viewer
-            </button>
-            <button
-              type="button"
-              onClick={() => { setUsername("admin"); setPassword("admin123"); }}
-              className="px-3.5 py-2.5 rounded-xl text-sm font-medium border border-border
-                bg-card hover:bg-muted transition-colors duration-150 text-muted-foreground hover:text-foreground shadow-sm"
-            >
-              🔑 Demo Admin
-            </button>
-          </div>
+        
         </div>
       </div>
     </div>
