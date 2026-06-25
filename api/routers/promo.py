@@ -548,8 +548,9 @@ class CreatePromoV3Body(BaseModel):
     tipe_program:     str            # "flat_multiplier" | "multi_tier" | "leaderboard"
     reward_config:    dict[str, Any]
     created_by:       str            = "admin"
-    brand_selection_mode: str | None = None  # "wilayah" | "fighting"
-    brands:               list[dict[str, Any]] | None = None  # [{id, nama, tipe}], lihat brand_config_engine
+    brand_selection_mode: str | None = None  # deprecated, kept for backward compat
+    brands:               list[dict[str, Any]] | None = None  # deprecated, kept for backward compat
+    brand_selection:      dict[str, Any] | None = None  # {modes: [...], custom_brands: [...] | null}
 
 
 # ── POST /api/promo/preview-calc ─────────────────────────────────────────────
@@ -661,18 +662,25 @@ def create_promo_v3(body: CreatePromoV3Body) -> dict:
         if rc.get("basis_ranking") not in ("volume", "growth_pct"):
             raise HTTPException(400, "basis_ranking harus 'volume' atau 'growth_pct'")
 
-    if body.brand_selection_mode is not None:
+    # Handle new brand_selection field (multi-checkbox: default/fighting_brand/custom)
+    if body.brand_selection is not None:
+        modes = body.brand_selection.get("modes", [])
+        custom_brands = body.brand_selection.get("custom_brands") or []
+        if body.tipe_program == "flat_multiplier":
+            brand_filter: list[str] = []
+            if "fighting_brand" in modes:
+                brand_filter.append("Semen Banteng")
+            if "custom" in modes and custom_brands:
+                brand_filter.extend([str(b).title() for b in custom_brands])
+            if brand_filter:
+                rc["brand_filter"] = brand_filter
+    elif body.brand_selection_mode is not None:
+        # backward compat path
         if body.brand_selection_mode not in ("wilayah", "fighting"):
             raise HTTPException(400, "brand_selection_mode harus 'wilayah' atau 'fighting'")
         if not body.brands:
             raise HTTPException(400, "brands tidak boleh kosong kalau brand_selection_mode diisi")
-
         if body.tipe_program == "flat_multiplier":
-            # brand_filter dipakai langsung oleh calculate_program_reward (promo_calculator.py)
-            # untuk match dengan peserta["brand_utama"] — itu title-case ("Semen Elang"),
-            # SEDANGKAN BrandConfig/resolve menyimpan UPPERCASE ("SEMEN ELANG", lihat
-            # brand_config_engine.DEFAULT_CONFIG). title() di sini menjembatani dua
-            # konvensi casing itu, bukan asumsi keduanya sama.
             rc["brand_filter"] = [str(b.get("nama", "")).title() for b in body.brands if b.get("nama")]
 
     jenis_map = {
@@ -696,6 +704,7 @@ def create_promo_v3(body: CreatePromoV3Body) -> dict:
             "reward_config":   rc,
             "peserta":         [],
             "summary_peserta": {"total_toko": 0, "per_cluster": {}, "estimasi_budget_total": 0},
+            "brand_selection":      body.brand_selection,
             "brand_selection_mode": body.brand_selection_mode,
             "brands":               body.brands,
         }

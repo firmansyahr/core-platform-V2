@@ -15,7 +15,7 @@ import {
 import {
   Plus, Search, X, Users, Zap, TrendingUp, AlertCircle,
   ChevronRight, BarChart2, Trophy, Trash2, Eye, Activity, Calendar,
-  CheckCircle, Info,
+
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -166,36 +166,13 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
   // flat_multiplier state
   const [flatMult, setFlatMult]           = useState(2);
 
-  // Wilayah + brand selection (berlaku universal utk semua tipe program —
-  // reward calculation HANYA benar-benar consume brand_filter di
-  // flat_multiplier hari ini, tapi brand_selection_mode/brands tetap
-  // disimpan di semua tipe untuk ORACLE/reporting yang konsisten)
-  const [regions, setRegions] = useState<{ provinsi: string[]; kabupaten_by_provinsi: Record<string, string[]> } | null>(null);
-  const [wilayahProvinsi, setWilayahProvinsi] = useState("");
-  const [wilayahKabupaten, setWilayahKabupaten] = useState("");
-  const [brandMode, setBrandMode] = useState<"wilayah" | "fighting">("wilayah");
-  const [brandConfig, setBrandConfig] = useState<{ mb_brands: string[]; cb_brands: string[]; fb_brands: string[] } | null>(null);
-  const [brandConfigLoading, setBrandConfigLoading] = useState(false);
-
-  useEffect(() => {
-    fetch(`${API}/api/brand-config/regions`)
-      .then(r => r.json())
-      .then(j => { if (j.status === "ok") setRegions(j.data); })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (brandMode !== "wilayah" || !wilayahProvinsi || !wilayahKabupaten) {
-      setBrandConfig(null);
-      return;
-    }
-    setBrandConfigLoading(true);
-    fetch(`${API}/api/brand-config/resolve?provinsi=${encodeURIComponent(wilayahProvinsi)}&kabupaten=${encodeURIComponent(wilayahKabupaten)}`)
-      .then(r => r.json())
-      .then(j => { if (j.status === "ok") setBrandConfig(j.data); })
-      .catch(() => setBrandConfig(null))
-      .finally(() => setBrandConfigLoading(false));
-  }, [brandMode, wilayahProvinsi, wilayahKabupaten]);
+  // Brand selection — multi-checkbox: default / fighting_brand / custom
+  const [brandModes, setBrandModes] = useState<Set<string>>(new Set(["default"]));
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const [availableBrands, setAvailableBrands] = useState<string[]>([]);
+  const [customBrandsSelected, setCustomBrandsSelected] = useState<string[]>([]);
+  const [customBrandsTemp, setCustomBrandsTemp] = useState<string[]>([]);
+  const [brandModalError, setBrandModalError] = useState("");
 
   // multi_tier state
   const [tiers, setTiers]                 = useState<TierRow[]>(DEFAULT_TIERS);
@@ -277,7 +254,7 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
   // ── Validation ──
   const step1Valid = selectedType !== null;
-  const brandStepValid = brandMode === "fighting" || (brandMode === "wilayah" && brandConfig !== null);
+  const brandStepValid = brandModes.size > 0 && (!brandModes.has("custom") || customBrandsSelected.length > 0);
   const step2Valid = form.nama_promo.trim().length > 0 && form.periode_mulai && form.periode_selesai
     && form.periode_selesai >= form.periode_mulai && brandStepValid;
   const step3Valid = (
@@ -287,27 +264,16 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
     false
   );
 
-  // ── Brand selection → payload ──
-  function buildBrands(): { id: string; nama: string; tipe: string }[] {
-    if (brandMode === "fighting") {
-      return [{ id: "fighting", nama: "SEMEN BANTENG", tipe: "fighting_brand" }];
-    }
-    if (!brandConfig) return [];
-    return [
-      ...brandConfig.mb_brands.map((nama, i) => ({ id: `mb-${i}`, nama, tipe: "main_brand" })),
-      ...brandConfig.cb_brands.map((nama, i) => ({ id: `cb-${i}`, nama, tipe: "companion_brand" })),
-      ...brandConfig.fb_brands.map((nama, i) => ({ id: `fb-${i}`, nama, tipe: "fighting_brand" })),
-    ];
-  }
-
   // ── Build payload ──
   function buildPayload() {
     const base = {
       nama_promo: form.nama_promo, deskripsi: form.deskripsi,
       periode_mulai: form.periode_mulai, periode_selesai: form.periode_selesai,
       tipe_program: selectedType,
-      brand_selection_mode: brandMode,
-      brands: buildBrands(),
+      brand_selection: {
+        modes: Array.from(brandModes),
+        custom_brands: brandModes.has("custom") ? customBrandsSelected : null,
+      },
     };
     if (selectedType === "flat_multiplier") {
       return { ...base, reward_config: { type: "flat_multiplier", multiplier: flatMult } };
@@ -452,89 +418,87 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
             )}
 
             <div>
-              <label className="block text-xs font-medium mb-1">Wilayah Program <span className="text-red-500">*</span></label>
-              <div className="grid grid-cols-2 gap-3">
-                <select
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  value={wilayahProvinsi}
-                  onChange={e => { setWilayahProvinsi(e.target.value); setWilayahKabupaten(""); }}
-                >
-                  <option value="">Pilih provinsi…</option>
-                  {(regions?.provinsi ?? []).map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
-                <select
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
-                  value={wilayahKabupaten}
-                  disabled={!wilayahProvinsi}
-                  onChange={e => setWilayahKabupaten(e.target.value)}
-                >
-                  <option value="">Pilih kabupaten…</option>
-                  {(regions?.kabupaten_by_provinsi[wilayahProvinsi] ?? []).map(k => <option key={k} value={k}>{k}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div>
               <label className="block text-xs font-medium mb-2">Brand Program <span className="text-red-500">*</span></label>
               <div className="space-y-2">
-                <label className="flex items-start gap-2 border rounded-xl p-3 cursor-pointer hover:bg-gray-50 has-[:checked]:border-purple-400 has-[:checked]:bg-purple-50/40">
+                {/* Default */}
+                <label className={`flex items-start gap-3 border rounded-xl p-3 cursor-pointer hover:bg-gray-50 transition-colors ${brandModes.has("default") ? "border-purple-400 bg-purple-50/40" : "border-gray-200"}`}>
                   <input
-                    type="radio" name="brandMode" className="mt-0.5"
-                    checked={brandMode === "wilayah"}
-                    onChange={() => setBrandMode("wilayah")}
+                    type="checkbox"
+                    className="mt-0.5 rounded"
+                    checked={brandModes.has("default")}
+                    onChange={e => {
+                      setBrandModes(prev => {
+                        const next = new Set(prev);
+                        e.target.checked ? next.add("default") : next.delete("default");
+                        return next;
+                      });
+                    }}
                   />
                   <div className="flex-1">
-                    <span className="text-sm font-medium">Sesuai Konfigurasi Wilayah</span>
-                    <p className="text-xs text-muted-foreground">Brand ditentukan otomatis dari pengaturan wilayah</p>
-
-                    {brandMode === "wilayah" && (!wilayahProvinsi || !wilayahKabupaten) && (
-                      <p className="mt-1.5 text-xs text-amber-600">Pilih wilayah untuk melihat konfigurasi brand</p>
-                    )}
-                    {brandMode === "wilayah" && wilayahProvinsi && wilayahKabupaten && brandConfigLoading && (
-                      <p className="mt-1.5 text-xs text-muted-foreground">Memuat konfigurasi brand…</p>
-                    )}
-                    {brandMode === "wilayah" && wilayahProvinsi && wilayahKabupaten && !brandConfigLoading && brandConfig && (
-                      <div className="mt-2 space-y-1">
-                        <p className="text-xs text-muted-foreground">
-                          Menggunakan konfigurasi brand wilayah {wilayahKabupaten}, {wilayahProvinsi}
-                        </p>
-                        {brandConfig.mb_brands.map(b => (
-                          <div key={b} className="flex items-center gap-2 text-sm">
-                            <CheckCircle className="h-3 w-3 text-green-500" />
-                            <span>{b}</span>
-                            <Badge variant="outline" className="text-xs">Main Brand</Badge>
-                          </div>
-                        ))}
-                        {brandConfig.cb_brands.map(b => (
-                          <div key={b} className="flex items-center gap-2 text-sm">
-                            <CheckCircle className="h-3 w-3 text-green-500" />
-                            <span>{b}</span>
-                            <Badge variant="outline" className="text-xs">Companion Brand</Badge>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <span className="text-sm font-medium">Default</span>
+                    <p className="text-xs text-muted-foreground">Mengikuti pengaturan brand global</p>
                   </div>
                 </label>
 
-                <label className="flex items-start gap-2 border rounded-xl p-3 cursor-pointer hover:bg-gray-50 has-[:checked]:border-purple-400 has-[:checked]:bg-purple-50/40">
+                {/* Fighting Brand */}
+                <label className={`flex items-start gap-3 border rounded-xl p-3 cursor-pointer hover:bg-gray-50 transition-colors ${brandModes.has("fighting_brand") ? "border-purple-400 bg-purple-50/40" : "border-gray-200"}`}>
                   <input
-                    type="radio" name="brandMode" className="mt-0.5"
-                    checked={brandMode === "fighting"}
-                    onChange={() => setBrandMode("fighting")}
+                    type="checkbox"
+                    className="mt-0.5 rounded"
+                    checked={brandModes.has("fighting_brand")}
+                    onChange={e => {
+                      setBrandModes(prev => {
+                        const next = new Set(prev);
+                        e.target.checked ? next.add("fighting_brand") : next.delete("fighting_brand");
+                        return next;
+                      });
+                    }}
                   />
                   <div className="flex-1">
                     <span className="text-sm font-medium">Fighting Brand</span>
-                    <p className="text-xs text-muted-foreground">Khusus Semen Banteng</p>
-                    {brandMode === "fighting" && (
-                      <div className="mt-2 flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
-                        <Info className="h-3 w-3" />
-                        <span>Program ini khusus untuk Semen Banteng sebagai fighting brand di wilayah tersebut.</span>
-                      </div>
+                    <p className="text-xs text-muted-foreground">Semen Banteng</p>
+                  </div>
+                </label>
+
+                {/* Custom */}
+                <label className={`flex items-start gap-3 border rounded-xl p-3 cursor-pointer hover:bg-gray-50 transition-colors ${brandModes.has("custom") ? "border-purple-400 bg-purple-50/40" : "border-gray-200"}`}>
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 rounded"
+                    checked={brandModes.has("custom")}
+                    onChange={e => {
+                      if (e.target.checked) {
+                        setBrandModes(prev => new Set(Array.from(prev).concat("custom")));
+                        fetch(`${API}/api/brand-config/available-brands`)
+                          .then(r => r.json())
+                          .then(j => { if (j.status === "ok") setAvailableBrands(j.data.brands ?? []); })
+                          .catch(() => {});
+                        setCustomBrandsTemp([...customBrandsSelected]);
+                        setBrandModalError("");
+                        setShowCustomModal(true);
+                      } else {
+                        setBrandModes(prev => { const next = new Set(prev); next.delete("custom"); return next; });
+                        setCustomBrandsSelected([]);
+                        setShowCustomModal(false);
+                      }
+                    }}
+                  />
+                  <div className="flex-1">
+                    <span className="text-sm font-medium">Custom</span>
+                    <p className="text-xs text-muted-foreground">Pilih brand secara manual</p>
+                    {brandModes.has("custom") && customBrandsSelected.length > 0 && (
+                      <p className="text-xs text-purple-700 mt-1 font-medium">
+                        Dipilih: {customBrandsSelected.join(", ")}
+                      </p>
                     )}
                   </div>
                 </label>
               </div>
+              {brandModes.size === 0 && (
+                <p className="text-xs text-red-600 mt-1.5 flex items-center gap-1">
+                  <AlertCircle size={12} />Pilih minimal satu opsi brand
+                </p>
+              )}
             </div>
           </div>
         )}
@@ -844,9 +808,13 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Brand Program</span>
                 <span className="font-medium text-right max-w-[60%]">
-                  {brandMode === "fighting"
-                    ? "Semen Banteng (Fighting Brand)"
-                    : buildBrands().map(b => b.nama).join(", ") || "—"}
+                  {[
+                    brandModes.has("default") ? "Default" : null,
+                    brandModes.has("fighting_brand") ? "Fighting Brand" : null,
+                    brandModes.has("custom") && customBrandsSelected.length > 0
+                      ? `Custom (${customBrandsSelected.join(", ")})`
+                      : brandModes.has("custom") ? "Custom" : null,
+                  ].filter(Boolean).join(" + ") || "—"}
                 </span>
               </div>
             </div>
@@ -928,6 +896,99 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
           )}
         </div>
       </div>
+
+      {/* Custom Brand Modal */}
+      {showCustomModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => {
+            if (customBrandsTemp.length === 0) {
+              setBrandModes(prev => { const next = new Set(prev); next.delete("custom"); return next; });
+              setBrandModalError("");
+            }
+            setShowCustomModal(false);
+          }} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md mx-4 max-h-[80vh] flex flex-col z-10">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b">
+              <h3 className="font-semibold text-sm">Pilih Brand</h3>
+              <button
+                className="text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => {
+                  if (customBrandsTemp.length === 0) {
+                    setBrandModes(prev => { const next = new Set(prev); next.delete("custom"); return next; });
+                  }
+                  setBrandModalError("");
+                  setShowCustomModal(false);
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+              {availableBrands.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Memuat daftar brand…</p>
+              ) : availableBrands.map(brand => (
+                <label
+                  key={brand}
+                  className={`flex items-center gap-3 border rounded-lg px-3 py-2.5 cursor-pointer hover:bg-gray-50 transition-colors ${customBrandsTemp.includes(brand) ? "border-purple-400 bg-purple-50/40" : "border-gray-200"}`}
+                >
+                  <input
+                    type="checkbox"
+                    className="rounded"
+                    checked={customBrandsTemp.includes(brand)}
+                    onChange={e => {
+                      setCustomBrandsTemp(prev =>
+                        e.target.checked ? [...prev, brand] : prev.filter(b => b !== brand)
+                      );
+                      setBrandModalError("");
+                    }}
+                  />
+                  <span className="text-sm">{brand}</span>
+                </label>
+              ))}
+              {brandModalError && (
+                <p className="text-xs text-red-600 flex items-center gap-1 pt-1">
+                  <AlertCircle size={12} />{brandModalError}
+                </p>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setBrandModes(prev => { const next = new Set(prev); next.delete("custom"); return next; });
+                  setCustomBrandsSelected([]);
+                  setCustomBrandsTemp([]);
+                  setBrandModalError("");
+                  setShowCustomModal(false);
+                }}
+              >
+                Batal
+              </Button>
+              <Button
+                size="sm"
+                className="bg-purple-600 hover:bg-purple-700"
+                onClick={() => {
+                  if (customBrandsTemp.length === 0) {
+                    setBrandModalError("Pilih minimal satu brand");
+                    return;
+                  }
+                  setCustomBrandsSelected([...customBrandsTemp]);
+                  setBrandModalError("");
+                  setShowCustomModal(false);
+                }}
+              >
+                Simpan Pilihan
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }
