@@ -897,22 +897,14 @@ export default function AboutPage() {
               </div>
 
               <div className="flex items-center justify-center gap-4">
-                <a href="#" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2">
+                <a href="https://github.com/firmansyahr" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2">
                   GitHub <ExternalLink size={10} />
                 </a>
                 <span className="text-border text-xs">·</span>
-                <a href="#" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2">
+                <a href="https://www.linkedin.com/in/firmansyahr/" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2">
                   LinkedIn <ExternalLink size={10} />
                 </a>
               </div>
-
-              <a
-                href="/login?u=viewer&p=viewer123"
-                className="flex items-center justify-center gap-2 w-full rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background hover:bg-foreground/88 transition-all duration-150 shadow-sm"
-              >
-                Coba Demo — viewer / viewer123
-                <ExternalLink size={13} strokeWidth={2} />
-              </a>
             </div>
           </div>
         </section>
