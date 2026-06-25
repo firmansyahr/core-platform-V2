@@ -175,6 +175,10 @@ def _promo_row_to_dict(p: PromoRow, peserta_rows: list[PromoPesertaRow]) -> dict
         d["final_summary"] = p.final_summary
     if p.final_achievements is not None:
         d["final_achievements"] = p.final_achievements
+    if p.brand_selection_mode is not None:
+        d["brand_selection_mode"] = p.brand_selection_mode
+    if p.brands is not None:
+        d["brands"] = p.brands
     return d
 
 
@@ -231,6 +235,8 @@ def _save_new_promo(promo: dict) -> None:
                 created_by=promo.get("created_by", "admin"),
                 reward_config=reward_config or {},
                 summary_peserta=promo.get("summary_peserta", {}),
+                brand_selection_mode=promo.get("brand_selection_mode"),
+                brands=promo.get("brands"),
             ))
             db.commit()
         finally:
@@ -531,6 +537,8 @@ class CreatePromoV3Body(BaseModel):
     tipe_program:     str            # "flat_multiplier" | "multi_tier" | "leaderboard"
     reward_config:    dict[str, Any]
     created_by:       str            = "admin"
+    brand_selection_mode: str | None = None  # "wilayah" | "fighting"
+    brands:               list[dict[str, Any]] | None = None  # [{id, nama, tipe}], lihat brand_config_engine
 
 
 # ── POST /api/promo/preview-calc ─────────────────────────────────────────────
@@ -642,6 +650,20 @@ def create_promo_v3(body: CreatePromoV3Body) -> dict:
         if rc.get("basis_ranking") not in ("volume", "growth_pct"):
             raise HTTPException(400, "basis_ranking harus 'volume' atau 'growth_pct'")
 
+    if body.brand_selection_mode is not None:
+        if body.brand_selection_mode not in ("wilayah", "fighting"):
+            raise HTTPException(400, "brand_selection_mode harus 'wilayah' atau 'fighting'")
+        if not body.brands:
+            raise HTTPException(400, "brands tidak boleh kosong kalau brand_selection_mode diisi")
+
+        if body.tipe_program == "flat_multiplier":
+            # brand_filter dipakai langsung oleh calculate_program_reward (promo_calculator.py)
+            # untuk match dengan peserta["brand_utama"] — itu title-case ("Semen Elang"),
+            # SEDANGKAN BrandConfig/resolve menyimpan UPPERCASE ("SEMEN ELANG", lihat
+            # brand_config_engine.DEFAULT_CONFIG). title() di sini menjembatani dua
+            # konvensi casing itu, bukan asumsi keduanya sama.
+            rc["brand_filter"] = [str(b.get("nama", "")).title() for b in body.brands if b.get("nama")]
+
     jenis_map = {
         "flat_multiplier": "flat_multiplier",
         "multi_tier":      "multi_tier_points",
@@ -663,6 +685,8 @@ def create_promo_v3(body: CreatePromoV3Body) -> dict:
             "reward_config":   rc,
             "peserta":         [],
             "summary_peserta": {"total_toko": 0, "per_cluster": {}, "estimasi_budget_total": 0},
+            "brand_selection_mode": body.brand_selection_mode,
+            "brands":               body.brands,
         }
 
     if USE_SQLITE:

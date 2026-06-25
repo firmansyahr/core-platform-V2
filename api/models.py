@@ -176,6 +176,8 @@ class Promo(Base):
     summary_peserta    = Column(JSON, nullable=False, default=dict)  # {total_toko, per_cluster, estimasi_budget_total}
     final_summary      = Column(JSON, nullable=True)
     final_achievements = Column(JSON, nullable=True)  # snapshot list-of-dict, tidak dinormalisasi
+    brand_selection_mode = Column(String, nullable=True)  # "wilayah" | "fighting" — null utk promo lama sebelum fitur ini
+    brands               = Column(JSON, nullable=True)  # list[{id,nama,tipe}] hasil resolusi wilayah ATAU fighting-brand only
 
     peserta = relationship("PromoPeserta", back_populates="promo", cascade="all, delete-orphan")
 

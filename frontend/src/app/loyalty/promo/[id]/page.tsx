@@ -10,6 +10,7 @@ import { RewardConfigDisplay } from "@/components/RewardConfigDisplay";
 import PromoAnalyticsView, { type ProgramAnalytics } from "@/components/loyalty/PromoAnalyticsView";
 import { useOracleContext } from "@/hooks/useOracleContext";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -72,6 +73,8 @@ interface PromoDetail {
   alasan_batal?:    string;
   konfigurasi_promo?: KonfigurasiPromo;
   reward_config?:   Record<string, unknown>;
+  brand_selection_mode?: "wilayah" | "fighting";
+  brands?:          { id: string; nama: string; tipe: string }[];
   peserta:          Peserta[];
   summary_peserta:  { total_toko: number; per_cluster: Record<string, number>; estimasi_budget_total: number };
   final_summary?:   { overall_achievement_pct: number; total_reward_earned: number; total_peserta: number; peserta_aktif_transaksi: number };
@@ -1641,6 +1644,16 @@ export default function PromoDetailPage() {
             {promo.id} · {fmtDate(promo.periode_mulai)} – {fmtDate(promo.periode_selesai)}
             {promo.deskripsi && ` · ${promo.deskripsi}`}
           </p>
+          {promo.brand_selection_mode && (
+            <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+              <Badge variant="outline" className="text-xs">
+                {promo.brand_selection_mode === "fighting" ? "Fighting Brand" : "Brand Sesuai Wilayah"}
+              </Badge>
+              {(promo.brands ?? []).map(b => (
+                <Badge key={b.id} variant="secondary" className="text-xs">{b.nama}</Badge>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Tabs — horizontal bar + full-width content, no sidebar.

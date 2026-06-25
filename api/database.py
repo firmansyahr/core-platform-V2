@@ -48,6 +48,8 @@ def migrate_add_columns_if_missing() -> None:
     import sqlite3
     migrations = [
         ("cad_validasi_toko", "nama_toko", "TEXT"),
+        ("promos", "brand_selection_mode", "TEXT"),
+        ("promos", "brands", "JSON"),
     ]
     conn = sqlite3.connect(DB_PATH)
     try:

@@ -15,7 +15,9 @@ import {
 import {
   Plus, Search, X, Users, Zap, TrendingUp, AlertCircle,
   ChevronRight, BarChart2, Trophy, Trash2, Eye, Activity, Calendar,
+  CheckCircle, Info,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const fmtRp  = (n: number) => "Rp " + new Intl.NumberFormat("id-ID").format(Math.round(n));
@@ -163,7 +165,37 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
   // flat_multiplier state
   const [flatMult, setFlatMult]           = useState(2);
-  const [flatBrands, setFlatBrands]       = useState<string[]>(["Semen Elang"]);
+
+  // Wilayah + brand selection (berlaku universal utk semua tipe program —
+  // reward calculation HANYA benar-benar consume brand_filter di
+  // flat_multiplier hari ini, tapi brand_selection_mode/brands tetap
+  // disimpan di semua tipe untuk ORACLE/reporting yang konsisten)
+  const [regions, setRegions] = useState<{ provinsi: string[]; kabupaten_by_provinsi: Record<string, string[]> } | null>(null);
+  const [wilayahProvinsi, setWilayahProvinsi] = useState("");
+  const [wilayahKabupaten, setWilayahKabupaten] = useState("");
+  const [brandMode, setBrandMode] = useState<"wilayah" | "fighting">("wilayah");
+  const [brandConfig, setBrandConfig] = useState<{ mb_brands: string[]; cb_brands: string[]; fb_brands: string[] } | null>(null);
+  const [brandConfigLoading, setBrandConfigLoading] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API}/api/brand-config/regions`)
+      .then(r => r.json())
+      .then(j => { if (j.status === "ok") setRegions(j.data); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (brandMode !== "wilayah" || !wilayahProvinsi || !wilayahKabupaten) {
+      setBrandConfig(null);
+      return;
+    }
+    setBrandConfigLoading(true);
+    fetch(`${API}/api/brand-config/resolve?provinsi=${encodeURIComponent(wilayahProvinsi)}&kabupaten=${encodeURIComponent(wilayahKabupaten)}`)
+      .then(r => r.json())
+      .then(j => { if (j.status === "ok") setBrandConfig(j.data); })
+      .catch(() => setBrandConfig(null))
+      .finally(() => setBrandConfigLoading(false));
+  }, [brandMode, wilayahProvinsi, wilayahKabupaten]);
 
   // multi_tier state
   const [tiers, setTiers]                 = useState<TierRow[]>(DEFAULT_TIERS);
@@ -245,8 +277,9 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
   // ── Validation ──
   const step1Valid = selectedType !== null;
+  const brandStepValid = brandMode === "fighting" || (brandMode === "wilayah" && brandConfig !== null);
   const step2Valid = form.nama_promo.trim().length > 0 && form.periode_mulai && form.periode_selesai
-    && form.periode_selesai >= form.periode_mulai;
+    && form.periode_selesai >= form.periode_mulai && brandStepValid;
   const step3Valid = (
     selectedType === "flat_multiplier" ? flatMult > 1 :
     selectedType === "multi_tier" ? tierErrors.length === 0 :
@@ -254,15 +287,30 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
     false
   );
 
+  // ── Brand selection → payload ──
+  function buildBrands(): { id: string; nama: string; tipe: string }[] {
+    if (brandMode === "fighting") {
+      return [{ id: "fighting", nama: "SEMEN BANTENG", tipe: "fighting_brand" }];
+    }
+    if (!brandConfig) return [];
+    return [
+      ...brandConfig.mb_brands.map((nama, i) => ({ id: `mb-${i}`, nama, tipe: "main_brand" })),
+      ...brandConfig.cb_brands.map((nama, i) => ({ id: `cb-${i}`, nama, tipe: "companion_brand" })),
+      ...brandConfig.fb_brands.map((nama, i) => ({ id: `fb-${i}`, nama, tipe: "fighting_brand" })),
+    ];
+  }
+
   // ── Build payload ──
   function buildPayload() {
     const base = {
       nama_promo: form.nama_promo, deskripsi: form.deskripsi,
       periode_mulai: form.periode_mulai, periode_selesai: form.periode_selesai,
       tipe_program: selectedType,
+      brand_selection_mode: brandMode,
+      brands: buildBrands(),
     };
     if (selectedType === "flat_multiplier") {
-      return { ...base, reward_config: { type: "flat_multiplier", multiplier: flatMult, brand_filter: flatBrands } };
+      return { ...base, reward_config: { type: "flat_multiplier", multiplier: flatMult } };
     }
     if (selectedType === "multi_tier") {
       return { ...base, reward_config: { type: "multi_tier_points", tiers: sortedTiers, reguler_multiplier: 1.0, overflow_multiplier: 1.0 } };
@@ -402,6 +450,92 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
                 Durasi: {Math.max(0, Math.round((new Date(form.periode_selesai).getTime() - new Date(form.periode_mulai).getTime()) / 86400000) + 1)} hari
               </div>
             )}
+
+            <div>
+              <label className="block text-xs font-medium mb-1">Wilayah Program <span className="text-red-500">*</span></label>
+              <div className="grid grid-cols-2 gap-3">
+                <select
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  value={wilayahProvinsi}
+                  onChange={e => { setWilayahProvinsi(e.target.value); setWilayahKabupaten(""); }}
+                >
+                  <option value="">Pilih provinsi…</option>
+                  {(regions?.provinsi ?? []).map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+                <select
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
+                  value={wilayahKabupaten}
+                  disabled={!wilayahProvinsi}
+                  onChange={e => setWilayahKabupaten(e.target.value)}
+                >
+                  <option value="">Pilih kabupaten…</option>
+                  {(regions?.kabupaten_by_provinsi[wilayahProvinsi] ?? []).map(k => <option key={k} value={k}>{k}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-2">Brand Program <span className="text-red-500">*</span></label>
+              <div className="space-y-2">
+                <label className="flex items-start gap-2 border rounded-xl p-3 cursor-pointer hover:bg-gray-50 has-[:checked]:border-purple-400 has-[:checked]:bg-purple-50/40">
+                  <input
+                    type="radio" name="brandMode" className="mt-0.5"
+                    checked={brandMode === "wilayah"}
+                    onChange={() => setBrandMode("wilayah")}
+                  />
+                  <div className="flex-1">
+                    <span className="text-sm font-medium">Sesuai Konfigurasi Wilayah</span>
+                    <p className="text-xs text-muted-foreground">Brand ditentukan otomatis dari pengaturan wilayah</p>
+
+                    {brandMode === "wilayah" && (!wilayahProvinsi || !wilayahKabupaten) && (
+                      <p className="mt-1.5 text-xs text-amber-600">Pilih wilayah untuk melihat konfigurasi brand</p>
+                    )}
+                    {brandMode === "wilayah" && wilayahProvinsi && wilayahKabupaten && brandConfigLoading && (
+                      <p className="mt-1.5 text-xs text-muted-foreground">Memuat konfigurasi brand…</p>
+                    )}
+                    {brandMode === "wilayah" && wilayahProvinsi && wilayahKabupaten && !brandConfigLoading && brandConfig && (
+                      <div className="mt-2 space-y-1">
+                        <p className="text-xs text-muted-foreground">
+                          Menggunakan konfigurasi brand wilayah {wilayahKabupaten}, {wilayahProvinsi}
+                        </p>
+                        {brandConfig.mb_brands.map(b => (
+                          <div key={b} className="flex items-center gap-2 text-sm">
+                            <CheckCircle className="h-3 w-3 text-green-500" />
+                            <span>{b}</span>
+                            <Badge variant="outline" className="text-xs">Main Brand</Badge>
+                          </div>
+                        ))}
+                        {brandConfig.cb_brands.map(b => (
+                          <div key={b} className="flex items-center gap-2 text-sm">
+                            <CheckCircle className="h-3 w-3 text-green-500" />
+                            <span>{b}</span>
+                            <Badge variant="outline" className="text-xs">Companion Brand</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-2 border rounded-xl p-3 cursor-pointer hover:bg-gray-50 has-[:checked]:border-purple-400 has-[:checked]:bg-purple-50/40">
+                  <input
+                    type="radio" name="brandMode" className="mt-0.5"
+                    checked={brandMode === "fighting"}
+                    onChange={() => setBrandMode("fighting")}
+                  />
+                  <div className="flex-1">
+                    <span className="text-sm font-medium">Fighting Brand</span>
+                    <p className="text-xs text-muted-foreground">Khusus Semen Banteng</p>
+                    {brandMode === "fighting" && (
+                      <div className="mt-2 flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+                        <Info className="h-3 w-3" />
+                        <span>Program ini khusus untuk Semen Banteng sebagai fighting brand di wilayah tersebut.</span>
+                      </div>
+                    )}
+                  </div>
+                </label>
+              </div>
+            </div>
           </div>
         )}
 
@@ -426,24 +560,6 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
                 <span className="text-sm text-muted-foreground">× poin (harus &gt; 1)</span>
               </div>
               {flatMult <= 1 && <p className="text-xs text-red-600 mt-1">Multiplier harus lebih dari 1</p>}
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium mb-2">Brand Filter</label>
-              <p className="text-xs text-muted-foreground mb-2">Hanya toko dengan brand utama berikut yang mendapat multiplier. Kosongkan untuk semua brand.</p>
-              <div className="flex gap-3">
-                {BRANDS.map(b => (
-                  <label key={b} className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="rounded"
-                      checked={flatBrands.includes(b)}
-                      onChange={e => setFlatBrands(prev => e.target.checked ? [...prev, b] : prev.filter(x => x !== b))}
-                    />
-                    {b}
-                  </label>
-                ))}
-              </div>
             </div>
 
             {flatMult > 1 && (
@@ -725,6 +841,14 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
                   <span className="font-medium text-right max-w-[60%]">{form.deskripsi}</span>
                 </div>
               )}
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Brand Program</span>
+                <span className="font-medium text-right max-w-[60%]">
+                  {brandMode === "fighting"
+                    ? "Semen Banteng (Fighting Brand)"
+                    : buildBrands().map(b => b.nama).join(", ") || "—"}
+                </span>
+              </div>
             </div>
 
             {selectedType === "flat_multiplier" && (
@@ -732,7 +856,6 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Konfigurasi Flat Multiplier</p>
                 <div className="border rounded-xl p-3 space-y-1 text-sm">
                   <div className="flex justify-between"><span className="text-muted-foreground">Multiplier</span><span className="font-semibold text-blue-700">{flatMult}×</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Brand Filter</span><span className="font-medium">{flatBrands.length > 0 ? flatBrands.join(", ") : "Semua brand"}</span></div>
                 </div>
               </div>
             )}
