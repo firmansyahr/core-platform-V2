@@ -633,7 +633,7 @@ def create_promo_v2(body: CreatePromoBodyV2) -> dict:
 @router.post("/create-v3", status_code=201)
 def create_promo_v3(body: CreatePromoV3Body) -> dict:
     """Buat program promo tipe 1 (flat_multiplier), 2 (multi_tier), atau 3 (leaderboard)."""
-    VALID_TYPES = ("flat_multiplier", "multi_tier", "leaderboard")
+    VALID_TYPES = ("flat_multiplier", "flat_per_batch", "multi_tier", "leaderboard")
     if body.tipe_program not in VALID_TYPES:
         raise HTTPException(400, f"tipe_program harus salah satu dari: {VALID_TYPES}")
 
@@ -643,6 +643,11 @@ def create_promo_v3(body: CreatePromoV3Body) -> dict:
         mult = rc.get("multiplier", 0)
         if not isinstance(mult, (int, float)) or mult <= 1:
             raise HTTPException(400, "multiplier harus lebih dari 1")
+
+    elif body.tipe_program == "flat_per_batch":
+        tpp = rc.get("ton_per_poin", 0)
+        if not isinstance(tpp, (int, float)) or tpp <= 0:
+            raise HTTPException(400, "ton_per_poin harus lebih dari 0")
 
     elif body.tipe_program == "multi_tier":
         tiers = rc.get("tiers", [])
@@ -685,6 +690,7 @@ def create_promo_v3(body: CreatePromoV3Body) -> dict:
 
     jenis_map = {
         "flat_multiplier": "flat_multiplier",
+        "flat_per_batch":  "flat_per_batch",
         "multi_tier":      "multi_tier_points",
         "leaderboard":     "leaderboard",
     }
@@ -1460,7 +1466,7 @@ def get_monitoring(
         "multi_tier" if promo.get("reward_config") else "legacy"
     )
 
-    if tipe in ("flat_multiplier", "multi_tier", "leaderboard"):
+    if tipe in ("flat_multiplier", "flat_per_batch", "multi_tier", "leaderboard"):
         loyalty_cfg = pc.load_loyalty_config()
         result = pc.calculate_program_reward(
             promo         = promo,

@@ -734,6 +734,7 @@ export default function HomePage() {
                     {activePromos.slice(0, 3).map((promo) => {
                       const tipeLabel =
                         promo.tipe_program === "flat_multiplier" ? "Flat Multiplier" :
+                        promo.tipe_program === "flat_per_batch"  ? "Flat Per Batch" :
                         promo.tipe_program === "multi_tier" ? "Multi-Tier" :
                         promo.tipe_program === "leaderboard" ? "Leaderboard" :
                         promo.tipe_program ?? "–";

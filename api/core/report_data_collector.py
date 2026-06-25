@@ -115,10 +115,11 @@ def collect_program_promo_breakdown() -> dict:
     aktif  = [p for p in promos if p.get("status") == "Aktif"]
     selesai = [p for p in promos if p.get("status") == "Selesai"]
 
-    flat   = [p for p in aktif if p.get("tipe_program") == "flat_multiplier"]
-    tier   = [p for p in aktif if p.get("tipe_program") == "multi_tier"]
-    lb     = [p for p in aktif if p.get("tipe_program") == "leaderboard"]
-    legacy = [p for p in aktif if p.get("tipe_program") not in ("flat_multiplier", "multi_tier", "leaderboard")]
+    flat      = [p for p in aktif if p.get("tipe_program") == "flat_multiplier"]
+    batch     = [p for p in aktif if p.get("tipe_program") == "flat_per_batch"]
+    tier      = [p for p in aktif if p.get("tipe_program") == "multi_tier"]
+    lb        = [p for p in aktif if p.get("tipe_program") == "leaderboard"]
+    legacy    = [p for p in aktif if p.get("tipe_program") not in ("flat_multiplier", "flat_per_batch", "multi_tier", "leaderboard")]
 
     def _peserta(prog_list: list[dict]) -> int:
         return sum(len(p.get("peserta", [])) for p in prog_list)
@@ -162,6 +163,12 @@ def collect_program_promo_breakdown() -> dict:
             "total_peserta": _peserta(flat),
             "total_rupiah":  _budget(flat),
             "nama_program":  [p.get("nama_promo", "") for p in flat[:3]],
+        },
+        "flat_per_batch": {
+            "jumlah_aktif":  len(batch),
+            "total_peserta": _peserta(batch),
+            "total_rupiah":  _budget(batch),
+            "nama_program":  [p.get("nama_promo", "") for p in batch[:3]],
         },
         "multi_tier": {
             "jumlah_aktif":    len(tier),

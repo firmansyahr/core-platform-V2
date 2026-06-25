@@ -168,6 +168,31 @@ interface FlatMultiplierMonData {
   analytics?:      ProgramAnalytics;
 }
 
+interface FlatPerBatchPesertaRow {
+  id_toko:      string;
+  nama_toko:    string;
+  cluster:      string;
+  brand_utama:  string;
+  volume_ton:   number;
+  poin_earned:  number;
+  ton_per_poin: number;
+  total_rupiah: number;
+  keterangan:   string;
+}
+
+interface FlatPerBatchMonData {
+  tipe_program:   "flat_per_batch";
+  program_id:     string;
+  program_nama:   string;
+  ton_per_poin:   number;
+  brand_filter:   string[];
+  total_peserta:  number;
+  total_poin:     number;
+  total_rupiah:   number;
+  peserta_detail: FlatPerBatchPesertaRow[];
+  analytics?:     ProgramAnalytics;
+}
+
 interface LeaderboardStandingRow {
   id_toko:          string;
   nama_toko:        string;
@@ -199,7 +224,7 @@ interface LeaderboardMonData {
   analytics?:              ProgramAnalytics;
 }
 
-type AnyMonData = MonitoringData | MultiTierMonData | FlatMultiplierMonData | LeaderboardMonData;
+type AnyMonData = MonitoringData | MultiTierMonData | FlatMultiplierMonData | FlatPerBatchMonData | LeaderboardMonData;
 
 interface TokoSearchResult {
   id_toko:        string;
@@ -1173,6 +1198,92 @@ function FlatMultiplierMonitoringView({ data, searchTerm, onRemove }: { data: Fl
   );
 }
 
+// ── Flat Per Batch Monitoring View ───────────────────────────────────────────
+
+function FlatPerBatchMonitoringView({ data, searchTerm, onRemove }: { data: FlatPerBatchMonData } & Pick<MonParticipantActions, "searchTerm" | "onRemove">) {
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          { label: "Total Peserta",   value: fmtNum(data.total_peserta),        sub: "terdaftar",      color: "#3b82f6" },
+          { label: "Konversi Poin",   value: `${data.ton_per_poin} ton = 1 poin`, sub: "rate konversi", color: "#0d9488" },
+          { label: "Total Poin",      value: data.total_poin.toFixed(2),         sub: "akumulasi poin", color: "#16a34a" },
+          { label: "Estimasi Reward", value: fmtRp(data.total_rupiah),           sub: "total reward",   color: "#7c3aed" },
+        ].map(c => (
+          <Card key={c.label} className="shadow-sm" style={{ borderBottom: `3px solid ${c.color}` }}>
+            <CardContent className="p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">{c.label}</p>
+              <p className="text-base font-bold tabular-nums truncate" style={{ color: c.color }}>{c.value}</p>
+              <p className="text-[10px] text-muted-foreground">{c.sub}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {data.brand_filter.length > 0 && (
+        <div className="bg-teal-50 border border-teal-200 rounded-xl px-4 py-3 text-xs text-teal-900">
+          <span className="font-semibold">Brand filter: </span>
+          {data.brand_filter.join(", ")} — toko dengan brand lain mendapat 0 poin
+        </div>
+      )}
+
+      <Card className="shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Volume & Poin per Toko</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Toko</TableHead>
+                  <TableHead className="text-xs">Cluster</TableHead>
+                  <TableHead className="text-xs">Brand</TableHead>
+                  <TableHead className="text-xs text-right">Volume (ton)</TableHead>
+                  <TableHead className="text-xs text-right">Poin Earned</TableHead>
+                  <TableHead className="text-xs text-right">Estimasi Rp</TableHead>
+                  <TableHead className="text-xs w-10" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {[...data.peserta_detail]
+                  .sort((a, b) => b.poin_earned - a.poin_earned)
+                  .filter(p => !searchTerm || p.nama_toko.toLowerCase().includes(searchTerm.toLowerCase()) || p.id_toko.toLowerCase().includes(searchTerm.toLowerCase()))
+                  .slice(0, 50).map(p => (
+                  <TableRow key={p.id_toko}>
+                    <TableCell>
+                      <p className="text-sm font-medium">{p.nama_toko}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">{p.id_toko}</p>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{p.cluster}</TableCell>
+                    <TableCell className="text-xs">{p.brand_utama}</TableCell>
+                    <TableCell className="text-right text-sm">{p.volume_ton.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">
+                      <span className="text-sm font-semibold text-teal-700">{p.poin_earned.toFixed(2)} poin</span>
+                    </TableCell>
+                    <TableCell className="text-right text-sm font-medium text-purple-700">{fmtRp(p.total_rupiah)}</TableCell>
+                    <TableCell>
+                      <button className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600" title="Hapus peserta"
+                        onClick={() => onRemove({ id_toko: p.id_toko, nama_toko: p.nama_toko })}>
+                        <Trash2 size={12} />
+                      </button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {data.peserta_detail.length > 50 && (
+              <p className="text-xs text-muted-foreground text-center py-2">
+                Menampilkan 50 dari {data.peserta_detail.length} toko.
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ── Leaderboard View ─────────────────────────────────────────────────────────
 
 function LeaderboardView({ data, onRefresh, searchTerm, onRemove }: { data: LeaderboardMonData; onRefresh: () => void } & Pick<MonParticipantActions, "searchTerm" | "onRemove">) {
@@ -1863,6 +1974,12 @@ export default function PromoDetailPage() {
                 ) : monitoring?.tipe_program === "flat_multiplier" ? (
                   <FlatMultiplierMonitoringView
                     data={monitoring}
+                    searchTerm={monSearch}
+                    onRemove={p => setRemovePesertaMon(p)}
+                  />
+                ) : monitoring?.tipe_program === "flat_per_batch" ? (
+                  <FlatPerBatchMonitoringView
+                    data={monitoring as FlatPerBatchMonData}
                     searchTerm={monSearch}
                     onRemove={p => setRemovePesertaMon(p)}
                   />

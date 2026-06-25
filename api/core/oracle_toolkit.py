@@ -89,7 +89,7 @@ class OracleToolkit:
         df_trx = get_data()
         loyalty_cfg = load_loyalty_config()
 
-        if tipe in ("flat_multiplier", "multi_tier", "leaderboard"):
+        if tipe in ("flat_multiplier", "flat_per_batch", "multi_tier", "leaderboard"):
             result = calculate_program_reward(promo, promo.get("peserta", []), df_trx, loyalty_cfg)
             return {"status": "ok", "tipe_program": tipe, "analytics": result.get("analytics")}
 

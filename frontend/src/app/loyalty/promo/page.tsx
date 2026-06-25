@@ -80,6 +80,7 @@ function StatusBadge({ status }: { status: string }) {
 
 const TIPE_META: Record<string, { label: string; bg: string; text: string; icon: React.ElementType }> = {
   flat_multiplier:   { label: "Flat Multiplier", bg: "bg-blue-100",   text: "text-blue-700",   icon: Zap      },
+  flat_per_batch:    { label: "Flat Per Batch",   bg: "bg-teal-100",   text: "text-teal-700",   icon: BarChart2 },
   multi_tier:        { label: "Multi-Tier",       bg: "bg-indigo-100", text: "text-indigo-700", icon: TrendingUp },
   multi_tier_points: { label: "Multi-Tier",       bg: "bg-indigo-100", text: "text-indigo-700", icon: TrendingUp },
   leaderboard:       { label: "Leaderboard",      bg: "bg-amber-100",  text: "text-amber-700",  icon: Trophy   },
@@ -156,7 +157,7 @@ const DEFAULT_TIERS: TierRow[] = [
   { tier_id: 1, label: "Tier 1 — Silver", threshold_pct: 100, multiplier: 1.5, keterangan: "" },
 ];
 
-type TipeProgram = "flat_multiplier" | "multi_tier" | "leaderboard";
+type TipeProgram = "flat_multiplier" | "flat_per_batch" | "multi_tier" | "leaderboard";
 
 function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [step, setStep]               = useState(1);
@@ -165,6 +166,9 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
   // flat_multiplier state
   const [flatMult, setFlatMult]           = useState(2);
+
+  // flat_per_batch state
+  const [tonPerPoin, setTonPerPoin]       = useState(2);
 
   // Brand selection — multi-checkbox: default / fighting_brand / custom
   const [brandModes, setBrandModes] = useState<Set<string>>(new Set(["default"]));
@@ -259,6 +263,7 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
     && form.periode_selesai >= form.periode_mulai && brandStepValid;
   const step3Valid = (
     selectedType === "flat_multiplier" ? flatMult > 1 :
+    selectedType === "flat_per_batch"  ? tonPerPoin > 0 :
     selectedType === "multi_tier" ? tierErrors.length === 0 :
     selectedType === "leaderboard" ? lbRewards.length > 0 :
     false
@@ -277,6 +282,9 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
     };
     if (selectedType === "flat_multiplier") {
       return { ...base, reward_config: { type: "flat_multiplier", multiplier: flatMult } };
+    }
+    if (selectedType === "flat_per_batch") {
+      return { ...base, reward_config: { type: "flat_per_batch", ton_per_poin: tonPerPoin } };
     }
     if (selectedType === "multi_tier") {
       return { ...base, reward_config: { type: "multi_tier_points", tiers: sortedTiers, reguler_multiplier: 1.0, overflow_multiplier: 1.0 } };
@@ -334,6 +342,10 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
                   title: "Flat Multiplier",
                   sub: "Setiap transaksi mendapat poin berlipat tetap. Tidak ada target per toko.",
                   detail: "Contoh: semua toko Semen Elang mendapat 2× poin selama periode promo." },
+                { key: "flat_per_batch", icon: BarChart2, color: "teal",
+                  title: "Flat Per Batch",
+                  sub: "Poin berdasarkan kelipatan volume. Setiap X ton menghasilkan 1 poin.",
+                  detail: "Contoh: isi 2 → setiap 2 ton = 1 poin, jadi 5 ton = 2.5 poin." },
                 { key: "multi_tier", icon: TrendingUp, color: "indigo",
                   title: "Multi-Tier Target",
                   sub: "Poin berlipat makin besar sesuai pencapaian % target per toko.",
@@ -346,10 +358,11 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
                 const isSelected = selectedType === key;
                 const colors: Record<string, string> = {
                   blue: isSelected ? "border-blue-500 bg-blue-50 ring-2 ring-blue-200" : "border-gray-200 hover:border-blue-300 hover:bg-blue-50/30",
+                  teal: isSelected ? "border-teal-500 bg-teal-50 ring-2 ring-teal-200" : "border-gray-200 hover:border-teal-300 hover:bg-teal-50/30",
                   indigo: isSelected ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200" : "border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30",
                   amber: isSelected ? "border-amber-500 bg-amber-50 ring-2 ring-amber-200" : "border-gray-200 hover:border-amber-300 hover:bg-amber-50/30",
                 };
-                const iconColors: Record<string, string> = { blue: "text-blue-600", indigo: "text-indigo-600", amber: "text-amber-600" };
+                const iconColors: Record<string, string> = { blue: "text-blue-600", teal: "text-teal-600", indigo: "text-indigo-600", amber: "text-amber-600" };
                 return (
                   <button
                     key={key}
@@ -531,6 +544,44 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
                 <p className="font-medium text-sm">Estimasi cepat</p>
                 <p>Volume 100 ton × {flatMult}× = <span className="font-semibold text-blue-700">{fmtNum(100 * flatMult)} poin</span></p>
                 <p>= <span className="font-semibold text-blue-700">{fmtRp(100 * flatMult * 5000)}</span> (nilai poin Rp 5.000/poin)</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 3: Konfigurasi — Flat Per Batch */}
+        {step === 3 && selectedType === "flat_per_batch" && (
+          <div className="space-y-4">
+            <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 text-xs text-teal-900 space-y-1">
+              <p className="font-semibold">Flat Per Batch</p>
+              <p>Poin dihitung berdasarkan kelipatan volume: setiap <strong>ton_per_poin</strong> ton = 1 poin.</p>
+              <p>Hasil desimal diperbolehkan — tidak ada pembulatan.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-1">Konversi Poin <span className="text-red-500">*</span></label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number" min={0.1} step={0.5}
+                  className="w-28 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  value={tonPerPoin}
+                  onChange={e => setTonPerPoin(+e.target.value)}
+                />
+                <span className="text-sm text-muted-foreground">ton per poin (harus &gt; 0)</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Jumlah ton yang dibutuhkan untuk 1 poin.
+                Contoh: isi 2 artinya setiap 2 ton = 1 poin.
+              </p>
+              {tonPerPoin <= 0 && <p className="text-xs text-red-600 mt-1">ton_per_poin harus lebih dari 0</p>}
+            </div>
+
+            {tonPerPoin > 0 && (
+              <div className="bg-gray-50 border rounded-xl p-4 text-xs text-gray-600 space-y-1">
+                <p className="font-medium text-sm">Preview kalkulasi</p>
+                <p>Pembelian 10 ton = <span className="font-semibold text-teal-700">{(10 / tonPerPoin).toFixed(2)} poin</span></p>
+                <p>Pembelian 50 ton = <span className="font-semibold text-teal-700">{(50 / tonPerPoin).toFixed(2)} poin</span></p>
+                <p>Pembelian 100 ton = <span className="font-semibold text-teal-700">{(100 / tonPerPoin).toFixed(2)} poin</span></p>
               </div>
             )}
           </div>
@@ -824,6 +875,22 @@ function CreatePromoModal({ onClose, onCreated }: { onClose: () => void; onCreat
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Konfigurasi Flat Multiplier</p>
                 <div className="border rounded-xl p-3 space-y-1 text-sm">
                   <div className="flex justify-between"><span className="text-muted-foreground">Multiplier</span><span className="font-semibold text-blue-700">{flatMult}×</span></div>
+                </div>
+              </div>
+            )}
+
+            {selectedType === "flat_per_batch" && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Konfigurasi Flat Per Batch</p>
+                <div className="border rounded-xl p-3 space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Konversi Poin</span>
+                    <span className="font-semibold text-teal-700">{tonPerPoin} ton = 1 poin</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Contoh 100 ton</span>
+                    <span className="font-semibold text-teal-700">{(100 / tonPerPoin).toFixed(2)} poin</span>
+                  </div>
                 </div>
               </div>
             )}

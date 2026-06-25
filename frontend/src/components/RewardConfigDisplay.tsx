@@ -140,6 +140,35 @@ function LeaderboardDisplay({ rc }: { rc: Record<string, unknown> }) {
   );
 }
 
+function FlatPerBatchDisplay({ rc }: { rc: Record<string, unknown> }) {
+  const tonPerPoin = (rc.ton_per_poin as number) ?? 2;
+  const brandFilter = (rc.brand_filter as string[]) ?? [];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Konversi Poin</p>
+        <span className="inline-flex px-3 py-1 rounded-full text-sm font-bold bg-teal-100 text-teal-700">{tonPerPoin} ton = 1 poin</span>
+      </div>
+      <div className="bg-teal-50 border border-teal-100 rounded-lg p-3 text-xs text-teal-800 space-y-0.5">
+        <p>10 ton → {(10 / tonPerPoin).toFixed(2)} poin</p>
+        <p>50 ton → {(50 / tonPerPoin).toFixed(2)} poin</p>
+        <p>100 ton → {(100 / tonPerPoin).toFixed(2)} poin</p>
+      </div>
+      {brandFilter.length > 0 && (
+        <div>
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Brand Filter</p>
+          <div className="flex flex-wrap gap-1.5">
+            {brandFilter.map(b => (
+              <span key={b} className="inline-flex px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">{b}</span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function RewardConfigDisplay({
   tipe_program,
   reward_config,
@@ -150,6 +179,7 @@ export function RewardConfigDisplay({
   if (!reward_config) return <p className="text-sm text-muted-foreground">Konfigurasi tidak tersedia</p>;
   if (tipe_program === "multi_tier") return <MultiTierDisplay rc={reward_config} />;
   if (tipe_program === "flat_multiplier") return <FlatMultiplierDisplay rc={reward_config} />;
+  if (tipe_program === "flat_per_batch") return <FlatPerBatchDisplay rc={reward_config} />;
   if (tipe_program === "leaderboard") return <LeaderboardDisplay rc={reward_config} />;
 
   return (

@@ -493,6 +493,92 @@ def calculate_flat_multiplier_program(
     }
 
 
+def calculate_flat_per_batch_program(
+    promo: dict,
+    peserta_data: list[dict],
+    transaksi_df: pd.DataFrame,
+    loyalty_config: dict,
+) -> dict[str, Any]:
+    """Tipe flat_per_batch: setiap ton_per_poin ton = 1 poin (desimal ok)."""
+    reward_config      = promo.get("reward_config", {})
+    ton_per_poin       = float(reward_config.get("ton_per_poin", 2.0))
+    if ton_per_poin <= 0:
+        ton_per_poin = 2.0
+    brand_filter: list = reward_config.get("brand_filter", [])
+    brand_point_values = loyalty_config.get("brand_point_values", get_brand_point_values())
+
+    mulai   = pd.Timestamp(promo["periode_mulai"]).normalize()
+    selesai = pd.Timestamp(promo["periode_selesai"]).normalize()
+
+    df = transaksi_df.copy()
+    df["_dt"] = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
+
+    fighting  = "SEMEN BANTENG"
+    brand_col = next((c for c in df.columns if "brand" in c.lower()), None)
+    if brand_col:
+        df = df[~df[brand_col].str.upper().eq(fighting)]
+
+    df_period = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
+    agg_ton   = df_period.groupby("ID Toko")["TON Quantity"].sum().to_dict()
+
+    results: list[dict] = []
+    for peserta in peserta_data:
+        id_toko = str(peserta["id_toko"])
+        volume  = float(agg_ton.get(id_toko, 0.0))
+        brand   = peserta.get("brand_utama", "Semen Elang")
+
+        if brand_filter and brand not in brand_filter:
+            poin_earned  = 0.0
+            keterangan   = f"Brand {brand} tidak dalam filter → 0 poin"
+        else:
+            poin_earned  = round(volume / ton_per_poin, 2)
+            keterangan   = f"{volume} ton / {ton_per_poin} ton per poin = {poin_earned} poin"
+
+        pv           = brand_point_values.get(brand, brand_point_values.get("Semen Elang", 5000))
+        total_rupiah = round(poin_earned * pv, 0)
+
+        results.append({
+            "id_toko":      id_toko,
+            "nama_toko":    peserta.get("nama_toko", ""),
+            "cluster":      peserta.get("cluster_pareto", peserta.get("cluster", "")),
+            "brand_utama":  brand,
+            "volume_ton":   round(volume, 2),
+            "poin_earned":  poin_earned,
+            "ton_per_poin": ton_per_poin,
+            "total_rupiah": total_rupiah,
+            "keterangan":   keterangan,
+        })
+
+    total_poin_prog   = sum(r["poin_earned"]   for r in results)
+    total_rupiah_prog = sum(r["total_rupiah"]  for r in results)
+
+    baseline = get_baseline_volume(
+        [r["id_toko"] for r in results], promo["periode_mulai"], promo["periode_selesai"], transaksi_df,
+    )
+    analytics_rows = [
+        {
+            "id_toko": r["id_toko"], "nama_toko": r["nama_toko"],
+            "during_vol": r["volume_ton"], "target_ton": None,
+            "reward_rupiah": r["total_rupiah"],
+        }
+        for r in results
+    ]
+    analytics = compute_program_analytics(analytics_rows, baseline, total_rupiah_prog)
+
+    return {
+        "tipe_program":   "flat_per_batch",
+        "program_id":     promo["id"],
+        "program_nama":   promo.get("nama_promo", ""),
+        "ton_per_poin":   ton_per_poin,
+        "brand_filter":   brand_filter,
+        "total_peserta":  len(results),
+        "total_poin":     round(total_poin_prog, 2),
+        "total_rupiah":   round(total_rupiah_prog, 0),
+        "peserta_detail": results,
+        "analytics":      analytics,
+    }
+
+
 def calculate_leaderboard_standings(
     promo: dict,
     peserta_data: list[dict],
@@ -642,6 +728,8 @@ def calculate_program_reward(
     )
     if tipe == "flat_multiplier":
         return calculate_flat_multiplier_program(promo, peserta_data, transaksi_df, loyalty_config)
+    if tipe == "flat_per_batch":
+        return calculate_flat_per_batch_program(promo, peserta_data, transaksi_df, loyalty_config)
     if tipe == "multi_tier":
         return calculate_program_reward_summary(promo, peserta_data, transaksi_df, loyalty_config)
     if tipe == "leaderboard":
