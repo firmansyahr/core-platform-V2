@@ -591,3 +591,79 @@ class OracleToolkit:
                     "delta_pp": delta, "arah": "naik" if delta > 0 else "turun",
                 })
         return {"status": "ok", "threshold_pp": threshold_pp, "movements": sorted(movements, key=lambda m: -abs(m["delta_pp"]))}
+
+    def get_area_momentum(self, area: str, granularity: str = "auto") -> dict:
+        """Market Share Momentum dua tier (lihat docstring model
+        MarketShareMomentum) — provinsi dapat true market share kalau
+        ASPERSSI tersedia, kabupaten cuma internal brand mix.
+
+        Method ini SYNC (bukan async seperti spesifikasi awal) — konsisten
+        dengan SELURUH method lain di OracleToolkit (semua sync, paralelisme
+        di-handle via asyncio.to_thread oleh caller, bukan oleh tool itu
+        sendiri — lihat oracle_agent.py)."""
+        from api.database import SessionLocal
+        from api.models import MarketShareMomentum
+
+        area_key = area.strip().upper()
+        db = SessionLocal()
+        try:
+            target_granularity = granularity
+            if granularity == "auto":
+                has_provinsi = db.query(MarketShareMomentum).filter(
+                    MarketShareMomentum.granularity == "provinsi", MarketShareMomentum.provinsi == area_key,
+                ).first()
+                target_granularity = "provinsi" if has_provinsi else "kabupaten"
+
+            q = db.query(MarketShareMomentum).filter(MarketShareMomentum.granularity == target_granularity)
+            q = q.filter(MarketShareMomentum.provinsi == area_key) if target_granularity == "provinsi" else q.filter(MarketShareMomentum.kabupaten == area_key)
+            rows = q.order_by(MarketShareMomentum.periode).all()
+
+            if not rows:
+                return {"status": "not_found", "area": area, "message": f"Tidak ada data momentum untuk '{area}'"}
+
+            # latest = brand-mix paling segar (transaksi internal, update terus).
+            # latest_true_ms = baris True MS paling baru YANG PERNAH ADA — BISA
+            # periode-nya lebih lama dari `latest` karena ASPERSSI di-upload
+            # manual dan lag dari transaksi internal (di-konfirmasi via test
+            # nyata: ASPERSSI 2025-12/2026-01, transaksi sampai 2026-04 — kalau
+            # cuma pakai "latest row" generik, true MS TIDAK PERNAH kepilih
+            # walau datanya ada, karena periode terbarunya selalu yang fallback).
+            latest = rows[-1]
+            true_ms_rows = [r for r in rows if r.asperssi_available]
+            latest_true_ms = true_ms_rows[-1] if true_ms_rows else None
+            is_true_ms = latest_true_ms is not None
+
+            metric_type = "true_market_share" if is_true_ms else "internal_brand_mix"
+            if is_true_ms:
+                metric_caveat = (
+                    f"True Market Share tersedia untuk periode {latest_true_ms.periode} (ASPERSSI, upload manual) — "
+                    f"BUKAN periode transaksi paling baru ({latest.periode}). Brand mix internal periode {latest.periode} "
+                    "disertakan sebagai sinyal paling segar; jangan campur dua periode ini saat membandingkan angka."
+                )
+            else:
+                metric_caveat = (
+                    "Angka ini Internal Brand Mix — persentase volume Elang/Badak/Banteng dari volume KAMI SENDIRI saja, "
+                    "BUKAN true market share. Tidak ada visibilitas kompetitor eksternal di level ini "
+                    + ("(kabupaten tidak punya data ASPERSSI)." if target_granularity == "kabupaten" else "(ASPERSSI tidak tersedia untuk provinsi ini).")
+                )
+
+            return {
+                "status": "ok", "area": area_key, "granularity": target_granularity,
+                "metric_type": metric_type, "metric_caveat": metric_caveat,
+                "latest_periode": latest.periode,
+                "brand_mix_elang_pct": latest.brand_mix_elang_pct, "brand_mix_badak_pct": latest.brand_mix_badak_pct,
+                "brand_mix_banteng_pct": latest.brand_mix_banteng_pct,
+                "brandmix_momentum_elang": latest.brandmix_momentum_elang, "brandmix_label": latest.brandmix_label,
+                "true_market_share_periode": latest_true_ms.periode if latest_true_ms else None,
+                "ms_elang_pct": latest_true_ms.ms_elang_pct if latest_true_ms else None,
+                "ms_banteng_pct": latest_true_ms.ms_banteng_pct if latest_true_ms else None,
+                "ms_kompetitor_pct": latest_true_ms.ms_kompetitor_pct if latest_true_ms else None,
+                "ms_momentum_elang": latest_true_ms.ms_momentum_elang if latest_true_ms else None,
+                "ms_label": latest_true_ms.ms_label if latest_true_ms else None,
+                "primary_threat_source": latest_true_ms.primary_threat_source if latest_true_ms else None,
+                "loss_attribution_internal_pct": latest_true_ms.loss_attribution_internal_pct if latest_true_ms else None,
+                "loss_attribution_external_pct": latest_true_ms.loss_attribution_external_pct if latest_true_ms else None,
+                "trend_periode_count": len(rows),
+            }
+        finally:
+            db.close()

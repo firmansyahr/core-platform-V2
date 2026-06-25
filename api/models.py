@@ -452,3 +452,78 @@ class OracleCadVerdict(Base):
     user_decision        = Column(String, nullable=True)  # confirmed|overridden|dismissed
     user_notes           = Column(String, nullable=True)
     decided_at           = Column(DateTime, nullable=True)
+
+
+class MarketShareMomentum(Base):
+    """
+    Dua tier metric, BUKAN satu konsep "market share":
+    - kabupaten: Internal Brand Mix — % volume Elang/Badak/Banteng dari
+      TOTAL volume kami sendiri di kabupaten itu. Tidak ada visibilitas
+      kompetitor sama sekali di level ini (transaksi internal HANYA berisi
+      3 brand kami — lihat Brands column di data transaksi).
+    - provinsi: True Market Share kalau ASPERSSI tersedia utk
+      (provinsi, periode) tersebut, fallback ke brand mix kalau tidak.
+      ASPERSSI (marketshare_brand_detail) cuma kasih PERSEN, bukan volume
+      absolut, dan is_own_brand=True SELALU satu baris "Semen Elang" yang
+      merepresentasikan total korporat kami (dikonfirmasi dari data
+      asperssi/marketshare_brand.json nyata — Badak/Banteng tidak pernah
+      muncul sebagai baris is_own_brand terpisah) — bukan per-brand kami.
+      total_market_volume di-derive dengan SCALE internal_volume_total
+      terhadap own_brand_pct (asumsi: %ASPERSSI utk "Semen Elang" mewakili
+      total korporat kami, bukan cuma SKU Elang), lalu volume internal
+      Elang/Badak/Banteng didistribusikan proporsional ke total itu —
+      BUKAN dijumlah langsung dengan "asperssi_volume_total_kompetitor"
+      seolah itu angka volume asli (ASPERSSI tidak pernah punya angka itu).
+    """
+    __tablename__ = "market_share_momentum"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    # ── Identitas area ───────────────────────────────────────────────────
+    kabupaten = Column(String, nullable=True, index=True)  # Null = provinsi-level
+    provinsi  = Column(String, nullable=False, index=True)
+
+    granularity = Column(String, nullable=False)  # "kabupaten" | "provinsi"
+    periode     = Column(String, nullable=False)  # "YYYY-MM"
+
+    # ── Internal Brand Mix (selalu tersedia, dihitung dari transaksi) ────
+    internal_volume_elang   = Column(Float, default=0)
+    internal_volume_badak   = Column(Float, default=0)
+    internal_volume_banteng = Column(Float, default=0)
+    internal_volume_total   = Column(Float, default=0)
+
+    brand_mix_elang_pct   = Column(Float)
+    brand_mix_badak_pct   = Column(Float)
+    brand_mix_banteng_pct = Column(Float)
+
+    brandmix_momentum_elang   = Column(Float, default=0)
+    brandmix_momentum_banteng = Column(Float, default=0)
+    brandmix_label            = Column(String)  # accelerating_loss|slow_erosion|stable|gaining
+
+    # ── True Market Share (hanya provinsi + ASPERSSI tersedia) ───────────
+    asperssi_available = Column(Integer, default=0)
+
+    asperssi_volume_total_kompetitor = Column(Float, nullable=True)
+    total_market_volume              = Column(Float, nullable=True)
+
+    ms_elang_pct      = Column(Float, nullable=True)
+    ms_badak_pct      = Column(Float, nullable=True)
+    ms_banteng_pct    = Column(Float, nullable=True)
+    ms_kompetitor_pct = Column(Float, nullable=True)
+
+    ms_momentum_elang      = Column(Float, nullable=True)
+    ms_momentum_banteng    = Column(Float, nullable=True)
+    ms_momentum_kompetitor = Column(Float, nullable=True)
+
+    ms_label = Column(String, nullable=True)
+
+    # ── Composite insight (hanya jika asperssi_available=1) ──────────────
+    loss_attribution_internal_pct = Column(Float, nullable=True)
+    loss_attribution_external_pct = Column(Float, nullable=True)
+    primary_threat_source         = Column(String, nullable=True)  # internal_banteng|external_competitor|both|none
+
+    computed_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+
+    __table_args__ = (
+        UniqueConstraint("granularity", "kabupaten", "provinsi", "periode", name="uq_msm_area_periode"),
+    )

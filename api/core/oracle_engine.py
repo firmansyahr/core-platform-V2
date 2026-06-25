@@ -223,6 +223,10 @@ def _tool_definitions() -> list[dict]:
         t("simulate_scenario", "What-if simulation: 'budget_change' (re-run ILP optimizer) atau 'reward_rate_change' (estimasi ulang budget loyalty).",
           {"scenario_type": {"type": "string", "enum": ["budget_change", "reward_rate_change"]}, "params": {"type": "object"}},
           ["scenario_type", "params"]),
+        t("get_area_momentum", "Market Share Momentum dua tier untuk satu area: provinsi bisa True Market Share (kalau ASPERSSI tersedia) atau Internal Brand Mix (fallback); kabupaten SELALU Internal Brand Mix — WAJIB perhatikan field metric_caveat saat menjawab, jangan sebut Internal Brand Mix sebagai 'market share'.",
+          {"area": {"type": "string", "description": "Nama provinsi atau kabupaten, huruf besar"},
+           "granularity": {"type": "string", "enum": ["auto", "provinsi", "kabupaten"], "default": "auto"}},
+          ["area"]),
 
         # ── Render & meta tools (side-channel terstruktur, bukan data query) ──
         t("render_bar_chart", "Render bar chart di data panel.",
@@ -267,6 +271,7 @@ _STEP_LABELS = {
     "compare_programs": "Membandingkan program",
     "get_area_heatmap_data": "Mengambil data heatmap wilayah",
     "simulate_scenario": "Menjalankan simulasi skenario",
+    "get_area_momentum": "Mengecek market share momentum area",
 }
 
 

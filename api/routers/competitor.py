@@ -18,7 +18,10 @@ from api.core import cad_storage
 from api.core import insight_engine as ie
 from api.core.aegis_engine import compute_store_crs
 from api.core.auth import get_current_admin_user
+from api.core.competitor_analyzer import CompetitorAnalyzer
 from api.core.data_loader import get_data
+from api.database import SessionLocal
+from api.models import MarketShareMomentum
 
 router = APIRouter(prefix="/api/competitor", tags=["competitor"])
 
@@ -622,3 +625,210 @@ def sp_delete_row(
             ce.save_share_provinsi(payload)
             return _ok({"deleted_row_id": row_id})
     raise HTTPException(404, f"Row {row_id} tidak ditemukan")
+
+
+# ── Market Share Momentum (dua tier — lihat docstring MarketShareMomentum
+# di models.py: kabupaten = internal brand mix, provinsi = true market share
+# kalau ASPERSSI tersedia, fallback ke brand mix kalau tidak) ────────────────
+
+def _msm_to_dict(row: MarketShareMomentum) -> dict:
+    is_true_ms = bool(row.asperssi_available)
+    return {
+        "id": row.id, "kabupaten": row.kabupaten, "provinsi": row.provinsi,
+        "granularity": row.granularity, "periode": row.periode,
+        "internal_volume_elang": row.internal_volume_elang, "internal_volume_badak": row.internal_volume_badak,
+        "internal_volume_banteng": row.internal_volume_banteng, "internal_volume_total": row.internal_volume_total,
+        "brand_mix_elang_pct": row.brand_mix_elang_pct, "brand_mix_badak_pct": row.brand_mix_badak_pct,
+        "brand_mix_banteng_pct": row.brand_mix_banteng_pct,
+        "brandmix_momentum_elang": row.brandmix_momentum_elang, "brandmix_momentum_banteng": row.brandmix_momentum_banteng,
+        "brandmix_label": row.brandmix_label,
+        "asperssi_available": is_true_ms,
+        "total_market_volume": row.total_market_volume,
+        "ms_elang_pct": row.ms_elang_pct, "ms_badak_pct": row.ms_badak_pct,
+        "ms_banteng_pct": row.ms_banteng_pct, "ms_kompetitor_pct": row.ms_kompetitor_pct,
+        "ms_momentum_elang": row.ms_momentum_elang, "ms_momentum_banteng": row.ms_momentum_banteng,
+        "ms_momentum_kompetitor": row.ms_momentum_kompetitor, "ms_label": row.ms_label,
+        "loss_attribution_internal_pct": row.loss_attribution_internal_pct,
+        "loss_attribution_external_pct": row.loss_attribution_external_pct,
+        "primary_threat_source": row.primary_threat_source,
+        "metric_type": "true_market_share" if is_true_ms else "internal_brand_mix",
+        "metric_label": "Market Share" if is_true_ms else "Brand Mix Internal",
+        "computed_at": row.computed_at,
+    }
+
+
+def _effective_momentum_elang(row: MarketShareMomentum) -> float:
+    """Pilih sinyal terbaik yang tersedia untuk ranking — true MS kalau ada,
+    fallback brand mix kalau tidak (dipakai HANYA utk sorting worst/best,
+    bukan ditampilkan sebagai field baru)."""
+    if row.asperssi_available and row.ms_momentum_elang is not None:
+        return row.ms_momentum_elang
+    return row.brandmix_momentum_elang or 0.0
+
+
+def _insight_text(row: MarketShareMomentum) -> str:
+    if not row.asperssi_available or row.primary_threat_source in (None, "none"):
+        return f"{row.provinsi} ({row.periode}): True market share Elang {row.ms_elang_pct}%, momentum {row.ms_momentum_elang:+.1f}pp — tidak ada penurunan signifikan untuk diatribusi."
+    arah = "kanibalisasi Banteng internal" if row.primary_threat_source == "internal_banteng" else (
+        "tekanan kompetitor eksternal" if row.primary_threat_source == "external_competitor" else "kombinasi Banteng internal dan kompetitor eksternal"
+    )
+    return (
+        f"Di {row.provinsi} ({row.periode}), penurunan Elang {abs(row.ms_momentum_elang):.1f}pp didominasi {arah} "
+        f"(internal {row.loss_attribution_internal_pct}% vs eksternal {row.loss_attribution_external_pct}%)."
+    )
+
+
+@router.post("/momentum/refresh")
+def momentum_refresh() -> dict:
+    """Trigger manual compute_market_share_momentum() — belum ada scheduler/
+    startup hook di scope turn ini, jadi endpoint ini SATU-SATUNYA cara
+    mengisi tabel selain memanggil analyzer langsung dari skrip/shell."""
+    db = SessionLocal()
+    try:
+        analyzer = CompetitorAnalyzer(db)
+        result = analyzer.compute_market_share_momentum()
+        return _ok(result)
+    finally:
+        db.close()
+
+
+@router.get("/momentum")
+def momentum_list(
+    granularity: str = "all", provinsi: str = "", kabupaten: str = "",
+    periode: str = "", label: str = "", asperssi_only: bool = False,
+) -> dict:
+    db = SessionLocal()
+    try:
+        q = db.query(MarketShareMomentum)
+        if granularity in ("kabupaten", "provinsi"):
+            q = q.filter(MarketShareMomentum.granularity == granularity)
+        if provinsi:
+            q = q.filter(MarketShareMomentum.provinsi == provinsi.strip().upper())
+        if kabupaten:
+            q = q.filter(MarketShareMomentum.kabupaten == kabupaten.strip().upper())
+        if periode:
+            q = q.filter(MarketShareMomentum.periode == periode.strip())
+        if asperssi_only:
+            q = q.filter(MarketShareMomentum.asperssi_available == 1)
+        rows = q.all()
+        if label:
+            rows = [r for r in rows if (r.ms_label or r.brandmix_label) == label]
+        rows.sort(key=lambda r: (r.periode, -_effective_momentum_elang(r)), reverse=True)
+        return _ok([_msm_to_dict(r) for r in rows])
+    finally:
+        db.close()
+
+
+@router.get("/momentum/summary")
+def momentum_summary() -> dict:
+    db = SessionLocal()
+    try:
+        all_rows = db.query(MarketShareMomentum).all()
+        kab_rows = [r for r in all_rows if r.granularity == "kabupaten"]
+        prov_rows = [r for r in all_rows if r.granularity == "provinsi"]
+
+        def _latest_per_area(rows: list[MarketShareMomentum], area_attr: str) -> list[MarketShareMomentum]:
+            latest: dict[str, MarketShareMomentum] = {}
+            for r in rows:
+                key = getattr(r, area_attr)
+                if key not in latest or r.periode > latest[key].periode:
+                    latest[key] = r
+            return list(latest.values())
+
+        kab_latest = _latest_per_area(kab_rows, "kabupaten")
+        prov_latest = _latest_per_area(prov_rows, "provinsi")
+
+        def _by_label(rows: list[MarketShareMomentum], label_attr: str = "brandmix_label") -> dict:
+            d: dict[str, int] = {}
+            for r in rows:
+                lbl = getattr(r, label_attr) or "stable"
+                d[lbl] = d.get(lbl, 0) + 1
+            return d
+
+        kab_sorted_worst = sorted(kab_latest, key=lambda r: r.brandmix_momentum_elang or 0)
+        prov_sorted_worst = sorted(prov_latest, key=_effective_momentum_elang)
+
+        # PENTING: ASPERSSI lag dari transaksi internal (periode terbaru
+        # transaksi SERING tidak punya ASPERSSI yang sepadan — upload manual,
+        # bukan real-time) — "latest periode per provinsi" (prov_latest) BISA
+        # JADI bulan yang asperssi_available=0 walau provinsi itu PUNYA data
+        # true MS di bulan lebih lama. Dihitung terpisah: latest periode
+        # ASPERSSI-available PER provinsi, bukan dari prov_latest.
+        true_ms_candidates = [r for r in prov_rows if r.asperssi_available]
+        true_ms_latest = _latest_per_area(true_ms_candidates, "provinsi")
+        provinces_with_true_ms = {r.provinsi for r in true_ms_candidates}
+
+        return _ok({
+            "kabupaten_summary": {
+                "total_areas": len(kab_latest),
+                "metric_type": "internal_brand_mix",
+                "by_label": _by_label(kab_latest),
+                "worst_kabupaten": [_msm_to_dict(r) for r in kab_sorted_worst[:5]],
+                "best_kabupaten": [_msm_to_dict(r) for r in list(reversed(kab_sorted_worst))[:5]],
+            },
+            "provinsi_summary": {
+                "total_provinsi": len(prov_latest),
+                "with_true_market_share": len(provinces_with_true_ms),
+                "fallback_brand_mix_only": len(prov_latest) - len(provinces_with_true_ms),
+                "by_label": _by_label(prov_latest),
+                "worst_provinsi": [_msm_to_dict(r) for r in prov_sorted_worst[:5]],
+                "best_provinsi": [_msm_to_dict(r) for r in list(reversed(prov_sorted_worst))[:5]],
+            },
+            "true_ms_insights": [
+                {
+                    "provinsi": r.provinsi, "periode": r.periode,
+                    "ms_elang_pct": r.ms_elang_pct, "ms_momentum_elang": r.ms_momentum_elang,
+                    "primary_threat_source": r.primary_threat_source,
+                    "loss_attribution_internal_pct": r.loss_attribution_internal_pct,
+                    "loss_attribution_external_pct": r.loss_attribution_external_pct,
+                    "insight_text": _insight_text(r),
+                }
+                for r in true_ms_latest
+            ],
+        })
+    finally:
+        db.close()
+
+
+@router.get("/momentum/provinsi/{provinsi}")
+def momentum_provinsi_detail(provinsi: str) -> dict:
+    db = SessionLocal()
+    try:
+        prov = provinsi.strip().upper()
+        prov_rows = db.query(MarketShareMomentum).filter(
+            MarketShareMomentum.granularity == "provinsi", MarketShareMomentum.provinsi == prov,
+        ).order_by(MarketShareMomentum.periode).all()
+        if not prov_rows:
+            raise HTTPException(404, f"Tidak ada data momentum untuk provinsi '{provinsi}'")
+
+        latest_periode = prov_rows[-1].periode
+        kab_rows = db.query(MarketShareMomentum).filter(
+            MarketShareMomentum.granularity == "kabupaten", MarketShareMomentum.provinsi == prov,
+            MarketShareMomentum.periode == latest_periode,
+        ).order_by(MarketShareMomentum.kabupaten).all()
+
+        true_ms_rows = [r for r in prov_rows if r.asperssi_available]
+
+        return _ok({
+            "provinsi": prov,
+            "brand_mix_trend": [
+                {"periode": r.periode, "elang_pct": r.brand_mix_elang_pct, "badak_pct": r.brand_mix_badak_pct,
+                 "banteng_pct": r.brand_mix_banteng_pct, "momentum_elang": r.brandmix_momentum_elang}
+                for r in prov_rows
+            ],
+            "true_market_share_trend": [
+                {"periode": r.periode, "ms_elang_pct": r.ms_elang_pct, "ms_badak_pct": r.ms_badak_pct,
+                 "ms_banteng_pct": r.ms_banteng_pct, "ms_kompetitor_pct": r.ms_kompetitor_pct,
+                 "momentum_elang": r.ms_momentum_elang, "primary_threat_source": r.primary_threat_source}
+                for r in true_ms_rows
+            ],
+            "loss_attribution_history": [
+                {"periode": r.periode, "internal_pct": r.loss_attribution_internal_pct,
+                 "external_pct": r.loss_attribution_external_pct, "primary_threat_source": r.primary_threat_source}
+                for r in true_ms_rows if r.primary_threat_source not in (None, "none")
+            ],
+            "kabupaten_breakdown": [_msm_to_dict(r) for r in kab_rows],
+            "latest_periode": latest_periode,
+        })
+    finally:
+        db.close()
