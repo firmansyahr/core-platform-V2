@@ -72,15 +72,15 @@ def start_scheduler() -> None:
         return
 
     _scheduler.add_job(
-        _run_oracle_daily_monitoring, trigger=CronTrigger(hour=6, minute=0),
+        _run_oracle_daily_monitoring, trigger=CronTrigger(hour=7, minute=0),
         id="oracle_daily_monitoring", replace_existing=True,
     )
     _scheduler.add_job(
-        _run_oracle_cad_auto_validate, trigger=CronTrigger(minute=0),
+        _run_oracle_cad_auto_validate, trigger=CronTrigger(hour=7, minute=15),
         id="oracle_cad_auto_validate", replace_existing=True,
     )
     _scheduler.start()
-    logger.info("[oracle_scheduler] Started — daily monitoring 06:00, CAD auto-validate setiap jam")
+    logger.info("[oracle_scheduler] Started — daily monitoring 07:00, CAD auto-validate 07:15 (1x/hari, portfolio mode)")
 
 
 def shutdown_scheduler() -> None:
