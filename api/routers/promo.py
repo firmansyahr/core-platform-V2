@@ -376,9 +376,20 @@ def _get_loyalty_members_for_promo() -> list[dict]:
 # ── Business helpers ──────────────────────────────────────────────────────────
 
 def _generate_id(existing: list[dict]) -> str:
+    """Next sequence number = MAX existing suffix + 1, BUKAN count + 1 — kalau
+    promo manapun hari ini pernah dihapus (lihat _delete_promo_by_id), count
+    based numbering collide dengan id yang masih ada (mis. -001 dihapus,
+    -002/-003 masih ada -> count=2 -> generate -003 lagi -> UNIQUE constraint
+    error). Ditemukan saat testing nyata terhadap production, bukan hipotetis
+    — collision ini sedang BENAR-BENAR menghalangi pembuatan promo baru hari
+    ini di production sebelum diperbaiki."""
     today  = date.today().strftime("%Y%m%d")
     prefix = f"PROMO-{today}-"
-    n      = sum(1 for p in existing if p["id"].startswith(prefix)) + 1
+    todays_nums = [
+        int(p["id"][len(prefix):]) for p in existing
+        if p["id"].startswith(prefix) and p["id"][len(prefix):].isdigit()
+    ]
+    n = max(todays_nums, default=0) + 1
     return f"{prefix}{n:03d}"
 
 
