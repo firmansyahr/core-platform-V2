@@ -494,20 +494,17 @@ def calculate_flat_multiplier_program(
     df_period      = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
     agg_ton        = df_period.groupby("ID Toko")["TON Quantity"].sum().to_dict()
 
-    allowed_upper = [b.upper() for b in allowed_brands] if allowed_brands is not None else None
+    brand_program = ", ".join(allowed_brands) if allowed_brands else None
 
     results: list[dict] = []
     for peserta in peserta_data:
-        id_toko  = str(peserta["id_toko"])
-        volume   = float(agg_ton.get(id_toko, 0.0))
-        brand    = peserta.get("brand_utama", "Semen Elang")
+        id_toko       = str(peserta["id_toko"])
+        volume        = float(agg_ton.get(id_toko, 0.0))
+        brand         = peserta.get("brand_utama", "Semen Elang")
+        brand_display = brand_program or brand
 
-        if allowed_upper is not None and brand.upper() not in allowed_upper:
-            mult_efektif = 1.0
-            keterangan   = f"Brand {brand} tidak dalam filter → multiplier 1X"
-        else:
-            mult_efektif = multiplier
-            keterangan   = f"{multiplier}X flat multiplier"
+        mult_efektif = multiplier
+        keterangan   = f"{multiplier}X flat multiplier"
 
         pv           = brand_point_values.get(brand, brand_point_values.get("Semen Elang", 5000))
         total_poin   = round(volume * mult_efektif, 2)
@@ -517,7 +514,8 @@ def calculate_flat_multiplier_program(
             "id_toko":            id_toko,
             "nama_toko":          peserta.get("nama_toko", ""),
             "cluster":            peserta.get("cluster_pareto", peserta.get("cluster", "")),
-            "brand_utama":        brand,
+            "brand_utama":        brand_display,
+            "brand_program":      brand_program,
             "volume_ton":         round(volume, 2),
             "multiplier_berlaku": mult_efektif,
             "total_poin":         total_poin,
@@ -578,34 +576,32 @@ def calculate_flat_per_batch_program(
     df_period      = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
     agg_ton        = df_period.groupby("ID Toko")["TON Quantity"].sum().to_dict()
 
-    allowed_upper = [b.upper() for b in allowed_brands] if allowed_brands is not None else None
+    brand_program = ", ".join(allowed_brands) if allowed_brands else None
 
     results: list[dict] = []
     for peserta in peserta_data:
-        id_toko = str(peserta["id_toko"])
-        volume  = float(agg_ton.get(id_toko, 0.0))
-        brand   = peserta.get("brand_utama", "Semen Elang")
+        id_toko       = str(peserta["id_toko"])
+        volume        = float(agg_ton.get(id_toko, 0.0))
+        brand         = peserta.get("brand_utama", "Semen Elang")
+        brand_display = brand_program or brand
 
-        if allowed_upper is not None and brand.upper() not in allowed_upper:
-            poin_earned  = 0.0
-            keterangan   = f"Brand {brand} tidak dalam filter → 0 poin"
-        else:
-            poin_earned  = round(volume / ton_per_poin, 2)
-            keterangan   = f"{volume} ton / {ton_per_poin} ton per poin = {poin_earned} poin"
+        poin_earned  = round(volume / ton_per_poin, 2)
+        keterangan   = f"{volume} ton / {ton_per_poin} ton per poin = {poin_earned} poin"
 
         pv           = brand_point_values.get(brand, brand_point_values.get("Semen Elang", 5000))
         total_rupiah = round(poin_earned * pv, 0)
 
         results.append({
-            "id_toko":      id_toko,
-            "nama_toko":    peserta.get("nama_toko", ""),
-            "cluster":      peserta.get("cluster_pareto", peserta.get("cluster", "")),
-            "brand_utama":  brand,
-            "volume_ton":   round(volume, 2),
-            "poin_earned":  poin_earned,
-            "ton_per_poin": ton_per_poin,
-            "total_rupiah": total_rupiah,
-            "keterangan":   keterangan,
+            "id_toko":       id_toko,
+            "nama_toko":     peserta.get("nama_toko", ""),
+            "cluster":       peserta.get("cluster_pareto", peserta.get("cluster", "")),
+            "brand_utama":   brand_display,
+            "brand_program": brand_program,
+            "volume_ton":    round(volume, 2),
+            "poin_earned":   poin_earned,
+            "ton_per_poin":  ton_per_poin,
+            "total_rupiah":  total_rupiah,
+            "keterangan":    keterangan,
         })
 
     total_poin_prog   = sum(r["poin_earned"]   for r in results)
