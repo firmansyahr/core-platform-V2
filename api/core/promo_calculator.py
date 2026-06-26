@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -109,14 +110,21 @@ def filter_transactions_by_brand(
     return filtered
 
 
-def _get_brand_rate_for_promo(brand: str, base_rate: float) -> float:
+def _get_brand_rate_for_promo(
+    brand: str,
+    provinsi: str,
+    kabupaten: str,
+    base_rate: float,
+    db=None,
+) -> float:
     """
     Rate reward per ton untuk brand ini berdasarkan Brand Config multiplier.
-    brand (any casing) di-uppercase sebelum lookup ke DEFAULT_CONFIG.
+    brand (any casing) di-uppercase sebelum lookup.
     MB=1.0×, CB/FB=0.5×, unknown=0.5× (conservative default).
-    db=None → selalu pakai DEFAULT_CONFIG (MB/CB/FB hardcoded), tanpa query DB.
+    SQLite mode (db not None): lookup per-wilayah dari DB.
+    JSON mode (db=None): pakai DEFAULT_CONFIG (MB/CB/FB hardcoded).
     """
-    multiplier = get_brand_reward_multiplier(brand.upper(), "", "", db=None)
+    multiplier = get_brand_reward_multiplier(brand.upper(), provinsi, kabupaten, db)
     if multiplier == 0.0:
         multiplier = 0.5
     return round(base_rate * multiplier, 2)
@@ -513,40 +521,59 @@ def calculate_flat_multiplier_program(
     brand_program     = ", ".join(allowed_brands) if allowed_brands else None
     allowed_upper_set = {b.upper() for b in allowed_brands} if allowed_brands else set()
 
+    toko_wilayah = (
+        df_filtered
+        .groupby("ID Toko")[["Provinsi Toko", "Kabupaten Toko"]]
+        .first()
+        .to_dict("index")
+    ) if not df_filtered.empty else {}
+
+    from api.database import SessionLocal
+    _use_sqlite = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
+    db = SessionLocal() if _use_sqlite else None
+
     results: list[dict] = []
-    for peserta in peserta_data:
-        id_toko       = str(peserta["id_toko"])
-        volume        = float(agg_ton.get(id_toko, 0.0))
-        brand         = peserta.get("brand_utama", "Semen Elang")
-        brand_display = brand_program or brand
+    try:
+        for peserta in peserta_data:
+            id_toko        = str(peserta["id_toko"])
+            volume         = float(agg_ton.get(id_toko, 0.0))
+            brand          = peserta.get("brand_utama", "Semen Elang")
+            brand_display  = brand_program or brand
 
-        if allowed_brands and len(allowed_brands) == 1:
-            rate_brand = allowed_brands[0]
-        elif allowed_brands:
-            bu = peserta.get("brand_utama", "")
-            rate_brand = bu if bu.upper() in allowed_upper_set else allowed_brands[0]
-        else:
-            rate_brand = brand
+            wilayah        = toko_wilayah.get(id_toko, {})
+            provinsi_toko  = wilayah.get("Provinsi Toko", "")
+            kabupaten_toko = wilayah.get("Kabupaten Toko", "")
 
-        mult_efektif = multiplier
-        keterangan   = f"{multiplier}X flat multiplier"
+            if allowed_brands and len(allowed_brands) == 1:
+                rate_brand = allowed_brands[0]
+            elif allowed_brands:
+                bu = peserta.get("brand_utama", "")
+                rate_brand = bu if bu.upper() in allowed_upper_set else allowed_brands[0]
+            else:
+                rate_brand = brand
 
-        pv           = _get_brand_rate_for_promo(rate_brand, base_rate)
-        total_poin   = round(volume * mult_efektif, 2)
-        total_rupiah = round(total_poin * pv, 0)
+            mult_efektif = multiplier
+            keterangan   = f"{multiplier}X flat multiplier"
 
-        results.append({
-            "id_toko":            id_toko,
-            "nama_toko":          peserta.get("nama_toko", ""),
-            "cluster":            peserta.get("cluster_pareto", peserta.get("cluster", "")),
-            "brand_utama":        brand_display,
-            "brand_program":      brand_program,
-            "volume_ton":         round(volume, 2),
-            "multiplier_berlaku": mult_efektif,
-            "total_poin":         total_poin,
-            "total_rupiah":       total_rupiah,
-            "keterangan":         keterangan,
-        })
+            pv           = _get_brand_rate_for_promo(rate_brand, provinsi_toko, kabupaten_toko, base_rate, db)
+            total_poin   = round(volume * mult_efektif, 2)
+            total_rupiah = round(total_poin * pv, 0)
+
+            results.append({
+                "id_toko":            id_toko,
+                "nama_toko":          peserta.get("nama_toko", ""),
+                "cluster":            peserta.get("cluster_pareto", peserta.get("cluster", "")),
+                "brand_utama":        brand_display,
+                "brand_program":      brand_program,
+                "volume_ton":         round(volume, 2),
+                "multiplier_berlaku": mult_efektif,
+                "total_poin":         total_poin,
+                "total_rupiah":       total_rupiah,
+                "keterangan":         keterangan,
+            })
+    finally:
+        if db is not None:
+            db.close()
 
     total_poin_prog   = sum(r["total_poin"]   for r in results)
     total_rupiah_prog = sum(r["total_rupiah"] for r in results)
@@ -605,39 +632,58 @@ def calculate_flat_per_batch_program(
     brand_program     = ", ".join(allowed_brands) if allowed_brands else None
     allowed_upper_set = {b.upper() for b in allowed_brands} if allowed_brands else set()
 
+    toko_wilayah = (
+        df_filtered
+        .groupby("ID Toko")[["Provinsi Toko", "Kabupaten Toko"]]
+        .first()
+        .to_dict("index")
+    ) if not df_filtered.empty else {}
+
+    from api.database import SessionLocal
+    _use_sqlite = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
+    db = SessionLocal() if _use_sqlite else None
+
     results: list[dict] = []
-    for peserta in peserta_data:
-        id_toko       = str(peserta["id_toko"])
-        volume        = float(agg_ton.get(id_toko, 0.0))
-        brand         = peserta.get("brand_utama", "Semen Elang")
-        brand_display = brand_program or brand
+    try:
+        for peserta in peserta_data:
+            id_toko        = str(peserta["id_toko"])
+            volume         = float(agg_ton.get(id_toko, 0.0))
+            brand          = peserta.get("brand_utama", "Semen Elang")
+            brand_display  = brand_program or brand
 
-        if allowed_brands and len(allowed_brands) == 1:
-            rate_brand = allowed_brands[0]
-        elif allowed_brands:
-            bu = peserta.get("brand_utama", "")
-            rate_brand = bu if bu.upper() in allowed_upper_set else allowed_brands[0]
-        else:
-            rate_brand = brand
+            wilayah        = toko_wilayah.get(id_toko, {})
+            provinsi_toko  = wilayah.get("Provinsi Toko", "")
+            kabupaten_toko = wilayah.get("Kabupaten Toko", "")
 
-        poin_earned  = round(volume / ton_per_poin, 2)
-        keterangan   = f"{volume} ton / {ton_per_poin} ton per poin = {poin_earned} poin"
+            if allowed_brands and len(allowed_brands) == 1:
+                rate_brand = allowed_brands[0]
+            elif allowed_brands:
+                bu = peserta.get("brand_utama", "")
+                rate_brand = bu if bu.upper() in allowed_upper_set else allowed_brands[0]
+            else:
+                rate_brand = brand
 
-        pv           = _get_brand_rate_for_promo(rate_brand, base_rate)
-        total_rupiah = round(poin_earned * pv, 0)
+            poin_earned  = round(volume / ton_per_poin, 2)
+            keterangan   = f"{volume} ton / {ton_per_poin} ton per poin = {poin_earned} poin"
 
-        results.append({
-            "id_toko":       id_toko,
-            "nama_toko":     peserta.get("nama_toko", ""),
-            "cluster":       peserta.get("cluster_pareto", peserta.get("cluster", "")),
-            "brand_utama":   brand_display,
-            "brand_program": brand_program,
-            "volume_ton":    round(volume, 2),
-            "poin_earned":   poin_earned,
-            "ton_per_poin":  ton_per_poin,
-            "total_rupiah":  total_rupiah,
-            "keterangan":    keterangan,
-        })
+            pv           = _get_brand_rate_for_promo(rate_brand, provinsi_toko, kabupaten_toko, base_rate, db)
+            total_rupiah = round(poin_earned * pv, 0)
+
+            results.append({
+                "id_toko":       id_toko,
+                "nama_toko":     peserta.get("nama_toko", ""),
+                "cluster":       peserta.get("cluster_pareto", peserta.get("cluster", "")),
+                "brand_utama":   brand_display,
+                "brand_program": brand_program,
+                "volume_ton":    round(volume, 2),
+                "poin_earned":   poin_earned,
+                "ton_per_poin":  ton_per_poin,
+                "total_rupiah":  total_rupiah,
+                "keterangan":    keterangan,
+            })
+    finally:
+        if db is not None:
+            db.close()
 
     total_poin_prog   = sum(r["poin_earned"]   for r in results)
     total_rupiah_prog = sum(r["total_rupiah"]  for r in results)
