@@ -120,13 +120,13 @@ def _get_brand_rate_for_promo(
     """
     Rate reward per ton untuk brand ini berdasarkan Brand Config multiplier.
     brand (any casing) di-uppercase sebelum lookup.
-    MB=1.0×, CB/FB=0.5×, unknown=0.5× (conservative default).
+    MB=1.0×, CB/FB=0.5×, unknown=0.0 (brand kompetitor tidak dapat reward).
     SQLite mode (db not None): lookup per-wilayah dari DB.
     JSON mode (db=None): pakai DEFAULT_CONFIG (MB/CB/FB hardcoded).
     """
     multiplier = get_brand_reward_multiplier(brand.upper(), provinsi, kabupaten, db)
     if multiplier == 0.0:
-        multiplier = 0.5
+        return 0.0  # brand tidak terdaftar di Brand Config = tidak dapat reward
     return round(base_rate * multiplier, 2)
 
 
