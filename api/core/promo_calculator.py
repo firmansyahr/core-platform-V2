@@ -7,6 +7,8 @@ from typing import Any
 
 import pandas as pd
 
+from api.core.brand_config_engine import get_brand_reward_multiplier
+
 _CONFIG_PATH = Path("api/data/loyalty_config.json")
 
 
@@ -105,6 +107,19 @@ def filter_transactions_by_brand(
             df[brand_col].unique().tolist(),
         )
     return filtered
+
+
+def _get_brand_rate_for_promo(brand: str, base_rate: float) -> float:
+    """
+    Rate reward per ton untuk brand ini berdasarkan Brand Config multiplier.
+    brand (any casing) di-uppercase sebelum lookup ke DEFAULT_CONFIG.
+    MB=1.0×, CB/FB=0.5×, unknown=0.5× (conservative default).
+    db=None → selalu pakai DEFAULT_CONFIG (MB/CB/FB hardcoded), tanpa query DB.
+    """
+    multiplier = get_brand_reward_multiplier(brand.upper(), "", "", db=None)
+    if multiplier == 0.0:
+        multiplier = 0.5
+    return round(base_rate * multiplier, 2)
 
 
 def calculate_tier_reward(
@@ -483,6 +498,7 @@ def calculate_flat_multiplier_program(
     reward_config      = promo.get("reward_config", {})
     multiplier         = float(reward_config.get("multiplier", 1))
     brand_point_values = loyalty_config.get("brand_point_values", get_brand_point_values())
+    base_rate          = float(brand_point_values.get("Semen Elang", 5000))
 
     mulai   = pd.Timestamp(promo["periode_mulai"]).normalize()
     selesai = pd.Timestamp(promo["periode_selesai"]).normalize()
@@ -494,7 +510,8 @@ def calculate_flat_multiplier_program(
     df_period      = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
     agg_ton        = df_period.groupby("ID Toko")["TON Quantity"].sum().to_dict()
 
-    brand_program = ", ".join(allowed_brands) if allowed_brands else None
+    brand_program     = ", ".join(allowed_brands) if allowed_brands else None
+    allowed_upper_set = {b.upper() for b in allowed_brands} if allowed_brands else set()
 
     results: list[dict] = []
     for peserta in peserta_data:
@@ -503,10 +520,18 @@ def calculate_flat_multiplier_program(
         brand         = peserta.get("brand_utama", "Semen Elang")
         brand_display = brand_program or brand
 
+        if allowed_brands and len(allowed_brands) == 1:
+            rate_brand = allowed_brands[0]
+        elif allowed_brands:
+            bu = peserta.get("brand_utama", "")
+            rate_brand = bu if bu.upper() in allowed_upper_set else allowed_brands[0]
+        else:
+            rate_brand = brand
+
         mult_efektif = multiplier
         keterangan   = f"{multiplier}X flat multiplier"
 
-        pv           = brand_point_values.get(brand, brand_point_values.get("Semen Elang", 5000))
+        pv           = _get_brand_rate_for_promo(rate_brand, base_rate)
         total_poin   = round(volume * mult_efektif, 2)
         total_rupiah = round(total_poin * pv, 0)
 
@@ -565,6 +590,7 @@ def calculate_flat_per_batch_program(
     if ton_per_poin <= 0:
         ton_per_poin = 2.0
     brand_point_values = loyalty_config.get("brand_point_values", get_brand_point_values())
+    base_rate          = float(brand_point_values.get("Semen Elang", 5000))
 
     mulai   = pd.Timestamp(promo["periode_mulai"]).normalize()
     selesai = pd.Timestamp(promo["periode_selesai"]).normalize()
@@ -576,7 +602,8 @@ def calculate_flat_per_batch_program(
     df_period      = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
     agg_ton        = df_period.groupby("ID Toko")["TON Quantity"].sum().to_dict()
 
-    brand_program = ", ".join(allowed_brands) if allowed_brands else None
+    brand_program     = ", ".join(allowed_brands) if allowed_brands else None
+    allowed_upper_set = {b.upper() for b in allowed_brands} if allowed_brands else set()
 
     results: list[dict] = []
     for peserta in peserta_data:
@@ -585,10 +612,18 @@ def calculate_flat_per_batch_program(
         brand         = peserta.get("brand_utama", "Semen Elang")
         brand_display = brand_program or brand
 
+        if allowed_brands and len(allowed_brands) == 1:
+            rate_brand = allowed_brands[0]
+        elif allowed_brands:
+            bu = peserta.get("brand_utama", "")
+            rate_brand = bu if bu.upper() in allowed_upper_set else allowed_brands[0]
+        else:
+            rate_brand = brand
+
         poin_earned  = round(volume / ton_per_poin, 2)
         keterangan   = f"{volume} ton / {ton_per_poin} ton per poin = {poin_earned} poin"
 
-        pv           = brand_point_values.get(brand, brand_point_values.get("Semen Elang", 5000))
+        pv           = _get_brand_rate_for_promo(rate_brand, base_rate)
         total_rupiah = round(poin_earned * pv, 0)
 
         results.append({
