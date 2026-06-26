@@ -11,9 +11,24 @@ import pandas as pd
 from api.core.brand_config_engine import get_brand_reward_multiplier
 
 _CONFIG_PATH = Path("api/data/loyalty_config.json")
+_USE_SQLITE  = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
 
 
 def load_loyalty_config() -> dict:
+    if _USE_SQLITE:
+        from api.database import SessionLocal
+        from api.models import LoyaltyConfig as _LC
+        db = SessionLocal()
+        try:
+            row = db.query(_LC).filter_by(id="default").first()
+            if row:
+                return {
+                    "default_point_value": row.default_point_value,
+                    "brand_point_values":  row.brand_point_values or {},
+                }
+            return {"default_point_value": 5000, "brand_point_values": {}}
+        finally:
+            db.close()
     if not _CONFIG_PATH.exists():
         return {}
     try:

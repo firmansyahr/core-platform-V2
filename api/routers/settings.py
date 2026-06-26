@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -19,13 +20,28 @@ from api.core.aegis_engine import (
     get_store_crs,
 )
 from api.core.ilp_engine import get_ilp_features, get_ilp_hierarchy
+from api.database import SessionLocal
+from api.models import LoyaltyConfig
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 _CONFIG_PATH = Path("api/data/loyalty_config.json")
+_USE_SQLITE  = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
 
 
 def _load_config() -> dict:
+    if _USE_SQLITE:
+        db = SessionLocal()
+        try:
+            row = db.query(LoyaltyConfig).filter_by(id="default").first()
+            if row:
+                return {
+                    "default_point_value": row.default_point_value,
+                    "brand_point_values":  row.brand_point_values or {},
+                }
+            return {"default_point_value": 5000, "brand_point_values": {}}
+        finally:
+            db.close()
     if not _CONFIG_PATH.exists():
         return {}
     try:
@@ -35,6 +51,25 @@ def _load_config() -> dict:
 
 
 def _save_config(cfg: dict) -> None:
+    if _USE_SQLITE:
+        db = SessionLocal()
+        try:
+            row = db.query(LoyaltyConfig).filter_by(id="default").first()
+            if row:
+                row.default_point_value = cfg.get("default_point_value", 5000)
+                row.brand_point_values  = cfg.get("brand_point_values", {})
+                row.updated_at          = datetime.now(timezone.utc)
+            else:
+                row = LoyaltyConfig(
+                    id                  = "default",
+                    default_point_value = cfg.get("default_point_value", 5000),
+                    brand_point_values  = cfg.get("brand_point_values", {}),
+                )
+                db.add(row)
+            db.commit()
+        finally:
+            db.close()
+        return
     _CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     _CONFIG_PATH.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
 
