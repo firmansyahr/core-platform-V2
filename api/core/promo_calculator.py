@@ -482,7 +482,6 @@ def calculate_flat_multiplier_program(
     """Tipe 1 — Flat Multiplier: setiap transaksi × multiplier tetap, tanpa target."""
     reward_config      = promo.get("reward_config", {})
     multiplier         = float(reward_config.get("multiplier", 1))
-    brand_filter: list = reward_config.get("brand_filter", [])
     brand_point_values = loyalty_config.get("brand_point_values", get_brand_point_values())
 
     mulai   = pd.Timestamp(promo["periode_mulai"]).normalize()
@@ -495,13 +494,15 @@ def calculate_flat_multiplier_program(
     df_period      = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
     agg_ton        = df_period.groupby("ID Toko")["TON Quantity"].sum().to_dict()
 
+    allowed_upper = [b.upper() for b in allowed_brands] if allowed_brands is not None else None
+
     results: list[dict] = []
     for peserta in peserta_data:
         id_toko  = str(peserta["id_toko"])
         volume   = float(agg_ton.get(id_toko, 0.0))
         brand    = peserta.get("brand_utama", "Semen Elang")
 
-        if brand_filter and brand not in brand_filter:
+        if allowed_upper is not None and brand.upper() not in allowed_upper:
             mult_efektif = 1.0
             keterangan   = f"Brand {brand} tidak dalam filter → multiplier 1X"
         else:
@@ -545,7 +546,7 @@ def calculate_flat_multiplier_program(
         "program_id":     promo["id"],
         "program_nama":   promo.get("nama_promo", ""),
         "multiplier":     multiplier,
-        "brand_filter":   brand_filter,
+        "brand_filter":   allowed_brands,
         "total_peserta":  len(results),
         "total_poin":     round(total_poin_prog, 0),
         "total_rupiah":   round(total_rupiah_prog, 0),
@@ -565,7 +566,6 @@ def calculate_flat_per_batch_program(
     ton_per_poin       = float(reward_config.get("ton_per_poin", 2.0))
     if ton_per_poin <= 0:
         ton_per_poin = 2.0
-    brand_filter: list = reward_config.get("brand_filter", [])
     brand_point_values = loyalty_config.get("brand_point_values", get_brand_point_values())
 
     mulai   = pd.Timestamp(promo["periode_mulai"]).normalize()
@@ -578,13 +578,15 @@ def calculate_flat_per_batch_program(
     df_period      = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
     agg_ton        = df_period.groupby("ID Toko")["TON Quantity"].sum().to_dict()
 
+    allowed_upper = [b.upper() for b in allowed_brands] if allowed_brands is not None else None
+
     results: list[dict] = []
     for peserta in peserta_data:
         id_toko = str(peserta["id_toko"])
         volume  = float(agg_ton.get(id_toko, 0.0))
         brand   = peserta.get("brand_utama", "Semen Elang")
 
-        if brand_filter and brand not in brand_filter:
+        if allowed_upper is not None and brand.upper() not in allowed_upper:
             poin_earned  = 0.0
             keterangan   = f"Brand {brand} tidak dalam filter → 0 poin"
         else:
@@ -627,7 +629,7 @@ def calculate_flat_per_batch_program(
         "program_id":     promo["id"],
         "program_nama":   promo.get("nama_promo", ""),
         "ton_per_poin":   ton_per_poin,
-        "brand_filter":   brand_filter,
+        "brand_filter":   allowed_brands,
         "total_peserta":  len(results),
         "total_poin":     round(total_poin_prog, 2),
         "total_rupiah":   round(total_rupiah_prog, 0),
