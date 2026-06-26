@@ -1642,7 +1642,7 @@ export default function CompetitorPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-border/50">
-                            {cpiSummary.critical_stores.slice(0, 8).map(r => (
+                            {(cpiSummary?.critical_stores ?? []).slice(0, 8).map(r => (
                               <tr key={r.id_toko} className="hover:bg-muted/20">
                                 <td className="px-4 py-2 font-medium max-w-[140px] truncate" title={r.nama_toko ?? r.id_toko}>
                                   {r.nama_toko ?? r.id_toko}
@@ -1658,7 +1658,7 @@ export default function CompetitorPage() {
                                 <td className="px-4 py-2 text-[10px] text-muted-foreground">{r.alert_level ?? "—"}</td>
                               </tr>
                             ))}
-                            {!cpiSummary.critical_stores.length && (
+                            {!(cpiSummary?.critical_stores?.length) && (
                               <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">Tidak ada toko CPI critical</td></tr>
                             )}
                           </tbody>
@@ -1711,10 +1711,10 @@ export default function CompetitorPage() {
               <>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   {[
-                    { label: "Total Toko", value: wlSummary.total, color: "#6b7280", sub: "dianalisis" },
-                    { label: "Win", value: wlSummary.by_outcome.win ?? 0, color: "#16a34a", sub: "Elang naik / Banteng turun" },
-                    { label: "Loss", value: wlSummary.by_outcome.loss ?? 0, color: "#DC2626", sub: "Elang turun / Banteng naik" },
-                    { label: "Win Rate", value: `${wlSummary.win_rate_pct.toFixed(1)}%`, color: wlSummary.win_rate_pct >= 50 ? "#16a34a" : "#DC2626", sub: `periode ${wlSummary.periode}` },
+                    { label: "Total Toko", value: wlSummary?.total ?? 0, color: "#6b7280", sub: "dianalisis" },
+                    { label: "Win", value: wlSummary?.by_outcome?.win ?? 0, color: "#16a34a", sub: "Elang naik / Banteng turun" },
+                    { label: "Loss", value: wlSummary?.by_outcome?.loss ?? 0, color: "#DC2626", sub: "Elang turun / Banteng naik" },
+                    { label: "Win Rate", value: `${(wlSummary?.win_rate_pct ?? 0).toFixed(1)}%`, color: (wlSummary?.win_rate_pct ?? 0) >= 50 ? "#16a34a" : "#DC2626", sub: `periode ${wlSummary?.periode ?? "—"}` },
                   ].map(k => (
                     <Card key={k.label}>
                       <CardContent className="pt-4 pb-4">
@@ -1742,7 +1742,7 @@ export default function CompetitorPage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border/50">
-                          {wlSummary.top_wins.slice(0, 6).map(r => (
+                          {(wlSummary?.top_wins ?? []).slice(0, 6).map(r => (
                             <tr key={r.id_toko} className="hover:bg-muted/20">
                               <td className="px-4 py-2 font-medium max-w-[140px] truncate" title={r.nama_toko ?? r.id_toko}>
                                 {r.nama_toko ?? r.id_toko}
@@ -1757,7 +1757,7 @@ export default function CompetitorPage() {
                               <td className="px-4 py-2 text-[10px] text-muted-foreground">{r.outcome_detail?.replace(/_/g, " ") ?? "—"}</td>
                             </tr>
                           ))}
-                          {!wlSummary.top_wins.length && (
+                          {!(wlSummary?.top_wins?.length) && (
                             <tr><td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">Tidak ada data win</td></tr>
                           )}
                         </tbody>
@@ -1780,7 +1780,7 @@ export default function CompetitorPage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border/50">
-                          {wlSummary.top_losses.slice(0, 6).map(r => (
+                          {(wlSummary?.top_losses ?? []).slice(0, 6).map(r => (
                             <tr key={r.id_toko} className="hover:bg-muted/20">
                               <td className="px-4 py-2 font-medium max-w-[140px] truncate" title={r.nama_toko ?? r.id_toko}>
                                 {r.nama_toko ?? r.id_toko}
@@ -1795,7 +1795,7 @@ export default function CompetitorPage() {
                               <td className="px-4 py-2 text-[10px] text-muted-foreground">{r.primary_factor?.replace(/_/g, " ") ?? "—"}</td>
                             </tr>
                           ))}
-                          {!wlSummary.top_losses.length && (
+                          {!(wlSummary?.top_losses?.length) && (
                             <tr><td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">Tidak ada data loss</td></tr>
                           )}
                         </tbody>
@@ -1827,7 +1827,7 @@ export default function CompetitorPage() {
                       <CardContent className="pt-4 pb-4">
                         <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{sev}</p>
                         <p className="text-3xl font-bold leading-none mt-1" style={{ color: sev==="critical"?"#DC2626":sev==="high"?"#EA580C":sev==="medium"?"#CA8A04":"#3b82f6" }}>
-                          {ewaSummary.by_severity[sev] ?? 0}
+                          {ewaSummary?.by_severity?.[sev] ?? 0}
                         </p>
                         <p className="text-[11px] text-muted-foreground mt-1">alerts aktif</p>
                       </CardContent>
@@ -1840,11 +1840,11 @@ export default function CompetitorPage() {
                     <CardTitle className="text-sm">Alert Aktif ({ewaSummary.total_active})</CardTitle>
                   </CardHeader>
                   <CardContent className="pt-0 px-0">
-                    {!ewaSummary.alerts.length ? (
+                    {!(ewaSummary?.alerts?.length) ? (
                       <p className="px-4 py-8 text-center text-sm text-green-600 dark:text-green-400">Tidak ada alert aktif saat ini</p>
                     ) : (
                       <div className="divide-y divide-border/50">
-                        {ewaSummary.alerts.map(a => (
+                        {(ewaSummary?.alerts ?? []).map(a => (
                           <div key={a.id} className="px-4 py-3 hover:bg-muted/20">
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex-1 min-w-0">
@@ -1896,7 +1896,7 @@ export default function CompetitorPage() {
                       <CardContent className="pt-4 pb-4">
                         <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Prioritas {pri}</p>
                         <p className="text-3xl font-bold leading-none mt-1" style={{ color: pri==="urgent"?"#DC2626":pri==="high"?"#EA580C":pri==="medium"?"#CA8A04":"#6b7280" }}>
-                          {csrSummary.by_priority[pri] ?? 0}
+                          {csrSummary?.by_priority?.[pri] ?? 0}
                         </p>
                         <p className="text-[11px] text-muted-foreground mt-1">kabupaten</p>
                       </CardContent>
@@ -1910,11 +1910,11 @@ export default function CompetitorPage() {
                     <p className="text-[11px] text-muted-foreground">Rekomendasi action per kabupaten berdasarkan CPI + MSM + Win/Loss</p>
                   </CardHeader>
                   <CardContent className="pt-0">
-                    {!csrSummary.urgent_areas.length ? (
+                    {!(csrSummary?.urgent_areas?.length) ? (
                       <p className="py-8 text-center text-sm text-muted-foreground">Belum ada rekomendasi strategy tersedia</p>
                     ) : (
                       <div className="space-y-3 pt-3">
-                        {csrSummary.urgent_areas.map(r => (
+                        {(csrSummary?.urgent_areas ?? []).map(r => (
                           <div key={r.id} className="border border-border rounded-xl p-4 space-y-3">
                             <div className="flex items-start justify-between gap-3">
                               <div>
