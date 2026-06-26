@@ -1,0 +1,4796 @@
+{
+  "meta": {
+    "generated_at": "2026-06-26T03:05:10.742878+00:00",
+    "model": "prophet",
+    "horizon_months": 3,
+    "areas_forecast": 104,
+    "available": true
+  },
+  "kabupaten_forecasts": [
+    {
+      "area": "KABUPATEN BADUNG",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 47.89,
+      "current_banteng_pct": 23.41,
+      "forecast_elang_pct": [
+        51.81,
+        46.35,
+        52.04
+      ],
+      "forecast_banteng_pct": [
+        22.12,
+        33.06,
+        15.69
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        45.71,
+        46.08,
+        45.07,
+        49.67,
+        52.52,
+        47.89
+      ],
+      "history_banteng_pct": [
+        26.92,
+        20.34,
+        23.44,
+        25.88,
+        27.05,
+        23.41
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN BANGKALAN",
+      "provinsi": "KALIMANTAN BARAT",
+      "current_elang_pct": 46.7,
+      "current_banteng_pct": 21.22,
+      "forecast_elang_pct": [
+        32.58,
+        57.57,
+        49.39
+      ],
+      "forecast_banteng_pct": [
+        22.27,
+        23.48,
+        19.08
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        52.0,
+        46.23,
+        50.5,
+        57.01,
+        46.13,
+        46.7
+      ],
+      "history_banteng_pct": [
+        21.33,
+        24.48,
+        23.61,
+        23.06,
+        32.06,
+        21.22
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN BANGLI",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 49.3,
+      "current_banteng_pct": 32.44,
+      "forecast_elang_pct": [
+        31.94,
+        68.77,
+        15.36
+      ],
+      "forecast_banteng_pct": [
+        37.73,
+        14.31,
+        0.8
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        52.57,
+        52.57,
+        34.05,
+        45.24,
+        45.71,
+        49.3
+      ],
+      "history_banteng_pct": [
+        19.46,
+        25.12,
+        32.38,
+        30.91,
+        29.71,
+        32.44
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN BANYUWANGI",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 49.84,
+      "current_banteng_pct": 23.71,
+      "forecast_elang_pct": [
+        51.4,
+        58.49,
+        48.37
+      ],
+      "forecast_banteng_pct": [
+        25.83,
+        24.47,
+        20.13
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "slow_erosion",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        46.04,
+        48.23,
+        46.4,
+        45.45,
+        49.88,
+        49.84
+      ],
+      "history_banteng_pct": [
+        31.13,
+        30.97,
+        24.63,
+        29.41,
+        26.21,
+        23.71
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN BARITO SELATAN",
+      "provinsi": "KALIMANTAN TENGAH",
+      "current_elang_pct": 50.52,
+      "current_banteng_pct": 25.22,
+      "forecast_elang_pct": [
+        41.85,
+        56.44,
+        57.58
+      ],
+      "forecast_banteng_pct": [
+        34.07,
+        32.06,
+        22.15
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "slow_erosion",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        52.0,
+        48.3,
+        54.03,
+        55.46,
+        46.82,
+        50.52
+      ],
+      "history_banteng_pct": [
+        27.36,
+        25.54,
+        18.53,
+        19.1,
+        28.16,
+        25.22
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN BARITO TIMUR",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 53.13,
+      "current_banteng_pct": 24.61,
+      "forecast_elang_pct": [
+        51.25,
+        43.94,
+        58.06
+      ],
+      "forecast_banteng_pct": [
+        18.73,
+        41.59,
+        21.01
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "slow_erosion",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        55.18,
+        54.22,
+        45.39,
+        46.15,
+        50.86,
+        53.13
+      ],
+      "history_banteng_pct": [
+        23.17,
+        19.47,
+        31.51,
+        32.12,
+        22.23,
+        24.61
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN BARITO UTARA",
+      "provinsi": "BALI",
+      "current_elang_pct": 46.11,
+      "current_banteng_pct": 30.21,
+      "forecast_elang_pct": [
+        59.91,
+        38.93,
+        52.24
+      ],
+      "forecast_banteng_pct": [
+        16.07,
+        33.31,
+        35.15
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        47.86,
+        44.08,
+        40.79,
+        58.23,
+        47.1,
+        46.11
+      ],
+      "history_banteng_pct": [
+        31.75,
+        24.08,
+        33.66,
+        28.13,
+        22.32,
+        30.21
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN BATANG",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 47.8,
+      "current_banteng_pct": 22.96,
+      "forecast_elang_pct": [
+        56.97,
+        55.81,
+        71.0
+      ],
+      "forecast_banteng_pct": [
+        21.79,
+        30.93,
+        13.41
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        48.12,
+        53.9,
+        61.48,
+        40.22,
+        54.13,
+        47.8
+      ],
+      "history_banteng_pct": [
+        27.14,
+        25.01,
+        22.77,
+        27.68,
+        27.07,
+        22.96
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN BENGKAYANG",
+      "provinsi": "BALI",
+      "current_elang_pct": 40.74,
+      "current_banteng_pct": 29.16,
+      "forecast_elang_pct": [
+        53.11,
+        72.24,
+        58.05
+      ],
+      "forecast_banteng_pct": [
+        26.39,
+        13.96,
+        30.84
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        51.0,
+        50.15,
+        47.36,
+        52.89,
+        50.56,
+        40.74
+      ],
+      "history_banteng_pct": [
+        24.43,
+        23.03,
+        30.51,
+        22.48,
+        26.18,
+        29.16
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN BLITAR",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 36.6,
+      "current_banteng_pct": 37.87,
+      "forecast_elang_pct": [
+        37.28,
+        48.83,
+        53.46
+      ],
+      "forecast_banteng_pct": [
+        23.45,
+        34.03,
+        21.82
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        50.18,
+        48.34,
+        43.06,
+        53.22,
+        45.08,
+        36.6
+      ],
+      "history_banteng_pct": [
+        28.67,
+        28.8,
+        26.38,
+        25.27,
+        29.16,
+        37.87
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN BLORA",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 44.37,
+      "current_banteng_pct": 16.69,
+      "forecast_elang_pct": [
+        59.08,
+        43.04,
+        54.58
+      ],
+      "forecast_banteng_pct": [
+        40.28,
+        19.72,
+        37.76
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        44.49,
+        52.64,
+        33.36,
+        43.6,
+        57.45,
+        44.37
+      ],
+      "history_banteng_pct": [
+        38.12,
+        28.69,
+        31.14,
+        33.6,
+        24.57,
+        16.69
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN BOJONEGORO",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 47.38,
+      "current_banteng_pct": 27.83,
+      "forecast_elang_pct": [
+        38.2,
+        44.01,
+        48.64
+      ],
+      "forecast_banteng_pct": [
+        39.31,
+        41.95,
+        28.68
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        43.82,
+        54.79,
+        48.11,
+        50.24,
+        44.01,
+        47.38
+      ],
+      "history_banteng_pct": [
+        25.75,
+        28.84,
+        27.11,
+        20.01,
+        35.12,
+        27.83
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN BONDOWOSO",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 40.21,
+      "current_banteng_pct": 30.64,
+      "forecast_elang_pct": [
+        29.71,
+        55.96,
+        59.64
+      ],
+      "forecast_banteng_pct": [
+        36.27,
+        24.53,
+        7.04
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        56.75,
+        48.66,
+        46.28,
+        46.08,
+        55.08,
+        40.21
+      ],
+      "history_banteng_pct": [
+        21.4,
+        32.19,
+        31.52,
+        30.87,
+        27.58,
+        30.64
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN BOYOLALI",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 51.42,
+      "current_banteng_pct": 20.1,
+      "forecast_elang_pct": [
+        34.97,
+        39.15,
+        23.61
+      ],
+      "forecast_banteng_pct": [
+        27.26,
+        20.67,
+        39.97
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        46.69,
+        40.66,
+        40.44,
+        46.41,
+        37.58,
+        51.42
+      ],
+      "history_banteng_pct": [
+        26.28,
+        34.14,
+        29.83,
+        30.26,
+        39.2,
+        20.1
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN BREBES",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 40.9,
+      "current_banteng_pct": 33.45,
+      "forecast_elang_pct": [
+        63.6,
+        44.15,
+        30.82
+      ],
+      "forecast_banteng_pct": [
+        22.79,
+        27.24,
+        47.25
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        42.87,
+        47.19,
+        46.42,
+        52.88,
+        52.52,
+        40.9
+      ],
+      "history_banteng_pct": [
+        28.87,
+        29.39,
+        27.49,
+        21.6,
+        28.31,
+        33.45
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN BULELENG",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 47.55,
+      "current_banteng_pct": 30.95,
+      "forecast_elang_pct": [
+        69.15,
+        53.37,
+        31.59
+      ],
+      "forecast_banteng_pct": [
+        9.06,
+        38.96,
+        41.93
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        52.45,
+        47.09,
+        48.2,
+        53.66,
+        51.88,
+        47.55
+      ],
+      "history_banteng_pct": [
+        25.05,
+        29.86,
+        27.69,
+        23.46,
+        22.02,
+        30.95
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN DEMAK",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 48.82,
+      "current_banteng_pct": 28.8,
+      "forecast_elang_pct": [
+        38.95,
+        51.57,
+        60.54
+      ],
+      "forecast_banteng_pct": [
+        36.3,
+        12.05,
+        23.56
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "slow_erosion",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        44.51,
+        52.17,
+        52.1,
+        44.78,
+        46.09,
+        48.82
+      ],
+      "history_banteng_pct": [
+        19.93,
+        27.54,
+        18.54,
+        31.92,
+        30.09,
+        28.8
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN GIANYAR",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 50.99,
+      "current_banteng_pct": 28.96,
+      "forecast_elang_pct": [
+        42.6,
+        56.37,
+        47.73
+      ],
+      "forecast_banteng_pct": [
+        36.98,
+        18.13,
+        31.4
+      ],
+      "trend_elang": "slow_erosion",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        47.53,
+        48.02,
+        41.8,
+        46.5,
+        48.0,
+        50.99
+      ],
+      "history_banteng_pct": [
+        28.78,
+        27.48,
+        31.53,
+        23.31,
+        30.11,
+        28.96
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN GRESIK",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 39.02,
+      "current_banteng_pct": 39.81,
+      "forecast_elang_pct": [
+        59.92,
+        51.62,
+        38.43
+      ],
+      "forecast_banteng_pct": [
+        24.83,
+        13.91,
+        22.0
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        44.71,
+        53.91,
+        49.23,
+        47.92,
+        48.83,
+        39.02
+      ],
+      "history_banteng_pct": [
+        31.43,
+        21.18,
+        26.4,
+        27.14,
+        29.24,
+        39.81
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN GROBOGAN",
+      "provinsi": "KALIMANTAN TENGAH",
+      "current_elang_pct": 51.75,
+      "current_banteng_pct": 27.3,
+      "forecast_elang_pct": [
+        53.42,
+        35.95,
+        63.29
+      ],
+      "forecast_banteng_pct": [
+        29.37,
+        28.82,
+        21.57
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "slow_erosion",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        57.92,
+        46.22,
+        55.42,
+        46.19,
+        53.82,
+        51.75
+      ],
+      "history_banteng_pct": [
+        23.84,
+        35.35,
+        21.05,
+        30.45,
+        21.55,
+        27.3
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN GUNUNG MAS",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 49.72,
+      "current_banteng_pct": 28.33,
+      "forecast_elang_pct": [
+        50.48,
+        64.22,
+        31.31
+      ],
+      "forecast_banteng_pct": [
+        35.75,
+        17.12,
+        20.25
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        46.53,
+        54.67,
+        48.22,
+        38.52,
+        57.82,
+        49.72
+      ],
+      "history_banteng_pct": [
+        23.06,
+        23.86,
+        30.17,
+        21.59,
+        22.89,
+        28.33
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN JEMBER",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 49.88,
+      "current_banteng_pct": 20.74,
+      "forecast_elang_pct": [
+        33.82,
+        49.02,
+        34.88
+      ],
+      "forecast_banteng_pct": [
+        53.46,
+        26.07,
+        34.49
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        45.82,
+        43.24,
+        46.5,
+        40.83,
+        48.27,
+        49.88
+      ],
+      "history_banteng_pct": [
+        26.3,
+        29.23,
+        35.44,
+        33.9,
+        18.49,
+        20.74
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN JEMBRANA",
+      "provinsi": "KALIMANTAN BARAT",
+      "current_elang_pct": 44.16,
+      "current_banteng_pct": 28.82,
+      "forecast_elang_pct": [
+        43.87,
+        35.11,
+        58.42
+      ],
+      "forecast_banteng_pct": [
+        32.99,
+        33.72,
+        28.05
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        39.62,
+        46.03,
+        50.01,
+        64.41,
+        54.86,
+        44.16
+      ],
+      "history_banteng_pct": [
+        38.17,
+        18.72,
+        28.44,
+        21.24,
+        25.43,
+        28.82
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN JEPARA",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 47.44,
+      "current_banteng_pct": 34.63,
+      "forecast_elang_pct": [
+        43.71,
+        38.14,
+        72.25
+      ],
+      "forecast_banteng_pct": [
+        38.31,
+        21.52,
+        18.0
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        49.51,
+        42.35,
+        37.54,
+        58.6,
+        47.96,
+        47.44
+      ],
+      "history_banteng_pct": [
+        28.3,
+        30.94,
+        18.2,
+        18.99,
+        31.46,
+        34.63
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN JOMBANG",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 36.73,
+      "current_banteng_pct": 37.64,
+      "forecast_elang_pct": [
+        53.39,
+        71.11,
+        41.49
+      ],
+      "forecast_banteng_pct": [
+        32.02,
+        22.75,
+        32.22
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "slow_erosion",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        50.03,
+        52.98,
+        41.4,
+        56.02,
+        52.62,
+        36.73
+      ],
+      "history_banteng_pct": [
+        32.44,
+        27.88,
+        27.87,
+        20.51,
+        22.91,
+        37.64
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN KAPUAS",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 46.18,
+      "current_banteng_pct": 26.42,
+      "forecast_elang_pct": [
+        60.46,
+        43.29,
+        42.73
+      ],
+      "forecast_banteng_pct": [
+        22.22,
+        32.45,
+        39.99
+      ],
+      "trend_elang": "slow_erosion",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        45.59,
+        56.0,
+        45.5,
+        48.52,
+        47.06,
+        46.18
+      ],
+      "history_banteng_pct": [
+        33.01,
+        16.81,
+        30.55,
+        28.51,
+        15.01,
+        26.42
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN KAPUAS HULU",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 45.68,
+      "current_banteng_pct": 19.59,
+      "forecast_elang_pct": [
+        50.56,
+        41.79,
+        43.88
+      ],
+      "forecast_banteng_pct": [
+        32.8,
+        22.78,
+        22.6
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        54.25,
+        55.42,
+        51.96,
+        45.68,
+        47.7,
+        45.68
+      ],
+      "history_banteng_pct": [
+        22.56,
+        25.25,
+        22.12,
+        31.83,
+        26.2,
+        19.59
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN KARANG ASEM",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 49.77,
+      "current_banteng_pct": 27.81,
+      "forecast_elang_pct": [
+        43.93,
+        35.68,
+        52.6
+      ],
+      "forecast_banteng_pct": [
+        42.53,
+        22.57,
+        16.56
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        42.99,
+        50.12,
+        44.58,
+        59.96,
+        43.8,
+        49.77
+      ],
+      "history_banteng_pct": [
+        31.58,
+        24.06,
+        24.16,
+        20.18,
+        30.32,
+        27.81
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN KARANGANYAR",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 62.43,
+      "current_banteng_pct": 20.17,
+      "forecast_elang_pct": [
+        30.66,
+        52.01,
+        33.66
+      ],
+      "forecast_banteng_pct": [
+        41.13,
+        4.74,
+        25.03
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        38.56,
+        39.74,
+        52.46,
+        59.0,
+        61.59,
+        62.43
+      ],
+      "history_banteng_pct": [
+        29.3,
+        31.45,
+        26.47,
+        23.93,
+        21.9,
+        20.17
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN KATINGAN",
+      "provinsi": "KALIMANTAN TENGAH",
+      "current_elang_pct": 43.54,
+      "current_banteng_pct": 24.56,
+      "forecast_elang_pct": [
+        40.86,
+        51.05,
+        60.77
+      ],
+      "forecast_banteng_pct": [
+        25.88,
+        36.83,
+        21.94
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        52.64,
+        44.17,
+        43.46,
+        43.92,
+        51.46,
+        43.54
+      ],
+      "history_banteng_pct": [
+        28.69,
+        25.62,
+        26.02,
+        31.28,
+        25.05,
+        24.56
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN KAYONG UTARA",
+      "provinsi": "BALI",
+      "current_elang_pct": 54.28,
+      "current_banteng_pct": 24.63,
+      "forecast_elang_pct": [
+        56.11,
+        65.11,
+        63.45
+      ],
+      "forecast_banteng_pct": [
+        21.78,
+        27.97,
+        25.38
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        53.67,
+        55.75,
+        50.02,
+        62.06,
+        42.24,
+        54.28
+      ],
+      "history_banteng_pct": [
+        27.18,
+        24.63,
+        30.11,
+        20.98,
+        25.98,
+        24.63
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN KEDIRI",
+      "provinsi": "KALIMANTAN TENGAH",
+      "current_elang_pct": 52.24,
+      "current_banteng_pct": 26.28,
+      "forecast_elang_pct": [
+        51.63,
+        50.23,
+        45.47
+      ],
+      "forecast_banteng_pct": [
+        25.96,
+        26.93,
+        21.97
+      ],
+      "trend_elang": "slow_erosion",
+      "trend_banteng": "slow_erosion",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        51.68,
+        46.25,
+        49.33,
+        54.35,
+        52.57,
+        52.24
+      ],
+      "history_banteng_pct": [
+        28.91,
+        22.99,
+        23.95,
+        20.51,
+        21.81,
+        26.28
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN KENDAL",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 62.96,
+      "current_banteng_pct": 24.96,
+      "forecast_elang_pct": [
+        52.25,
+        45.57,
+        55.6
+      ],
+      "forecast_banteng_pct": [
+        30.6,
+        6.94,
+        31.37
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        52.13,
+        43.56,
+        48.36,
+        51.82,
+        50.88,
+        62.96
+      ],
+      "history_banteng_pct": [
+        21.88,
+        31.9,
+        34.28,
+        26.61,
+        24.3,
+        24.96
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN KETAPANG",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 51.33,
+      "current_banteng_pct": 25.91,
+      "forecast_elang_pct": [
+        42.92,
+        37.61,
+        38.76
+      ],
+      "forecast_banteng_pct": [
+        38.89,
+        54.38,
+        31.05
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        42.77,
+        44.93,
+        44.58,
+        42.31,
+        48.04,
+        51.33
+      ],
+      "history_banteng_pct": [
+        33.28,
+        32.88,
+        30.77,
+        29.11,
+        31.06,
+        25.91
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN KLATEN",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 50.96,
+      "current_banteng_pct": 27.14,
+      "forecast_elang_pct": [
+        40.41,
+        40.67,
+        49.86
+      ],
+      "forecast_banteng_pct": [
+        53.66,
+        40.07,
+        34.35
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        51.92,
+        45.15,
+        54.26,
+        49.36,
+        39.63,
+        50.96
+      ],
+      "history_banteng_pct": [
+        29.13,
+        35.15,
+        28.3,
+        32.96,
+        35.5,
+        27.14
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN KLUNGKUNG",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 50.68,
+      "current_banteng_pct": 22.27,
+      "forecast_elang_pct": [
+        69.69,
+        50.4,
+        39.87
+      ],
+      "forecast_banteng_pct": [
+        12.58,
+        35.29,
+        29.61
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        36.54,
+        43.66,
+        51.9,
+        42.01,
+        45.67,
+        50.68
+      ],
+      "history_banteng_pct": [
+        38.47,
+        25.91,
+        19.34,
+        28.03,
+        30.71,
+        22.27
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN KOTAWARINGIN BARAT",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 43.83,
+      "current_banteng_pct": 25.43,
+      "forecast_elang_pct": [
+        49.49,
+        62.94,
+        45.89
+      ],
+      "forecast_banteng_pct": [
+        15.1,
+        8.87,
+        34.33
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        55.11,
+        50.89,
+        51.25,
+        48.52,
+        44.53,
+        43.83
+      ],
+      "history_banteng_pct": [
+        21.07,
+        26.76,
+        25.72,
+        28.44,
+        31.71,
+        25.43
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN KOTAWARINGIN TIMUR",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 39.36,
+      "current_banteng_pct": 31.43,
+      "forecast_elang_pct": [
+        52.02,
+        62.06,
+        49.75
+      ],
+      "forecast_banteng_pct": [
+        38.17,
+        13.08,
+        21.18
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        46.12,
+        52.17,
+        53.92,
+        54.27,
+        48.19,
+        39.36
+      ],
+      "history_banteng_pct": [
+        30.5,
+        27.13,
+        28.65,
+        22.12,
+        27.53,
+        31.43
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN KUBU RAYA",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 54.0,
+      "current_banteng_pct": 21.58,
+      "forecast_elang_pct": [
+        37.83,
+        47.36,
+        51.6
+      ],
+      "forecast_banteng_pct": [
+        26.45,
+        38.35,
+        26.23
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        51.45,
+        44.26,
+        47.78,
+        54.13,
+        45.21,
+        54.0
+      ],
+      "history_banteng_pct": [
+        31.13,
+        30.16,
+        30.68,
+        25.87,
+        32.53,
+        21.58
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN KUDUS",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 52.16,
+      "current_banteng_pct": 23.52,
+      "forecast_elang_pct": [
+        49.68,
+        46.02,
+        55.7
+      ],
+      "forecast_banteng_pct": [
+        33.42,
+        30.84,
+        40.31
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        46.49,
+        49.78,
+        50.86,
+        48.99,
+        57.35,
+        52.16
+      ],
+      "history_banteng_pct": [
+        30.7,
+        27.01,
+        22.81,
+        23.98,
+        26.42,
+        23.52
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN LAMANDAU",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 50.81,
+      "current_banteng_pct": 28.04,
+      "forecast_elang_pct": [
+        64.15,
+        38.25,
+        28.52
+      ],
+      "forecast_banteng_pct": [
+        20.08,
+        18.24,
+        48.83
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        41.85,
+        37.77,
+        51.73,
+        41.03,
+        47.53,
+        50.81
+      ],
+      "history_banteng_pct": [
+        37.0,
+        32.83,
+        22.27,
+        31.16,
+        36.13,
+        28.04
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN LAMONGAN",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 53.08,
+      "current_banteng_pct": 20.45,
+      "forecast_elang_pct": [
+        45.23,
+        51.31,
+        57.19
+      ],
+      "forecast_banteng_pct": [
+        36.01,
+        29.81,
+        16.94
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "slow_erosion",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        49.23,
+        42.59,
+        47.31,
+        58.31,
+        55.64,
+        53.08
+      ],
+      "history_banteng_pct": [
+        28.64,
+        28.46,
+        26.13,
+        25.35,
+        17.58,
+        20.45
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN LANDAK",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 40.46,
+      "current_banteng_pct": 37.63,
+      "forecast_elang_pct": [
+        52.48,
+        46.83,
+        43.37
+      ],
+      "forecast_banteng_pct": [
+        20.98,
+        18.23,
+        42.83
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        39.59,
+        45.49,
+        47.25,
+        38.23,
+        54.51,
+        40.46
+      ],
+      "history_banteng_pct": [
+        28.96,
+        31.68,
+        33.27,
+        35.39,
+        26.12,
+        37.63
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN LUMAJANG",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 46.36,
+      "current_banteng_pct": 27.41,
+      "forecast_elang_pct": [
+        50.67,
+        36.49,
+        58.09
+      ],
+      "forecast_banteng_pct": [
+        29.13,
+        30.15,
+        25.42
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        46.5,
+        42.2,
+        45.03,
+        53.73,
+        48.74,
+        46.36
+      ],
+      "history_banteng_pct": [
+        32.43,
+        32.72,
+        25.82,
+        29.7,
+        28.81,
+        27.41
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN MADIUN",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 46.23,
+      "current_banteng_pct": 27.17,
+      "forecast_elang_pct": [
+        34.03,
+        57.06,
+        44.19
+      ],
+      "forecast_banteng_pct": [
+        28.69,
+        17.71,
+        24.52
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        44.89,
+        49.77,
+        48.62,
+        53.65,
+        44.65,
+        46.23
+      ],
+      "history_banteng_pct": [
+        30.07,
+        27.36,
+        28.02,
+        20.61,
+        25.27,
+        27.17
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN MAGETAN",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 50.99,
+      "current_banteng_pct": 23.63,
+      "forecast_elang_pct": [
+        31.35,
+        47.65,
+        37.76
+      ],
+      "forecast_banteng_pct": [
+        27.41,
+        25.46,
+        34.92
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        45.45,
+        51.59,
+        39.2,
+        47.65,
+        41.92,
+        50.99
+      ],
+      "history_banteng_pct": [
+        21.39,
+        32.48,
+        34.04,
+        20.72,
+        35.93,
+        23.63
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN MALANG",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 52.08,
+      "current_banteng_pct": 27.42,
+      "forecast_elang_pct": [
+        30.43,
+        64.37,
+        44.5
+      ],
+      "forecast_banteng_pct": [
+        29.59,
+        17.11,
+        28.46
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        52.18,
+        40.4,
+        47.4,
+        44.97,
+        53.64,
+        52.08
+      ],
+      "history_banteng_pct": [
+        28.52,
+        30.91,
+        27.61,
+        28.07,
+        27.55,
+        27.42
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN MELAWI",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 49.28,
+      "current_banteng_pct": 26.71,
+      "forecast_elang_pct": [
+        58.2,
+        41.38,
+        34.94
+      ],
+      "forecast_banteng_pct": [
+        29.22,
+        10.81,
+        42.72
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        46.35,
+        46.53,
+        49.39,
+        51.73,
+        52.72,
+        49.28
+      ],
+      "history_banteng_pct": [
+        28.19,
+        29.48,
+        21.99,
+        22.62,
+        26.56,
+        26.71
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN MEMPAWAH",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 48.4,
+      "current_banteng_pct": 22.77,
+      "forecast_elang_pct": [
+        55.86,
+        47.68,
+        74.5
+      ],
+      "forecast_banteng_pct": [
+        29.97,
+        34.74,
+        0.66
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        43.23,
+        47.22,
+        54.77,
+        41.86,
+        47.36,
+        48.4
+      ],
+      "history_banteng_pct": [
+        34.27,
+        24.52,
+        23.69,
+        33.2,
+        27.48,
+        22.77
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN MOJOKERTO",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 51.28,
+      "current_banteng_pct": 24.69,
+      "forecast_elang_pct": [
+        45.31,
+        52.75,
+        35.72
+      ],
+      "forecast_banteng_pct": [
+        32.85,
+        23.15,
+        37.99
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        51.87,
+        43.25,
+        45.16,
+        51.3,
+        56.41,
+        51.28
+      ],
+      "history_banteng_pct": [
+        23.92,
+        28.82,
+        29.69,
+        22.08,
+        27.72,
+        24.69
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN NGANJUK",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 50.18,
+      "current_banteng_pct": 31.47,
+      "forecast_elang_pct": [
+        14.86,
+        56.89,
+        58.0
+      ],
+      "forecast_banteng_pct": [
+        56.37,
+        0.62,
+        12.53
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        49.7,
+        43.7,
+        33.87,
+        46.15,
+        51.93,
+        50.18
+      ],
+      "history_banteng_pct": [
+        32.4,
+        25.84,
+        39.22,
+        29.86,
+        26.62,
+        31.47
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN NGAWI",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 51.41,
+      "current_banteng_pct": 31.06,
+      "forecast_elang_pct": [
+        52.21,
+        61.98,
+        37.32
+      ],
+      "forecast_banteng_pct": [
+        15.4,
+        23.0,
+        0.0
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        46.95,
+        53.89,
+        47.66,
+        40.96,
+        53.29,
+        51.41
+      ],
+      "history_banteng_pct": [
+        19.28,
+        20.64,
+        23.36,
+        31.48,
+        23.38,
+        31.06
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN PACITAN",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 48.43,
+      "current_banteng_pct": 28.95,
+      "forecast_elang_pct": [
+        32.35,
+        66.32,
+        39.13
+      ],
+      "forecast_banteng_pct": [
+        16.16,
+        24.91,
+        29.4
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        54.08,
+        39.87,
+        51.05,
+        36.18,
+        42.29,
+        48.43
+      ],
+      "history_banteng_pct": [
+        20.69,
+        31.7,
+        30.11,
+        35.62,
+        28.06,
+        28.95
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN PAMEKASAN",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 45.68,
+      "current_banteng_pct": 33.16,
+      "forecast_elang_pct": [
+        49.11,
+        31.14,
+        45.09
+      ],
+      "forecast_banteng_pct": [
+        28.15,
+        19.86,
+        34.88
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        48.89,
+        45.28,
+        50.33,
+        47.03,
+        46.14,
+        45.68
+      ],
+      "history_banteng_pct": [
+        26.24,
+        27.17,
+        23.33,
+        29.64,
+        20.2,
+        33.16
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN PASURUAN",
+      "provinsi": "KALIMANTAN TENGAH",
+      "current_elang_pct": 53.63,
+      "current_banteng_pct": 29.85,
+      "forecast_elang_pct": [
+        47.6,
+        58.03,
+        24.85
+      ],
+      "forecast_banteng_pct": [
+        28.68,
+        16.91,
+        40.76
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        53.93,
+        46.82,
+        48.7,
+        42.38,
+        48.32,
+        53.63
+      ],
+      "history_banteng_pct": [
+        24.5,
+        26.16,
+        27.21,
+        33.69,
+        23.92,
+        29.85
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN PATI",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 52.22,
+      "current_banteng_pct": 28.23,
+      "forecast_elang_pct": [
+        44.51,
+        35.22,
+        49.84
+      ],
+      "forecast_banteng_pct": [
+        35.69,
+        29.42,
+        31.94
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        48.35,
+        49.14,
+        48.87,
+        50.92,
+        48.45,
+        52.22
+      ],
+      "history_banteng_pct": [
+        28.2,
+        27.77,
+        33.73,
+        28.96,
+        27.09,
+        28.23
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN PEKALONGAN",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 53.75,
+      "current_banteng_pct": 19.74,
+      "forecast_elang_pct": [
+        32.93,
+        62.51,
+        42.7
+      ],
+      "forecast_banteng_pct": [
+        32.62,
+        15.89,
+        36.27
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        39.42,
+        55.23,
+        49.55,
+        54.18,
+        46.97,
+        53.75
+      ],
+      "history_banteng_pct": [
+        33.1,
+        18.91,
+        28.19,
+        29.09,
+        30.54,
+        19.74
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN PEMALANG",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 45.47,
+      "current_banteng_pct": 33.16,
+      "forecast_elang_pct": [
+        56.47,
+        52.89,
+        35.13
+      ],
+      "forecast_banteng_pct": [
+        23.71,
+        27.55,
+        25.54
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        52.06,
+        53.64,
+        44.6,
+        39.55,
+        46.65,
+        45.47
+      ],
+      "history_banteng_pct": [
+        26.11,
+        19.33,
+        26.88,
+        34.69,
+        26.21,
+        33.16
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN PONOROGO",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 50.57,
+      "current_banteng_pct": 27.32,
+      "forecast_elang_pct": [
+        17.24,
+        71.68,
+        56.22
+      ],
+      "forecast_banteng_pct": [
+        46.92,
+        20.11,
+        15.03
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        35.3,
+        51.62,
+        56.1,
+        52.05,
+        51.12,
+        50.57
+      ],
+      "history_banteng_pct": [
+        34.49,
+        21.38,
+        21.51,
+        29.42,
+        25.18,
+        27.32
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN PROBOLINGGO",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 59.89,
+      "current_banteng_pct": 20.87,
+      "forecast_elang_pct": [
+        47.25,
+        53.26,
+        53.05
+      ],
+      "forecast_banteng_pct": [
+        36.14,
+        20.53,
+        16.18
+      ],
+      "trend_elang": "slow_erosion",
+      "trend_banteng": "slow_erosion",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        45.2,
+        48.05,
+        45.51,
+        47.89,
+        48.45,
+        59.89
+      ],
+      "history_banteng_pct": [
+        32.62,
+        28.81,
+        34.11,
+        16.06,
+        29.97,
+        20.87
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN PULANG PISAU",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 51.84,
+      "current_banteng_pct": 23.55,
+      "forecast_elang_pct": [
+        45.63,
+        40.31,
+        37.92
+      ],
+      "forecast_banteng_pct": [
+        19.31,
+        23.87,
+        31.35
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        40.63,
+        50.16,
+        54.55,
+        50.96,
+        53.79,
+        51.84
+      ],
+      "history_banteng_pct": [
+        33.65,
+        23.17,
+        16.35,
+        29.02,
+        30.84,
+        23.55
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN REMBANG",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 57.43,
+      "current_banteng_pct": 22.93,
+      "forecast_elang_pct": [
+        36.72,
+        65.29,
+        47.4
+      ],
+      "forecast_banteng_pct": [
+        28.03,
+        22.81,
+        37.47
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        41.65,
+        57.65,
+        49.98,
+        51.79,
+        45.33,
+        57.43
+      ],
+      "history_banteng_pct": [
+        29.19,
+        16.0,
+        22.18,
+        27.49,
+        24.28,
+        22.93
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN SAMBAS",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 57.6,
+      "current_banteng_pct": 22.17,
+      "forecast_elang_pct": [
+        55.09,
+        43.54,
+        33.39
+      ],
+      "forecast_banteng_pct": [
+        23.58,
+        28.89,
+        18.47
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "slow_erosion",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        48.1,
+        56.73,
+        49.45,
+        54.48,
+        47.13,
+        57.6
+      ],
+      "history_banteng_pct": [
+        18.33,
+        20.29,
+        32.77,
+        23.69,
+        28.09,
+        22.17
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN SAMPANG",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 45.68,
+      "current_banteng_pct": 32.92,
+      "forecast_elang_pct": [
+        52.11,
+        68.03,
+        44.21
+      ],
+      "forecast_banteng_pct": [
+        23.16,
+        30.46,
+        31.78
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        41.26,
+        51.58,
+        59.66,
+        65.85,
+        56.32,
+        45.68
+      ],
+      "history_banteng_pct": [
+        22.08,
+        28.85,
+        21.83,
+        16.15,
+        24.01,
+        32.92
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN SANGGAU",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 51.19,
+      "current_banteng_pct": 31.0,
+      "forecast_elang_pct": [
+        72.08,
+        48.54,
+        31.97
+      ],
+      "forecast_banteng_pct": [
+        1.3,
+        23.44,
+        46.99
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        47.4,
+        52.14,
+        44.77,
+        38.22,
+        56.87,
+        51.19
+      ],
+      "history_banteng_pct": [
+        26.94,
+        25.7,
+        24.35,
+        29.35,
+        20.65,
+        31.0
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN SEKADAU",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 50.9,
+      "current_banteng_pct": 28.91,
+      "forecast_elang_pct": [
+        52.0,
+        47.95,
+        39.67
+      ],
+      "forecast_banteng_pct": [
+        21.5,
+        32.57,
+        26.78
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        45.24,
+        39.99,
+        61.01,
+        45.56,
+        43.33,
+        50.9
+      ],
+      "history_banteng_pct": [
+        28.73,
+        29.32,
+        21.51,
+        32.55,
+        26.16,
+        28.91
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN SEMARANG",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 42.79,
+      "current_banteng_pct": 31.03,
+      "forecast_elang_pct": [
+        57.96,
+        41.93,
+        39.15
+      ],
+      "forecast_banteng_pct": [
+        23.07,
+        23.91,
+        20.9
+      ],
+      "trend_elang": "slow_erosion",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        62.72,
+        45.72,
+        47.14,
+        52.39,
+        46.22,
+        42.79
+      ],
+      "history_banteng_pct": [
+        21.72,
+        25.58,
+        35.0,
+        23.84,
+        28.08,
+        31.03
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN SERUYAN",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 44.13,
+      "current_banteng_pct": 30.44,
+      "forecast_elang_pct": [
+        45.06,
+        59.88,
+        44.47
+      ],
+      "forecast_banteng_pct": [
+        25.74,
+        17.64,
+        40.06
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        46.96,
+        40.69,
+        51.01,
+        49.9,
+        54.83,
+        44.13
+      ],
+      "history_banteng_pct": [
+        30.6,
+        30.98,
+        29.17,
+        27.68,
+        20.36,
+        30.44
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN SIDOARJO",
+      "provinsi": "KALIMANTAN TENGAH",
+      "current_elang_pct": 54.11,
+      "current_banteng_pct": 23.06,
+      "forecast_elang_pct": [
+        59.44,
+        39.93,
+        56.63
+      ],
+      "forecast_banteng_pct": [
+        34.11,
+        23.27,
+        34.71
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        44.45,
+        46.49,
+        49.32,
+        43.29,
+        43.41,
+        54.11
+      ],
+      "history_banteng_pct": [
+        35.54,
+        31.5,
+        27.52,
+        34.72,
+        20.21,
+        23.06
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN SINTANG",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 48.22,
+      "current_banteng_pct": 32.27,
+      "forecast_elang_pct": [
+        43.73,
+        38.28,
+        40.68
+      ],
+      "forecast_banteng_pct": [
+        29.22,
+        32.72,
+        40.9
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        41.98,
+        46.54,
+        52.6,
+        43.76,
+        51.45,
+        48.22
+      ],
+      "history_banteng_pct": [
+        28.89,
+        28.16,
+        26.04,
+        30.25,
+        23.51,
+        32.27
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN SITUBONDO",
+      "provinsi": "BALI",
+      "current_elang_pct": 44.23,
+      "current_banteng_pct": 31.46,
+      "forecast_elang_pct": [
+        53.69,
+        62.93,
+        43.81
+      ],
+      "forecast_banteng_pct": [
+        26.31,
+        10.26,
+        28.55
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        55.38,
+        50.04,
+        54.3,
+        50.88,
+        41.0,
+        44.23
+      ],
+      "history_banteng_pct": [
+        19.27,
+        19.62,
+        22.33,
+        24.66,
+        34.56,
+        31.46
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN SRAGEN",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 45.87,
+      "current_banteng_pct": 36.58,
+      "forecast_elang_pct": [
+        43.22,
+        42.44,
+        58.79
+      ],
+      "forecast_banteng_pct": [
+        44.39,
+        31.05,
+        34.24
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        47.9,
+        43.16,
+        47.39,
+        49.48,
+        46.93,
+        45.87
+      ],
+      "history_banteng_pct": [
+        29.3,
+        28.73,
+        28.81,
+        28.81,
+        22.56,
+        36.58
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN SUKAMARA",
+      "provinsi": "BALI",
+      "current_elang_pct": 60.3,
+      "current_banteng_pct": 23.14,
+      "forecast_elang_pct": [
+        35.45,
+        39.04,
+        48.1
+      ],
+      "forecast_banteng_pct": [
+        30.96,
+        30.55,
+        27.12
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        43.18,
+        44.71,
+        43.04,
+        43.12,
+        44.68,
+        60.3
+      ],
+      "history_banteng_pct": [
+        29.98,
+        25.19,
+        28.12,
+        29.03,
+        30.54,
+        23.14
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN SUKOHARJO",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 54.04,
+      "current_banteng_pct": 21.91,
+      "forecast_elang_pct": [
+        44.05,
+        40.15,
+        44.45
+      ],
+      "forecast_banteng_pct": [
+        33.43,
+        34.7,
+        18.21
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "slow_erosion",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        48.86,
+        52.22,
+        49.31,
+        47.08,
+        47.99,
+        54.04
+      ],
+      "history_banteng_pct": [
+        24.41,
+        25.25,
+        31.52,
+        26.49,
+        25.22,
+        21.91
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN SUMENEP",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 42.14,
+      "current_banteng_pct": 37.96,
+      "forecast_elang_pct": [
+        43.52,
+        60.43,
+        48.54
+      ],
+      "forecast_banteng_pct": [
+        24.74,
+        8.9,
+        34.48
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "slow_erosion",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        47.93,
+        45.88,
+        47.97,
+        51.0,
+        57.14,
+        42.14
+      ],
+      "history_banteng_pct": [
+        30.36,
+        31.02,
+        21.24,
+        19.52,
+        24.14,
+        37.96
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN TABANAN",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 52.83,
+      "current_banteng_pct": 20.17,
+      "forecast_elang_pct": [
+        45.97,
+        49.62,
+        19.55
+      ],
+      "forecast_banteng_pct": [
+        21.04,
+        42.05,
+        39.02
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        40.7,
+        44.56,
+        49.68,
+        49.76,
+        54.57,
+        52.83
+      ],
+      "history_banteng_pct": [
+        30.37,
+        27.77,
+        27.84,
+        31.78,
+        25.99,
+        20.17
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN TEGAL",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 49.77,
+      "current_banteng_pct": 23.54,
+      "forecast_elang_pct": [
+        51.93,
+        37.41,
+        45.56
+      ],
+      "forecast_banteng_pct": [
+        22.12,
+        23.93,
+        36.89
+      ],
+      "trend_elang": "slow_erosion",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        41.16,
+        56.7,
+        52.59,
+        48.58,
+        40.8,
+        49.77
+      ],
+      "history_banteng_pct": [
+        24.24,
+        23.2,
+        21.43,
+        23.86,
+        26.55,
+        23.54
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN TRENGGALEK",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 44.12,
+      "current_banteng_pct": 35.01,
+      "forecast_elang_pct": [
+        32.98,
+        62.76,
+        44.07
+      ],
+      "forecast_banteng_pct": [
+        41.49,
+        15.79,
+        36.17
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        47.1,
+        49.7,
+        52.93,
+        41.67,
+        52.15,
+        44.12
+      ],
+      "history_banteng_pct": [
+        28.35,
+        22.64,
+        19.1,
+        30.56,
+        24.27,
+        35.01
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN TUBAN",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 51.38,
+      "current_banteng_pct": 22.69,
+      "forecast_elang_pct": [
+        50.14,
+        48.21,
+        41.12
+      ],
+      "forecast_banteng_pct": [
+        30.51,
+        30.01,
+        22.34
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        51.46,
+        50.49,
+        56.0,
+        44.23,
+        48.8,
+        51.38
+      ],
+      "history_banteng_pct": [
+        27.03,
+        33.1,
+        19.33,
+        26.78,
+        22.06,
+        22.69
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN TULUNGAGUNG",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 46.51,
+      "current_banteng_pct": 13.56,
+      "forecast_elang_pct": [
+        78.0,
+        36.61,
+        35.03
+      ],
+      "forecast_banteng_pct": [
+        26.46,
+        48.54,
+        24.12
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        37.43,
+        50.28,
+        43.74,
+        47.14,
+        49.83,
+        46.51
+      ],
+      "history_banteng_pct": [
+        32.37,
+        21.99,
+        39.39,
+        25.65,
+        29.21,
+        13.56
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KABUPATEN WONOGIRI",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 42.47,
+      "current_banteng_pct": 29.48,
+      "forecast_elang_pct": [
+        46.47,
+        60.02,
+        51.54
+      ],
+      "forecast_banteng_pct": [
+        33.51,
+        22.03,
+        21.94
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        48.48,
+        53.94,
+        50.84,
+        45.74,
+        42.26,
+        42.47
+      ],
+      "history_banteng_pct": [
+        27.4,
+        25.11,
+        24.99,
+        27.18,
+        27.84,
+        29.48
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA BATU",
+      "provinsi": "BALI",
+      "current_elang_pct": 53.4,
+      "current_banteng_pct": 23.35,
+      "forecast_elang_pct": [
+        54.15,
+        53.98,
+        56.88
+      ],
+      "forecast_banteng_pct": [
+        9.03,
+        37.46,
+        28.21
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        54.55,
+        43.75,
+        49.24,
+        42.08,
+        48.06,
+        53.4
+      ],
+      "history_banteng_pct": [
+        22.54,
+        33.67,
+        22.8,
+        31.49,
+        21.81,
+        23.35
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA BLITAR",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 45.94,
+      "current_banteng_pct": 29.13,
+      "forecast_elang_pct": [
+        49.57,
+        53.79,
+        85.73
+      ],
+      "forecast_banteng_pct": [
+        16.28,
+        21.2,
+        7.95
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        51.4,
+        53.66,
+        55.14,
+        56.06,
+        51.27,
+        45.94
+      ],
+      "history_banteng_pct": [
+        24.49,
+        21.11,
+        23.97,
+        30.66,
+        28.95,
+        29.13
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA DENPASAR",
+      "provinsi": "BALI",
+      "current_elang_pct": 47.85,
+      "current_banteng_pct": 29.87,
+      "forecast_elang_pct": [
+        38.69,
+        55.76,
+        61.16
+      ],
+      "forecast_banteng_pct": [
+        22.77,
+        21.61,
+        27.98
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        40.48,
+        51.47,
+        66.19,
+        39.18,
+        43.61,
+        47.85
+      ],
+      "history_banteng_pct": [
+        28.89,
+        26.46,
+        20.55,
+        36.73,
+        31.67,
+        29.87
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA KEDIRI",
+      "provinsi": "BALI",
+      "current_elang_pct": 42.77,
+      "current_banteng_pct": 25.82,
+      "forecast_elang_pct": [
+        39.31,
+        51.29,
+        55.18
+      ],
+      "forecast_banteng_pct": [
+        35.66,
+        16.97,
+        14.72
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        41.7,
+        43.72,
+        47.5,
+        51.01,
+        48.27,
+        42.77
+      ],
+      "history_banteng_pct": [
+        32.07,
+        28.83,
+        32.33,
+        27.5,
+        26.95,
+        25.82
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA MADIUN",
+      "provinsi": "KALIMANTAN BARAT",
+      "current_elang_pct": 36.05,
+      "current_banteng_pct": 35.72,
+      "forecast_elang_pct": [
+        66.62,
+        29.67,
+        66.56
+      ],
+      "forecast_banteng_pct": [
+        24.37,
+        35.6,
+        11.85
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        42.8,
+        51.92,
+        54.22,
+        47.05,
+        46.56,
+        36.05
+      ],
+      "history_banteng_pct": [
+        30.7,
+        24.49,
+        22.62,
+        28.44,
+        23.69,
+        35.72
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA MALANG",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 39.97,
+      "current_banteng_pct": 28.97,
+      "forecast_elang_pct": [
+        51.93,
+        52.21,
+        26.58
+      ],
+      "forecast_banteng_pct": [
+        22.48,
+        16.34,
+        36.87
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        44.65,
+        41.59,
+        39.25,
+        45.98,
+        41.01,
+        39.97
+      ],
+      "history_banteng_pct": [
+        29.05,
+        30.58,
+        20.68,
+        28.39,
+        24.21,
+        28.97
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA MOJOKERTO",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 43.88,
+      "current_banteng_pct": 36.27,
+      "forecast_elang_pct": [
+        65.1,
+        42.62,
+        54.12
+      ],
+      "forecast_banteng_pct": [
+        8.14,
+        25.8,
+        23.57
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        47.37,
+        43.36,
+        55.49,
+        44.92,
+        48.97,
+        43.88
+      ],
+      "history_banteng_pct": [
+        26.83,
+        31.27,
+        27.37,
+        32.4,
+        23.36,
+        36.27
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA PALANGKA RAYA",
+      "provinsi": "BALI",
+      "current_elang_pct": 46.65,
+      "current_banteng_pct": 27.76,
+      "forecast_elang_pct": [
+        65.96,
+        45.98,
+        51.41
+      ],
+      "forecast_banteng_pct": [
+        16.18,
+        20.07,
+        13.5
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        46.18,
+        52.94,
+        47.35,
+        41.26,
+        45.77,
+        46.65
+      ],
+      "history_banteng_pct": [
+        23.66,
+        25.69,
+        34.13,
+        34.02,
+        31.58,
+        27.76
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA PASURUAN",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 44.21,
+      "current_banteng_pct": 33.89,
+      "forecast_elang_pct": [
+        52.31,
+        51.01,
+        60.47
+      ],
+      "forecast_banteng_pct": [
+        24.41,
+        25.73,
+        9.73
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        53.85,
+        51.13,
+        42.84,
+        50.28,
+        42.08,
+        44.21
+      ],
+      "history_banteng_pct": [
+        22.36,
+        20.84,
+        27.0,
+        18.85,
+        32.27,
+        33.89
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA PEKALONGAN",
+      "provinsi": "BALI",
+      "current_elang_pct": 48.29,
+      "current_banteng_pct": 20.88,
+      "forecast_elang_pct": [
+        59.92,
+        49.55,
+        70.81
+      ],
+      "forecast_banteng_pct": [
+        26.76,
+        26.24,
+        20.59
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        41.12,
+        56.14,
+        55.02,
+        38.63,
+        39.41,
+        48.29
+      ],
+      "history_banteng_pct": [
+        27.91,
+        27.05,
+        28.55,
+        43.42,
+        33.43,
+        20.88
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA PONTIANAK",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 50.72,
+      "current_banteng_pct": 29.38,
+      "forecast_elang_pct": [
+        44.26,
+        54.83,
+        44.72
+      ],
+      "forecast_banteng_pct": [
+        36.43,
+        24.25,
+        38.87
+      ],
+      "trend_elang": "slow_erosion",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        50.44,
+        52.5,
+        49.7,
+        47.1,
+        48.22,
+        50.72
+      ],
+      "history_banteng_pct": [
+        19.7,
+        27.09,
+        30.9,
+        24.29,
+        29.31,
+        29.38
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA PROBOLINGGO",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 46.85,
+      "current_banteng_pct": 32.51,
+      "forecast_elang_pct": [
+        47.91,
+        42.88,
+        59.85
+      ],
+      "forecast_banteng_pct": [
+        32.83,
+        32.12,
+        18.59
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        41.92,
+        50.24,
+        55.87,
+        49.39,
+        60.44,
+        46.85
+      ],
+      "history_banteng_pct": [
+        34.21,
+        27.96,
+        18.66,
+        33.87,
+        17.13,
+        32.51
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA SALATIGA",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 40.86,
+      "current_banteng_pct": 27.93,
+      "forecast_elang_pct": [
+        36.34,
+        35.61,
+        54.36
+      ],
+      "forecast_banteng_pct": [
+        42.02,
+        44.15,
+        22.25
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "slow_erosion",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        55.97,
+        42.55,
+        50.91,
+        57.11,
+        56.45,
+        40.86
+      ],
+      "history_banteng_pct": [
+        32.37,
+        28.42,
+        20.68,
+        23.83,
+        20.54,
+        27.93
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA SEMARANG",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 51.43,
+      "current_banteng_pct": 24.88,
+      "forecast_elang_pct": [
+        58.26,
+        26.83,
+        61.75
+      ],
+      "forecast_banteng_pct": [
+        6.55,
+        38.21,
+        19.53
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "slow_erosion",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        55.58,
+        35.06,
+        48.15,
+        45.58,
+        60.19,
+        51.43
+      ],
+      "history_banteng_pct": [
+        19.41,
+        17.79,
+        32.92,
+        35.34,
+        22.24,
+        24.88
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA SINGKAWANG",
+      "provinsi": "BALI",
+      "current_elang_pct": 53.47,
+      "current_banteng_pct": 21.04,
+      "forecast_elang_pct": [
+        34.04,
+        65.06,
+        45.56
+      ],
+      "forecast_banteng_pct": [
+        21.99,
+        17.2,
+        27.99
+      ],
+      "trend_elang": "accelerating_loss",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        54.06,
+        43.51,
+        56.84,
+        39.7,
+        40.89,
+        53.47
+      ],
+      "history_banteng_pct": [
+        19.72,
+        19.81,
+        23.28,
+        28.62,
+        33.73,
+        21.04
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA SURABAYA",
+      "provinsi": "KALIMANTAN BARAT",
+      "current_elang_pct": 57.84,
+      "current_banteng_pct": 22.18,
+      "forecast_elang_pct": [
+        53.03,
+        36.96,
+        53.23
+      ],
+      "forecast_banteng_pct": [
+        13.09,
+        30.41,
+        39.23
+      ],
+      "trend_elang": "slow_erosion",
+      "trend_banteng": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        46.84,
+        50.89,
+        40.33,
+        54.46,
+        44.89,
+        57.84
+      ],
+      "history_banteng_pct": [
+        32.94,
+        26.86,
+        30.47,
+        27.06,
+        29.66,
+        22.18
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA SURAKARTA",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 40.14,
+      "current_banteng_pct": 31.52,
+      "forecast_elang_pct": [
+        67.42,
+        48.69,
+        42.84
+      ],
+      "forecast_banteng_pct": [
+        17.8,
+        26.82,
+        20.39
+      ],
+      "trend_elang": "stable",
+      "trend_banteng": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        49.19,
+        40.33,
+        53.56,
+        52.76,
+        50.49,
+        40.14
+      ],
+      "history_banteng_pct": [
+        24.32,
+        24.62,
+        22.47,
+        24.45,
+        32.65,
+        31.52
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KOTA TEGAL",
+      "provinsi": "BALI",
+      "current_elang_pct": 50.11,
+      "current_banteng_pct": 26.5,
+      "forecast_elang_pct": [
+        48.15,
+        42.87,
+        54.32
+      ],
+      "forecast_banteng_pct": [
+        41.2,
+        18.9,
+        24.89
+      ],
+      "trend_elang": "gaining",
+      "trend_banteng": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        47.23,
+        43.25,
+        46.76,
+        58.27,
+        60.28,
+        50.11
+      ],
+      "history_banteng_pct": [
+        26.9,
+        24.46,
+        30.89,
+        25.42,
+        20.21,
+        26.5
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    }
+  ],
+  "provinsi_forecasts": [
+    {
+      "area": "BALI",
+      "provinsi": "BALI",
+      "current_elang_pct": 47.23,
+      "forecast_elang_pct": [
+        43.79,
+        54.84,
+        52.5
+      ],
+      "forecast_banteng_pct": [
+        31.29,
+        16.93,
+        25.04
+      ],
+      "trend_elang": "gaining",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        50.64,
+        48.75,
+        49.04,
+        48.49,
+        48.61,
+        47.23
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "JAWA TENGAH",
+      "provinsi": "JAWA TENGAH",
+      "current_elang_pct": 49.05,
+      "forecast_elang_pct": [
+        46.69,
+        49.44,
+        48.66
+      ],
+      "forecast_banteng_pct": [
+        31.78,
+        28.3,
+        28.94
+      ],
+      "trend_elang": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        46.97,
+        48.58,
+        49.85,
+        47.49,
+        47.9,
+        49.05
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "JAWA TIMUR",
+      "provinsi": "JAWA TIMUR",
+      "current_elang_pct": 47.14,
+      "forecast_elang_pct": [
+        49.34,
+        49.28,
+        46.21
+      ],
+      "forecast_banteng_pct": [
+        28.0,
+        26.01,
+        26.86
+      ],
+      "trend_elang": "stable",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        46.94,
+        48.24,
+        48.3,
+        48.92,
+        49.44,
+        47.14
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KALIMANTAN BARAT",
+      "provinsi": "KALIMANTAN BARAT",
+      "current_elang_pct": 50.22,
+      "forecast_elang_pct": [
+        47.21,
+        55.39,
+        40.29
+      ],
+      "forecast_banteng_pct": [
+        19.94,
+        17.0,
+        36.88
+      ],
+      "trend_elang": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        48.89,
+        47.89,
+        44.57,
+        49.67,
+        45.89,
+        50.22
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    },
+    {
+      "area": "KALIMANTAN TENGAH",
+      "provinsi": "KALIMANTAN TENGAH",
+      "current_elang_pct": 57.03,
+      "forecast_elang_pct": [
+        55.89,
+        46.43,
+        43.63
+      ],
+      "forecast_banteng_pct": [
+        15.09,
+        23.28,
+        29.25
+      ],
+      "trend_elang": "accelerating_loss",
+      "horizon_months": 3,
+      "history_elang_pct": [
+        52.65,
+        46.62,
+        48.7,
+        49.12,
+        52.38,
+        57.03
+      ],
+      "history_periodes": [
+        "2025-11",
+        "2025-12",
+        "2026-01",
+        "2026-02",
+        "2026-03",
+        "2026-04"
+      ]
+    }
+  ],
+  "threat_summary": [],
+  "expansion_candidates": [
+    {
+      "area": "KOTA MADIUN",
+      "provinsi": "KALIMANTAN BARAT",
+      "scope": "kabupaten",
+      "current_elang_pct": 36.05,
+      "forecast_end_elang_pct": 66.56
+    },
+    {
+      "area": "KABUPATEN BLITAR",
+      "provinsi": "JAWA TIMUR",
+      "scope": "kabupaten",
+      "current_elang_pct": 36.6,
+      "forecast_end_elang_pct": 53.46
+    },
+    {
+      "area": "KABUPATEN KOTAWARINGIN TIMUR",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "current_elang_pct": 39.36,
+      "forecast_end_elang_pct": 49.75
+    },
+    {
+      "area": "KABUPATEN JOMBANG",
+      "provinsi": "JAWA TIMUR",
+      "scope": "kabupaten",
+      "current_elang_pct": 36.73,
+      "forecast_end_elang_pct": 41.49
+    }
+  ],
+  "at_risk_areas": [
+    {
+      "area": "KOTA MALANG",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 39.97,
+      "forecast_end_elang_pct": 26.58
+    },
+    {
+      "area": "KABUPATEN BREBES",
+      "provinsi": "JAWA TIMUR",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 40.9,
+      "forecast_end_elang_pct": 30.82
+    },
+    {
+      "area": "KABUPATEN SEMARANG",
+      "provinsi": "JAWA TIMUR",
+      "scope": "kabupaten",
+      "trend_elang": "slow_erosion",
+      "current_elang_pct": 42.79,
+      "forecast_end_elang_pct": 39.15
+    },
+    {
+      "area": "KABUPATEN PEMALANG",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 45.47,
+      "forecast_end_elang_pct": 35.13
+    },
+    {
+      "area": "KABUPATEN KAPUAS",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "slow_erosion",
+      "current_elang_pct": 46.18,
+      "forecast_end_elang_pct": 42.73
+    },
+    {
+      "area": "KABUPATEN TULUNGAGUNG",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 46.51,
+      "forecast_end_elang_pct": 35.03
+    },
+    {
+      "area": "KABUPATEN BULELENG",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 47.55,
+      "forecast_end_elang_pct": 31.59
+    },
+    {
+      "area": "KABUPATEN SINTANG",
+      "provinsi": "JAWA TIMUR",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 48.22,
+      "forecast_end_elang_pct": 40.68
+    },
+    {
+      "area": "KABUPATEN PACITAN",
+      "provinsi": "JAWA TIMUR",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 48.43,
+      "forecast_end_elang_pct": 39.13
+    },
+    {
+      "area": "KABUPATEN MELAWI",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 49.28,
+      "forecast_end_elang_pct": 34.94
+    },
+    {
+      "area": "KABUPATEN BANGLI",
+      "provinsi": "JAWA TIMUR",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 49.3,
+      "forecast_end_elang_pct": 15.36
+    },
+    {
+      "area": "KABUPATEN GUNUNG MAS",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 49.72,
+      "forecast_end_elang_pct": 31.31
+    },
+    {
+      "area": "KABUPATEN TEGAL",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "slow_erosion",
+      "current_elang_pct": 49.77,
+      "forecast_end_elang_pct": 45.56
+    },
+    {
+      "area": "KABUPATEN JEMBER",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 49.88,
+      "forecast_end_elang_pct": 34.88
+    },
+    {
+      "area": "KABUPATEN KLUNGKUNG",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 50.68,
+      "forecast_end_elang_pct": 39.87
+    },
+    {
+      "area": "KOTA PONTIANAK",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "slow_erosion",
+      "current_elang_pct": 50.72,
+      "forecast_end_elang_pct": 44.72
+    },
+    {
+      "area": "KABUPATEN LAMANDAU",
+      "provinsi": "JAWA TIMUR",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 50.81,
+      "forecast_end_elang_pct": 28.52
+    },
+    {
+      "area": "KABUPATEN SEKADAU",
+      "provinsi": "JAWA TIMUR",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 50.9,
+      "forecast_end_elang_pct": 39.67
+    },
+    {
+      "area": "KABUPATEN GIANYAR",
+      "provinsi": "JAWA TIMUR",
+      "scope": "kabupaten",
+      "trend_elang": "slow_erosion",
+      "current_elang_pct": 50.99,
+      "forecast_end_elang_pct": 47.73
+    },
+    {
+      "area": "KABUPATEN MAGETAN",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 50.99,
+      "forecast_end_elang_pct": 37.76
+    },
+    {
+      "area": "KABUPATEN SANGGAU",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 51.19,
+      "forecast_end_elang_pct": 31.97
+    },
+    {
+      "area": "KABUPATEN MOJOKERTO",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 51.28,
+      "forecast_end_elang_pct": 35.72
+    },
+    {
+      "area": "KABUPATEN KETAPANG",
+      "provinsi": "JAWA TIMUR",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 51.33,
+      "forecast_end_elang_pct": 38.76
+    },
+    {
+      "area": "KABUPATEN TUBAN",
+      "provinsi": "JAWA TIMUR",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 51.38,
+      "forecast_end_elang_pct": 41.12
+    },
+    {
+      "area": "KABUPATEN NGAWI",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 51.41,
+      "forecast_end_elang_pct": 37.32
+    },
+    {
+      "area": "KABUPATEN BOYOLALI",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 51.42,
+      "forecast_end_elang_pct": 23.61
+    },
+    {
+      "area": "KABUPATEN PULANG PISAU",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 51.84,
+      "forecast_end_elang_pct": 37.92
+    },
+    {
+      "area": "KABUPATEN MALANG",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 52.08,
+      "forecast_end_elang_pct": 44.5
+    },
+    {
+      "area": "KABUPATEN KEDIRI",
+      "provinsi": "KALIMANTAN TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "slow_erosion",
+      "current_elang_pct": 52.24,
+      "forecast_end_elang_pct": 45.47
+    },
+    {
+      "area": "KABUPATEN TABANAN",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 52.83,
+      "forecast_end_elang_pct": 19.55
+    },
+    {
+      "area": "KOTA SINGKAWANG",
+      "provinsi": "BALI",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 53.47,
+      "forecast_end_elang_pct": 45.56
+    },
+    {
+      "area": "KABUPATEN PASURUAN",
+      "provinsi": "KALIMANTAN TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 53.63,
+      "forecast_end_elang_pct": 24.85
+    },
+    {
+      "area": "KABUPATEN PEKALONGAN",
+      "provinsi": "JAWA TIMUR",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 53.75,
+      "forecast_end_elang_pct": 42.7
+    },
+    {
+      "area": "KABUPATEN SUKOHARJO",
+      "provinsi": "JAWA TIMUR",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 54.04,
+      "forecast_end_elang_pct": 44.45
+    },
+    {
+      "area": "KABUPATEN REMBANG",
+      "provinsi": "JAWA TIMUR",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 57.43,
+      "forecast_end_elang_pct": 47.4
+    },
+    {
+      "area": "KABUPATEN SAMBAS",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 57.6,
+      "forecast_end_elang_pct": 33.39
+    },
+    {
+      "area": "KOTA SURABAYA",
+      "provinsi": "KALIMANTAN BARAT",
+      "scope": "kabupaten",
+      "trend_elang": "slow_erosion",
+      "current_elang_pct": 57.84,
+      "forecast_end_elang_pct": 53.23
+    },
+    {
+      "area": "KABUPATEN PROBOLINGGO",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "slow_erosion",
+      "current_elang_pct": 59.89,
+      "forecast_end_elang_pct": 53.05
+    },
+    {
+      "area": "KABUPATEN SUKAMARA",
+      "provinsi": "BALI",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 60.3,
+      "forecast_end_elang_pct": 48.1
+    },
+    {
+      "area": "KABUPATEN KARANGANYAR",
+      "provinsi": "JAWA TENGAH",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 62.43,
+      "forecast_end_elang_pct": 33.66
+    },
+    {
+      "area": "KABUPATEN KENDAL",
+      "provinsi": "JAWA TIMUR",
+      "scope": "kabupaten",
+      "trend_elang": "accelerating_loss",
+      "current_elang_pct": 62.96,
+      "forecast_end_elang_pct": 55.6
+    }
+  ]
+}
