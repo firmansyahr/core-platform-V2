@@ -179,6 +179,8 @@ def _promo_row_to_dict(p: PromoRow, peserta_rows: list[PromoPesertaRow]) -> dict
         d["brand_selection_mode"] = p.brand_selection_mode
     if p.brands is not None:
         d["brands"] = p.brands
+    if p.brand_selection_json is not None:
+        d["brand_selection_json"] = p.brand_selection_json
     return d
 
 
@@ -237,6 +239,7 @@ def _save_new_promo(promo: dict) -> None:
                 summary_peserta=promo.get("summary_peserta", {}),
                 brand_selection_mode=promo.get("brand_selection_mode"),
                 brands=promo.get("brands"),
+                brand_selection_json=promo.get("brand_selection_json"),
             ))
             db.commit()
         finally:
@@ -713,6 +716,7 @@ def create_promo_v3(body: CreatePromoV3Body) -> dict:
             "brand_selection":      body.brand_selection,
             "brand_selection_mode": body.brand_selection_mode,
             "brands":               body.brands,
+            "brand_selection_json": json.dumps(body.brand_selection) if body.brand_selection is not None else None,
         }
 
     if USE_SQLITE:

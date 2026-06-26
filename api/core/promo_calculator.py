@@ -28,6 +28,85 @@ def get_brand_point_values() -> dict[str, int]:
     })
 
 
+_DEFAULT_BRANDS  = ["SEMEN ELANG", "SEMEN BADAK", "SEMEN BADAK SERBAGUNA"]
+_FIGHTING_BRANDS = ["SEMEN BANTENG"]
+_FIGHTING_BRAND  = "SEMEN BANTENG"  # single string for legacy exclusion
+
+
+def resolve_brands_for_promo(promo: dict) -> list[str] | None:
+    """
+    Resolve brand mana saja yang boleh dihitung transaksinya untuk program ini.
+
+    Return:
+    - None     → gunakan legacy default (exclude SEMEN BANTENG saja)
+    - list[str]→ whitelist uppercase; hanya transaksi dengan brand ini yang dihitung
+
+    Priority: brand_selection_json (new) → brand_selection_mode (legacy) → None
+    """
+    brands: set[str] = set()
+
+    bsj = promo.get("brand_selection_json")
+    if bsj:
+        try:
+            sel = json.loads(bsj)
+            modes         = sel.get("modes") or []
+            custom_brands = sel.get("custom_brands") or []
+            if "default" in modes:
+                brands.update(_DEFAULT_BRANDS)
+            if "fighting_brand" in modes:
+                brands.update(_FIGHTING_BRANDS)
+            if "custom" in modes and custom_brands:
+                brands.update(b.upper().strip() for b in custom_brands)
+            return list(brands) if brands else None
+        except Exception:
+            pass
+
+    # Legacy fallback
+    mode = promo.get("brand_selection_mode")
+    if mode == "fighting":
+        return list(_FIGHTING_BRANDS)
+    if mode == "wilayah":
+        return None  # all brands; legacy caller excludes nothing extra
+
+    return None  # no selection → legacy default (caller excludes BANTENG)
+
+
+def filter_transactions_by_brand(
+    df: pd.DataFrame,
+    allowed_brands: list[str] | None,
+) -> pd.DataFrame:
+    """
+    Filter DataFrame transaksi berdasarkan brand.
+
+    allowed_brands = None  → legacy: exclude SEMEN BANTENG saja
+    allowed_brands = list  → whitelist; hanya brand dalam list yang lolos
+    """
+    import logging
+    brand_col = next((c for c in df.columns if "brand" in c.lower()), None)
+
+    if brand_col is None:
+        if allowed_brands is not None:
+            logging.getLogger(__name__).warning(
+                "Brand column not found; brand filter diabaikan. Columns: %s",
+                list(df.columns),
+            )
+        return df
+
+    if allowed_brands is None:
+        # Legacy: exclude fighting brand
+        return df[~df[brand_col].str.upper().eq(_FIGHTING_BRAND)]
+
+    allowed_upper = [b.upper() for b in allowed_brands]
+    filtered = df[df[brand_col].str.upper().isin(allowed_upper)]
+    if filtered.empty:
+        logging.getLogger(__name__).warning(
+            "Brand filter menghasilkan 0 transaksi. allowed=%s, available=%s",
+            allowed_brands,
+            df[brand_col].unique().tolist(),
+        )
+    return filtered
+
+
 def calculate_tier_reward(
     volume_realisasi: float,
     volume_target: float,
@@ -181,11 +260,6 @@ def get_baseline_volume(
     df = transaksi_df.copy()
     df["_dt"] = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
 
-    fighting  = "SEMEN BANTENG"
-    brand_col = next((c for c in df.columns if "brand" in c.lower()), None)
-    if brand_col:
-        df = df[~df[brand_col].str.upper().eq(fighting)]
-
     df_lookback = df[
         (df["_dt"] >= lookback_start) & (df["_dt"] <= lookback_end)
         & (df["ID Toko"].isin(toko_ids))
@@ -333,17 +407,11 @@ def calculate_program_reward_summary(
     mulai   = pd.Timestamp(promo["periode_mulai"]).normalize()
     selesai = pd.Timestamp(promo["periode_selesai"]).normalize()
 
-    df = transaksi_df.copy()
-    df["_dt"] = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
-    df_period = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
-
-    # Volume per toko (exclude fighting brand)
-    fighting = "SEMEN BANTENG"
-    brand_col = next(
-        (c for c in df_period.columns if "brand" in c.lower()), None
-    )
-    if brand_col:
-        df_period = df_period[~df_period[brand_col].str.upper().eq(fighting)]
+    allowed_brands = resolve_brands_for_promo(promo)
+    df_filtered    = filter_transactions_by_brand(transaksi_df.copy(), allowed_brands)
+    df             = df_filtered.copy()
+    df["_dt"]      = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
+    df_period      = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
 
     agg_ton: dict = df_period.groupby("ID Toko")["TON Quantity"].sum().to_dict()
 
@@ -380,7 +448,7 @@ def calculate_program_reward_summary(
         tier_distribution[tier] = tier_distribution.get(tier, 0) + 1
 
     baseline = get_baseline_volume(
-        [r["id_toko"] for r in results], promo["periode_mulai"], promo["periode_selesai"], transaksi_df,
+        [r["id_toko"] for r in results], promo["periode_mulai"], promo["periode_selesai"], df_filtered,
     )
     analytics_rows = [
         {
@@ -420,16 +488,12 @@ def calculate_flat_multiplier_program(
     mulai   = pd.Timestamp(promo["periode_mulai"]).normalize()
     selesai = pd.Timestamp(promo["periode_selesai"]).normalize()
 
-    df = transaksi_df.copy()
-    df["_dt"] = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
-
-    fighting  = "SEMEN BANTENG"
-    brand_col = next((c for c in df.columns if "brand" in c.lower()), None)
-    if brand_col:
-        df = df[~df[brand_col].str.upper().eq(fighting)]
-
-    df_period = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
-    agg_ton   = df_period.groupby("ID Toko")["TON Quantity"].sum().to_dict()
+    allowed_brands = resolve_brands_for_promo(promo)
+    df_filtered    = filter_transactions_by_brand(transaksi_df.copy(), allowed_brands)
+    df             = df_filtered.copy()
+    df["_dt"]      = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
+    df_period      = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
+    agg_ton        = df_period.groupby("ID Toko")["TON Quantity"].sum().to_dict()
 
     results: list[dict] = []
     for peserta in peserta_data:
@@ -463,11 +527,8 @@ def calculate_flat_multiplier_program(
     total_poin_prog   = sum(r["total_poin"]   for r in results)
     total_rupiah_prog = sum(r["total_rupiah"] for r in results)
 
-    # Flat multiplier tidak punya target volume eksplisit (semua transaksi
-    # dapat multiplier yang sama, tidak tergantung pencapaian) — target_ton
-    # None supaya analytics pakai baseline sendiri sebagai pembanding.
     baseline = get_baseline_volume(
-        [r["id_toko"] for r in results], promo["periode_mulai"], promo["periode_selesai"], transaksi_df,
+        [r["id_toko"] for r in results], promo["periode_mulai"], promo["periode_selesai"], df_filtered,
     )
     analytics_rows = [
         {
@@ -510,16 +571,12 @@ def calculate_flat_per_batch_program(
     mulai   = pd.Timestamp(promo["periode_mulai"]).normalize()
     selesai = pd.Timestamp(promo["periode_selesai"]).normalize()
 
-    df = transaksi_df.copy()
-    df["_dt"] = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
-
-    fighting  = "SEMEN BANTENG"
-    brand_col = next((c for c in df.columns if "brand" in c.lower()), None)
-    if brand_col:
-        df = df[~df[brand_col].str.upper().eq(fighting)]
-
-    df_period = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
-    agg_ton   = df_period.groupby("ID Toko")["TON Quantity"].sum().to_dict()
+    allowed_brands = resolve_brands_for_promo(promo)
+    df_filtered    = filter_transactions_by_brand(transaksi_df.copy(), allowed_brands)
+    df             = df_filtered.copy()
+    df["_dt"]      = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
+    df_period      = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
+    agg_ton        = df_period.groupby("ID Toko")["TON Quantity"].sum().to_dict()
 
     results: list[dict] = []
     for peserta in peserta_data:
@@ -553,7 +610,7 @@ def calculate_flat_per_batch_program(
     total_rupiah_prog = sum(r["total_rupiah"]  for r in results)
 
     baseline = get_baseline_volume(
-        [r["id_toko"] for r in results], promo["periode_mulai"], promo["periode_selesai"], transaksi_df,
+        [r["id_toko"] for r in results], promo["periode_mulai"], promo["periode_selesai"], df_filtered,
     )
     analytics_rows = [
         {
@@ -597,13 +654,10 @@ def calculate_leaderboard_standings(
     mulai   = pd.Timestamp(promo["periode_mulai"]).normalize()
     selesai = pd.Timestamp(promo["periode_selesai"]).normalize()
 
-    df = transaksi_df.copy()
-    df["_dt"] = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
-
-    fighting  = "SEMEN BANTENG"
-    brand_col = next((c for c in df.columns if "brand" in c.lower()), None)
-    if brand_col:
-        df = df[~df[brand_col].str.upper().eq(fighting)]
+    allowed_brands = resolve_brands_for_promo(promo)
+    df_filtered    = filter_transactions_by_brand(transaksi_df.copy(), allowed_brands)
+    df             = df_filtered.copy()
+    df["_dt"]      = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
 
     df_period   = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
     agg_ton     = df_period.groupby("ID Toko")["TON Quantity"].sum().to_dict()
@@ -686,7 +740,7 @@ def calculate_leaderboard_standings(
     # override status berbasis-lift supaya toko rank 1-3 selalu dihitung sukses
     # walau basis_ranking-nya growth_pct dengan volume absolut kecil.
     baseline = get_baseline_volume(
-        [s["id_toko"] for s in standings], promo["periode_mulai"], promo["periode_selesai"], transaksi_df,
+        [s["id_toko"] for s in standings], promo["periode_mulai"], promo["periode_selesai"], df_filtered,
     )
     analytics_rows = [
         {

@@ -178,6 +178,7 @@ class Promo(Base):
     final_achievements = Column(JSON, nullable=True)  # snapshot list-of-dict, tidak dinormalisasi
     brand_selection_mode = Column(String, nullable=True)  # "wilayah" | "fighting" — null utk promo lama sebelum fitur ini
     brands               = Column(JSON, nullable=True)  # list[{id,nama,tipe}] hasil resolusi wilayah ATAU fighting-brand only
+    brand_selection_json = Column(String, nullable=True)  # JSON string dari multi-checkbox: {"modes":[...],"custom_brands":[...]}
 
     peserta = relationship("PromoPeserta", back_populates="promo", cascade="all, delete-orphan")
 
