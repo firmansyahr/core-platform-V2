@@ -50,6 +50,8 @@ import {
 } from "recharts";
 import AegisMap from "@/components/aegis/AegisMap";
 import type { RegionMapData } from "@/components/aegis/AegisMap";
+import IndonesiaKabupatenMap from "@/components/IndonesiaKabupatenMap";
+import { CardDescription } from "@/components/ui/card";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const PAGE_SIZE = 20;
@@ -578,6 +580,17 @@ export default function AegisPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [safePage, filtered]);
 
+  // Aggregate warning count per kabupaten for choropleth (uses ALL stores, unfiltered)
+  const kabupatenWarningData = useMemo(() => {
+    const counts: Record<string, number> = {};
+    stores
+      .filter((s) => s.level !== "Normal")
+      .forEach((s) => {
+        counts[s.kabupaten] = (counts[s.kabupaten] ?? 0) + 1;
+      });
+    return Object.entries(counts).map(([kabupaten, value]) => ({ kabupaten, value }));
+  }, [stores]);
+
   const chartData = cadAlerts.slice(0, 10).map((a) => ({
     name:   a.kabupaten.replace(/^KABUPATEN /, "KAB. ").replace(/^KOTA /, "KOTA "),
     value:  a.jumlah_toko,
@@ -860,6 +873,62 @@ export default function AegisPage() {
 
         {/* ── Peta Choropleth ──────────────────────────────────────────────── */}
         <MiniMapSection />
+
+        {/* ── Kabupaten Choropleth Map ──────────────────────────────────── */}
+        <Card>
+          <CardHeader className="border-b border-border pb-3">
+            <div className="flex items-start justify-between">
+              <div>
+                <CardTitle className="text-sm font-semibold">
+                  Distribusi Warning per Kabupaten
+                </CardTitle>
+                <CardDescription className="text-xs mt-0.5">
+                  Klik kabupaten untuk filter · {kabupatenWarningData.length} wilayah terdeteksi
+                </CardDescription>
+              </div>
+              <span className="text-[10px] text-muted-foreground mt-1">
+                94/99 kabupaten ter-mapping (95%)
+              </span>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-3 pb-4">
+            <IndonesiaKabupatenMap
+              data={kabupatenWarningData}
+              colorScale="danger"
+              valueLabel="toko warning"
+              height={480}
+              onKabupatenClick={(kab) => {
+                // Set search filter to kabupaten name (strip prefix for search)
+                const stripped = kab.replace(/^(KABUPATEN|KOTA)\s+/i, "");
+                setDraftSearch(stripped);
+                setAppliedSearch(stripped);
+                setPage(0);
+                // Scroll to top of table
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            />
+            <div className="flex items-center justify-between mt-3 px-1">
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm" style={{ background: "#FEF2F2" }} />
+                  Rendah
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm" style={{ background: "#EF4444" }} />
+                  Sedang
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm" style={{ background: "#B91C1C" }} />
+                  Tinggi
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm bg-slate-100 dark:bg-slate-800 border border-border" />
+                  Tidak ada data
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* ── CAD Alert bar chart ───────────────────────────────────────── */}
         <Card>
