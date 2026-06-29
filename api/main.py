@@ -8,7 +8,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
 from api.core.limiter import limiter
-from api.routers import aegis, auth, brand_config, cad_history, cannibalization, causal, competitor, export, health, home, ilp, loyalty, oracle, oracle_agent, performance, promo, settings
+from api.routers import aegis, auth, brand_config, cad_history, cannibalization, causal, competitor, export, health, home, ilp, loyalty, oracle, oracle_agent, performance, predictions, promo, settings
 
 # Tanpa basicConfig, semua logging.getLogger(__name__).info/.warning di modul
 # lain (oracle_guard injection warning, oracle_scheduler job status, token
@@ -104,3 +104,4 @@ app.include_router(cannibalization.router)
 app.include_router(causal.router)
 app.include_router(oracle.router)
 app.include_router(oracle_agent.router, prefix="/api/oracle/agent", tags=["oracle-agent"])
+app.include_router(predictions.router, prefix="/api/predictions", tags=["predictions"])
