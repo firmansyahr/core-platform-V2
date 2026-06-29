@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, RefreshCw, Plus, GitBranch, Scale, Info, Loader2 } from "lucide-react";
+import { Sparkles, RefreshCw, Plus, GitBranch, Scale, Info, Loader2, TrendingUp } from "lucide-react";
 import StoreJourneyModal from "@/components/StoreJourneyModal";
 import {
   ComposedChart,
@@ -1202,6 +1202,15 @@ export default function StoreDetailPage() {
     insight:            string;
   }
   const [compContext,   setCompContext]   = useState<CompTriRow | null>(null);
+
+  interface StoreFbsiPred {
+    status: string;
+    predictions: { periode: string; value: number; lower: number | null; upper: number | null }[];
+    trend_direction: string;
+    trend_pct: number;
+    method: string;
+  }
+  const [storeFbsiPred, setStoreFbsiPred] = useState<StoreFbsiPred | null>(null);
   const [cannData,      setCannData]      = useState<CannibalizationStatus | null>(null);
   const [cannLoad,      setCannLoad]      = useState(false);
   const [causalData,    setCausalData]    = useState<CausalStoreStatus | null>(null);
@@ -1234,6 +1243,14 @@ export default function StoreDetailPage() {
       .then((r) => setData(r.data))
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    fetch(`${API}/api/predictions/aegis-store/${encodeURIComponent(id)}?n_ahead=3`)
+      .then((r) => r.json())
+      .then((r) => { if (r.data?.status === "ok") setStoreFbsiPred(r.data); })
+      .catch(() => {});
   }, [id]);
 
   const fetchExplain = useCallback(() => {
@@ -1505,6 +1522,34 @@ export default function StoreDetailPage() {
                   >
                     ⚠ Sinyal Bertentangan (ILP)
                   </span>
+                )}
+                {storeFbsiPred && storeFbsiPred.predictions.length > 0 && (
+                  <div className="mt-3 p-3 bg-muted/30 rounded-lg w-full">
+                    <div className="text-[10px] font-medium mb-2 flex items-center gap-1 text-muted-foreground">
+                      <TrendingUp className="h-3 w-3" />
+                      Proyeksi FBSI 3 Bulan
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {storeFbsiPred.predictions.map(p => (
+                        <div key={p.periode} className="text-center">
+                          <div className="text-[9px] text-muted-foreground">{p.periode}</div>
+                          <div className={`text-sm font-bold ${p.value > 70 ? "text-red-600" : p.value > 40 ? "text-yellow-600 dark:text-yellow-400" : "text-green-600"}`}>
+                            {p.value.toFixed(1)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {storeFbsiPred.trend_direction === "naik" && (
+                      <p className="text-[10px] text-red-600 dark:text-red-400 mt-2">
+                        ⚠ FBSI diproyeksikan meningkat
+                      </p>
+                    )}
+                    {storeFbsiPred.trend_direction === "turun" && (
+                      <p className="text-[10px] text-green-600 mt-2">
+                        ✓ FBSI diproyeksikan membaik
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

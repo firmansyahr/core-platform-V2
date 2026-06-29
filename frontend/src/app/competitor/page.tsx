@@ -6,11 +6,11 @@ import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Sparkles, RefreshCw } from "lucide-react";
+import { Sparkles, RefreshCw, TrendingUp } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { getToken } from "@/lib/auth";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend,
+  BarChart, Bar, ComposedChart, Line, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend, CartesianGrid,
 } from "recharts";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -230,6 +230,18 @@ function KpiCard({
 
 // ─── Expanded row ─────────────────────────────────────────────────────────────
 
+interface MsPredResult {
+  available: boolean;
+  current_ms_pct: number;
+  projected_ms_pct: number;
+  trend_direction: string;
+  trend_pct: number;
+  method: string;
+  n_historical: number;
+  historical: { periode: string; value: number }[];
+  predictions: { periode: string; value: number; lower: number | null; upper: number | null }[];
+}
+
 function ExpandedRow({ row }: { row: TriRow }) {
   const brandData = row.brand_changes.map((b, i) => ({
     name:     b.brand.replace("Brand Kompetitor ", "Komp. "),
@@ -237,6 +249,14 @@ function ExpandedRow({ row }: { row: TriRow }) {
     trend_pp: b.ms_change_pp,
     fill:     BAR_COLORS[i % BAR_COLORS.length],
   }));
+
+  const [msPred, setMsPred] = useState<MsPredResult | null>(null);
+  useEffect(() => {
+    fetch(`${API}/api/competitor/predict/marketshare/provinsi?provinsi=${encodeURIComponent(row.provinsi)}&n_months_ahead=3`)
+      .then(r => r.json())
+      .then(r => { if (r.data?.available) setMsPred(r.data); })
+      .catch(() => {});
+  }, [row.provinsi]);
 
   return (
     <div className="bg-muted/20 border-t border-border px-4 py-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -362,6 +382,53 @@ function ExpandedRow({ row }: { row: TriRow }) {
             </div>
           )}
         </div>
+
+        {/* Market Share Prediction Scorecard + Chart */}
+        {msPred && (() => {
+          const diff = msPred.projected_ms_pct - msPred.current_ms_pct;
+          const chartData = [
+            ...(msPred.historical ?? []).slice(-12).map(h => ({
+              periode: h.periode, actual: h.value, predicted: null as number | null,
+            })),
+            ...msPred.predictions.map(p => ({
+              periode: p.periode, actual: null as number | null, predicted: p.value,
+            })),
+          ];
+          return (
+            <div className="mt-3 border-t border-border pt-3">
+              <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                <TrendingUp className="h-3 w-3" />
+                Proyeksi Internal Brand MS — {row.provinsi}
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="p-2 rounded bg-muted/30 text-center">
+                  <div className="text-[10px] text-muted-foreground">Internal Brand Sekarang</div>
+                  <div className="text-lg font-bold">{msPred.current_ms_pct.toFixed(1)}%</div>
+                </div>
+                <div className="p-2 rounded bg-muted/30 text-center">
+                  <div className="text-[10px] text-muted-foreground">Proyeksi 3 Bulan</div>
+                  <div className={`text-lg font-bold ${diff < 0 ? "text-red-600 dark:text-red-400" : "text-green-600"}`}>
+                    {msPred.projected_ms_pct.toFixed(1)}%
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {diff < 0 ? "↓" : "↑"} {Math.abs(diff).toFixed(1)}pp
+                  </div>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={140}>
+                <ComposedChart data={chartData} margin={{ left: 0, right: 4, top: 2, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <XAxis dataKey="periode" tick={{ fontSize: 9 }} tickFormatter={(p: string) => p.slice(5)} />
+                  <YAxis tick={{ fontSize: 9 }} domain={["auto", "auto"]} tickFormatter={(v: number) => `${v.toFixed(0)}%`} width={35} />
+                  <Tooltip formatter={(v) => v != null ? [`${Number(v).toFixed(1)}%`, ""] : ["-", ""]} />
+                  <Line dataKey="actual" stroke="#16a34a" strokeWidth={1.5} dot={false} name="Historis" connectNulls={false} />
+                  <Line dataKey="predicted" stroke="#16a34a" strokeWidth={1.5} strokeDasharray="4 4" dot={{ r: 3, fill: "#16a34a" }} name="Proyeksi" connectNulls={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
+              <p className="text-[9px] text-muted-foreground mt-1">via {msPred.method} · {msPred.n_historical} bulan data internal parquet</p>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

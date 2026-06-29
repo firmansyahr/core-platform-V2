@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Download, Sparkles, X } from "lucide-react";
+import { Download, Sparkles, TrendingUp, X } from "lucide-react";
 import { downloadFile } from "@/lib/download";
 import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
@@ -37,10 +37,14 @@ import {
 import {
   BarChart,
   Bar,
+  ComposedChart,
+  Area,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
   ResponsiveContainer,
   Cell,
 } from "recharts";
@@ -400,6 +404,20 @@ export default function AegisPage() {
   const [batchPredict, setBatchPredict] = useState<Record<string, BatchPredictItem>>({});
   const [batchPredictLoading, setBatchPredictLoading] = useState(false);
 
+  interface WarnPrediction {
+    periode: string; value: number; lower: number | null; upper: number | null;
+  }
+  interface WarnForecast {
+    status: string;
+    method: string;
+    n_historical: number;
+    historical: { periode: string; value: number }[];
+    predictions: WarnPrediction[];
+    trend_direction: string;
+    trend_pct: number;
+  }
+  const [warnForecast, setWarnForecast] = useState<WarnForecast | null>(null);
+
   interface TalkingPointsResult {
     status: string;
     talking_points: string | null;
@@ -432,6 +450,13 @@ export default function AegisPage() {
       .then((r) => r.json())
       .then((r) => setCadAlerts(r.data ?? []))
       .finally(() => setCadLoading(false));
+  }, []);
+
+  useEffect(() => {
+    fetch(`${API}/api/predictions/aegis-warning-trend?n_ahead=3`)
+      .then((r) => r.json())
+      .then((r) => { if (r.data?.status === "ok") setWarnForecast(r.data); })
+      .catch(() => {});
   }, []);
 
   const fetchTalkingPoints = useCallback((kabupaten: string) => {
@@ -775,6 +800,63 @@ export default function AegisPage() {
             />
           </div>
         )}
+
+        {/* ── Warning Forecast Card ────────────────────────────────────────── */}
+        {warnForecast && (() => {
+          const hist = (warnForecast.historical ?? []).slice(-12);
+          const chartData = [
+            ...hist.map(h => ({ periode: h.periode, actual: h.value, predicted: null as number | null, lower: null as number | null, upper: null as number | null })),
+            ...warnForecast.predictions.map(p => ({ periode: p.periode, actual: null as number | null, predicted: p.value, lower: p.lower, upper: p.upper })),
+          ];
+          return (
+            <Card className="border-orange-200 dark:border-orange-800">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-orange-500" />
+                  Proyeksi Warning 3 Bulan ke Depan
+                  <span className="ml-auto text-[10px] font-normal text-muted-foreground">via {warnForecast.method} · {warnForecast.n_historical} bulan data</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  {warnForecast.predictions.map((p) => (
+                    <div key={p.periode} className="text-center p-2 rounded-lg bg-muted/30">
+                      <div className="text-xs text-muted-foreground">{p.periode}</div>
+                      <div className="text-lg font-bold">{Math.round(p.value).toLocaleString("id-ID")}</div>
+                      <div className="text-xs text-muted-foreground">toko warning</div>
+                      {p.lower != null && p.upper != null && (
+                        <div className="text-[10px] text-muted-foreground/70 mt-0.5">
+                          CI: {Math.round(p.lower).toLocaleString()} – {Math.round(p.upper).toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <ComposedChart data={chartData} margin={{ left: 0, right: 4, top: 4, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                    <XAxis dataKey="periode" tick={{ fontSize: 10 }} tickFormatter={(p: string) => p.slice(5)} />
+                    <YAxis tick={{ fontSize: 10 }} tickFormatter={(v: number) => Math.round(v).toLocaleString()} width={50} />
+                    <Tooltip formatter={(v) => v != null ? [Math.round(Number(v)).toLocaleString("id-ID"), ""] : ["-", ""]} labelFormatter={(l) => `Periode: ${l}`} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Area dataKey="upper" fill="#f97316" fillOpacity={0} stroke="none" legendType="none" />
+                    <Area dataKey="lower" fill="#f97316" fillOpacity={0.12} stroke="none" name="Confidence Interval" />
+                    <Line dataKey="actual" stroke="#f97316" strokeWidth={2} dot={false} name="Historis" connectNulls={false} />
+                    <Line dataKey="predicted" stroke="#f97316" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 3, fill: "#f97316" }} name="Proyeksi" connectNulls={false} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+                <p className="text-xs text-muted-foreground mt-3 p-2 bg-muted/30 rounded">
+                  {warnForecast.trend_direction === "naik"
+                    ? `⚠ Warning diproyeksikan naik ${warnForecast.trend_pct}% dalam 3 bulan ke depan. Pertimbangkan eskalasi program intervensi.`
+                    : warnForecast.trend_direction === "turun"
+                    ? `✓ Warning diproyeksikan turun ${Math.abs(warnForecast.trend_pct)}% — tren membaik.`
+                    : `→ Warning diproyeksikan stabil. Pantau terus kondisi toko berisiko tinggi.`
+                  }
+                </p>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         {/* ── Peta Choropleth ──────────────────────────────────────────────── */}
         <MiniMapSection />

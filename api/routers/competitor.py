@@ -1200,6 +1200,68 @@ def forecast_expansion() -> dict:
     })
 
 
+@router.get("/predict/marketshare/provinsi")
+def predict_marketshare_provinsi(
+    provinsi: str,
+    n_months_ahead: int = 3,
+) -> dict:
+    """
+    Prediksi market share internal brand (Elang + Badak) per bulan
+    untuk provinsi tertentu, diturunkan dari data transaksi parquet.
+    """
+    from api.core.prediction_engine import predict_series
+
+    df = get_data().copy()
+    prov_upper = provinsi.strip().upper()
+    prov_col = next((c for c in df.columns if "provinsi" in c.lower()), None)
+    brand_col = next((c for c in df.columns if "brand" in c.lower()), None)
+    if prov_col is None or brand_col is None:
+        return _ok({"available": False, "message": "Kolom tidak ditemukan"})
+
+    df_prov = df[df[prov_col].str.upper() == prov_upper].copy()
+    if df_prov.empty:
+        return _ok({"available": False, "message": f"Tidak ada data untuk {provinsi}"})
+
+    INTERNAL = {"SEMEN ELANG", "SEMEN BADAK"}
+    df_prov["_p"] = df_prov["Tanggal Transaksi"].dt.to_period("M").astype(str)
+    df_prov["_is_internal"] = df_prov[brand_col].str.upper().isin(INTERNAL)
+
+    grp = (
+        df_prov.groupby("_p")
+        .agg(
+            total_ton=("TON Quantity", "sum"),
+            internal_ton=("TON Quantity", lambda x: x[df_prov.loc[x.index, "_is_internal"]].sum()),
+        )
+        .reset_index()
+    )
+    grp["value"] = (grp["internal_ton"] / grp["total_ton"].clip(lower=0.001) * 100).round(2)
+    historical = grp[["_p", "value"]].rename(columns={"_p": "periode"}).sort_values("periode").to_dict("records")
+
+    key_safe = prov_upper.replace(" ", "_").replace("/", "_")
+    result = predict_series(
+        historical      = historical,
+        n_ahead         = n_months_ahead,
+        cache_key       = f"comp_ms_prov_{key_safe}",
+        cache_ttl_hours = 6,
+    )
+
+    current_ms = float(grp["value"].iloc[-1]) if not grp.empty else 0.0
+    last_pred  = result["predictions"][-1]["value"] if result.get("predictions") else current_ms
+
+    return _ok({
+        "provinsi":          provinsi,
+        "available":         True,
+        "current_ms_pct":    round(current_ms, 2),
+        "projected_ms_pct":  round(last_pred, 2),
+        "trend_direction":   result.get("trend_direction"),
+        "trend_pct":         result.get("trend_pct"),
+        "method":            result.get("method"),
+        "n_historical":      result.get("n_historical"),
+        "historical":        historical,
+        "predictions":       result.get("predictions", []),
+    })
+
+
 @router.get("/forecast/at-risk")
 def forecast_at_risk(provinsi: str | None = None) -> dict:
     """Area yang diprediksi mengalami penurunan share Elang."""
