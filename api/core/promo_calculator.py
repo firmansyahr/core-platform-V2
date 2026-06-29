@@ -46,9 +46,102 @@ def get_brand_point_values() -> dict[str, int]:
     })
 
 
-_DEFAULT_BRANDS  = ["SEMEN ELANG", "SEMEN BADAK", "SEMEN BADAK SERBAGUNA"]
+_DEFAULT_BRANDS  = ["SEMEN ELANG", "SEMEN BADAK"]   # canonical data values
 _FIGHTING_BRANDS = ["SEMEN BANTENG"]
-_FIGHTING_BRAND  = "SEMEN BANTENG"  # single string for legacy exclusion
+_FIGHTING_BRAND  = "SEMEN BANTENG"
+
+# Brand aliases → canonical form (matches column "Brands" in parquet)
+_BRAND_ALIASES: dict[str, str] = {
+    "SEMEN ELANG"           : "SEMEN ELANG",
+    "ELANG"                 : "SEMEN ELANG",
+    "MB"                    : "SEMEN ELANG",
+    "SEMEN BADAK"           : "SEMEN BADAK",
+    "SEMEN BADAK SERBAGUNA" : "SEMEN BADAK",
+    "BADAK"                 : "SEMEN BADAK",
+    "CB"                    : "SEMEN BADAK",
+    "SERBAGUNA"             : "SEMEN BADAK",
+    "SEMEN BANTENG"         : "SEMEN BANTENG",
+    "BANTENG"               : "SEMEN BANTENG",
+    "FB"                    : "SEMEN BANTENG",
+}
+
+_BRAND_TO_VOL_KEY: dict[str, str] = {
+    "SEMEN ELANG"   : "mb",
+    "SEMEN BADAK"   : "cb",
+    "SEMEN BANTENG" : "fb",
+}
+
+
+def normalize_brand_name(brand: str) -> str:
+    """Normalize brand name to canonical form matching parquet 'Brands' column."""
+    upper = brand.upper().strip()
+    return _BRAND_ALIASES.get(upper, upper)
+
+
+def get_default_brands_from_settings(db=None) -> list[str]:
+    """
+    Return daftar brand default (MB + CB, tanpa FB) dari BrandConfig global di DB,
+    atau fallback ke DEFAULT_CONFIG dari brand_config_engine.
+    """
+    from api.core.brand_config_engine import DEFAULT_CONFIG
+    fallback: list[str] = DEFAULT_CONFIG["mb_brands"] + DEFAULT_CONFIG["cb_brands"]
+    if db is None:
+        return list(fallback)
+    try:
+        from api.models import BrandConfig
+        global_cfg = db.query(BrandConfig).filter(
+            BrandConfig.provinsi.is_(None),
+            BrandConfig.kabupaten.is_(None),
+        ).first()
+        if global_cfg:
+            return (global_cfg.mb_brands or []) + (global_cfg.cb_brands or [])
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("get_default_brands_from_settings error: %s", exc)
+    return list(fallback)
+
+
+def _inject_resolved_brands(promo: dict, db=None) -> None:
+    """
+    Opsi B: resolve brand default dari DB dan inject ke brand_selection_json
+    sebelum calculator dipanggil, agar resolve_brands_for_promo() pakai nilai
+    dinamis bukan hardcode.
+    """
+    bsj = promo.get("brand_selection_json")
+    if not bsj:
+        return
+    try:
+        sel = json.loads(bsj)
+        if "default" in (sel.get("modes") or []):
+            sel["resolved_default_brands"] = get_default_brands_from_settings(db=db)
+            promo["brand_selection_json"] = json.dumps(sel)
+    except Exception:
+        pass
+
+
+def _compute_vol_by_brand(
+    df_period: pd.DataFrame,
+    toko_ids: list[str],
+) -> dict[str, dict[str, float]]:
+    """Return {toko_id: {"mb": float, "cb": float, "fb": float}} volume breakdown."""
+    empty: dict[str, dict[str, float]] = {tid: {"mb": 0.0, "cb": 0.0, "fb": 0.0} for tid in toko_ids}
+    brand_col = next((c for c in df_period.columns if "brand" in c.lower()), None)
+    if brand_col is None or df_period.empty:
+        return empty
+
+    toko_set = set(toko_ids)
+    tmp = df_period[df_period["ID Toko"].isin(toko_set)].copy()
+    tmp["_bkey"] = tmp[brand_col].apply(normalize_brand_name).map(_BRAND_TO_VOL_KEY)
+    tmp = tmp[tmp["_bkey"].notna()]
+    if tmp.empty:
+        return empty
+
+    result = empty.copy()
+    for (tid, bkey), vol in tmp.groupby(["ID Toko", "_bkey"])["TON Quantity"].sum().items():
+        stid = str(tid)
+        if stid in result:
+            result[stid][bkey] = round(float(vol), 2)
+    return result
 
 
 def resolve_brands_for_promo(promo: dict) -> list[str] | None:
@@ -70,11 +163,15 @@ def resolve_brands_for_promo(promo: dict) -> list[str] | None:
             modes         = sel.get("modes") or []
             custom_brands = sel.get("custom_brands") or []
             if "default" in modes:
-                brands.update(_DEFAULT_BRANDS)
+                resolved = sel.get("resolved_default_brands")
+                if resolved:
+                    brands.update(normalize_brand_name(b) for b in resolved)
+                else:
+                    brands.update(_DEFAULT_BRANDS)
             if "fighting_brand" in modes:
                 brands.update(_FIGHTING_BRANDS)
             if "custom" in modes and custom_brands:
-                brands.update(b.upper().strip() for b in custom_brands)
+                brands.update(normalize_brand_name(b) for b in custom_brands)
             return list(brands) if brands else None
         except Exception:
             pass
@@ -112,10 +209,10 @@ def filter_transactions_by_brand(
 
     if allowed_brands is None:
         # Legacy: exclude fighting brand
-        return df[~df[brand_col].str.upper().eq(_FIGHTING_BRAND)]
+        return df[~df[brand_col].apply(normalize_brand_name).eq(_FIGHTING_BRAND)]
 
-    allowed_upper = [b.upper() for b in allowed_brands]
-    filtered = df[df[brand_col].str.upper().isin(allowed_upper)]
+    allowed_normalized = {normalize_brand_name(b) for b in allowed_brands}
+    filtered = df[df[brand_col].apply(normalize_brand_name).isin(allowed_normalized)]
     if filtered.empty:
         logging.getLogger(__name__).warning(
             "Brand filter menghasilkan 0 transaksi. allowed=%s, available=%s",
@@ -139,9 +236,9 @@ def _get_brand_rate_for_promo(
     SQLite mode (db not None): lookup per-wilayah dari DB.
     JSON mode (db=None): pakai DEFAULT_CONFIG (MB/CB/FB hardcoded).
     """
-    multiplier = get_brand_reward_multiplier(brand.upper(), provinsi, kabupaten, db)
+    multiplier = get_brand_reward_multiplier(normalize_brand_name(brand), provinsi, kabupaten, db)
     if multiplier == 0.0:
-        return 0.0  # brand tidak terdaftar di Brand Config = tidak dapat reward
+        return 0.0
     return round(base_rate * multiplier, 2)
 
 
@@ -498,6 +595,19 @@ def calculate_program_reward_summary(
     ]
     analytics = compute_program_analytics(analytics_rows, baseline, total_rupiah_program)
 
+    # Volume per brand breakdown
+    vol_by_brand = _compute_vol_by_brand(df_period, [r["id_toko"] for r in results])
+    for r in results:
+        vbb = vol_by_brand.get(r["id_toko"], {"mb": 0.0, "cb": 0.0, "fb": 0.0})
+        r["volume_mb"] = vbb["mb"]
+        r["volume_cb"] = vbb["cb"]
+        r["volume_fb"] = vbb["fb"]
+        total_vol  = r["realisasi_ton"] or 1.0
+        total_poin = r.get("total_poin", 0)
+        r["poin_mb"] = round(vbb["mb"] / total_vol * total_poin, 2)
+        r["poin_cb"] = round(vbb["cb"] / total_vol * total_poin, 2)
+        r["poin_fb"] = round(vbb["fb"] / total_vol * total_poin, 2)
+
     return {
         "tipe_program":       "multi_tier",
         "program_id":         promo["id"],
@@ -506,6 +616,7 @@ def calculate_program_reward_summary(
         "total_poin":         round(total_poin_program, 0),
         "total_rupiah":       round(total_rupiah_program, 0),
         "tier_distribution":  tier_distribution,
+        "brand_filter":       list(allowed_brands) if allowed_brands else [],
         "peserta_detail":     results,
         "analytics":          analytics,
     }
@@ -606,12 +717,24 @@ def calculate_flat_multiplier_program(
     ]
     analytics = compute_program_analytics(analytics_rows, baseline, total_rupiah_prog)
 
+    vol_by_brand = _compute_vol_by_brand(df_period, [r["id_toko"] for r in results])
+    for r in results:
+        vbb = vol_by_brand.get(r["id_toko"], {"mb": 0.0, "cb": 0.0, "fb": 0.0})
+        r["volume_mb"] = vbb["mb"]
+        r["volume_cb"] = vbb["cb"]
+        r["volume_fb"] = vbb["fb"]
+        total_vol  = r["volume_ton"] or 1.0
+        total_poin = r.get("total_poin", 0)
+        r["poin_mb"] = round(vbb["mb"] / total_vol * total_poin, 2)
+        r["poin_cb"] = round(vbb["cb"] / total_vol * total_poin, 2)
+        r["poin_fb"] = round(vbb["fb"] / total_vol * total_poin, 2)
+
     return {
         "tipe_program":   "flat_multiplier",
         "program_id":     promo["id"],
         "program_nama":   promo.get("nama_promo", ""),
         "multiplier":     multiplier,
-        "brand_filter":   allowed_brands,
+        "brand_filter":   list(allowed_brands) if allowed_brands else [],
         "total_peserta":  len(results),
         "total_poin":     round(total_poin_prog, 0),
         "total_rupiah":   round(total_rupiah_prog, 0),
@@ -716,12 +839,24 @@ def calculate_flat_per_batch_program(
     ]
     analytics = compute_program_analytics(analytics_rows, baseline, total_rupiah_prog)
 
+    vol_by_brand = _compute_vol_by_brand(df_period, [r["id_toko"] for r in results])
+    for r in results:
+        vbb = vol_by_brand.get(r["id_toko"], {"mb": 0.0, "cb": 0.0, "fb": 0.0})
+        r["volume_mb"] = vbb["mb"]
+        r["volume_cb"] = vbb["cb"]
+        r["volume_fb"] = vbb["fb"]
+        total_vol = r["volume_ton"] or 1.0
+        poin      = r.get("poin_earned", 0)
+        r["poin_mb"] = round(vbb["mb"] / total_vol * poin, 2)
+        r["poin_cb"] = round(vbb["cb"] / total_vol * poin, 2)
+        r["poin_fb"] = round(vbb["fb"] / total_vol * poin, 2)
+
     return {
         "tipe_program":   "flat_per_batch",
         "program_id":     promo["id"],
         "program_nama":   promo.get("nama_promo", ""),
         "ton_per_poin":   ton_per_poin,
-        "brand_filter":   allowed_brands,
+        "brand_filter":   list(allowed_brands) if allowed_brands else [],
         "total_peserta":  len(results),
         "total_poin":     round(total_poin_prog, 2),
         "total_rupiah":   round(total_rupiah_prog, 0),

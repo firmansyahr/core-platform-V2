@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import pandas as pd
 
+from api.core.promo_calculator import filter_transactions_by_brand, resolve_brands_for_promo
+
 PRICE_PER_TON_ESTIMATE = 800_000  # Rp/ton, fallback for cashback when Harga column absent
 
 
@@ -48,7 +50,9 @@ def calculate_promo_achievement(promo: dict, df_transaksi: pd.DataFrame) -> pd.D
     mulai   = pd.Timestamp(promo["periode_mulai"]).normalize()
     selesai = pd.Timestamp(promo["periode_selesai"]).normalize()
 
-    df = df_transaksi.copy()
+    # BUG 1 FIX: filter transaksi berdasarkan brand setting promo
+    allowed_brands = resolve_brands_for_promo(promo)
+    df = filter_transactions_by_brand(df_transaksi.copy(), allowed_brands)
     df["_dt"] = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
     df_period = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
 

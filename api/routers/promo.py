@@ -27,6 +27,7 @@ from api.core.promo_engine import (
     get_promo_summary,
 )
 from api.core import promo_calculator as pc
+from api.core.promo_calculator import _inject_resolved_brands
 from api.database import SessionLocal
 from api.models import LoyaltyMember as LoyaltyMemberRow
 from api.models import Promo as PromoRow
@@ -1472,6 +1473,11 @@ def get_monitoring(
 
     if tipe in ("flat_multiplier", "flat_per_batch", "multi_tier", "leaderboard"):
         loyalty_cfg = pc.load_loyalty_config()
+        _db = SessionLocal()
+        try:
+            _inject_resolved_brands(promo, db=_db)
+        finally:
+            _db.close()
         result = pc.calculate_program_reward(
             promo         = promo,
             peserta_data  = promo.get("peserta", []),
@@ -1561,6 +1567,11 @@ def get_standings(promo_id: str) -> dict:
 
     df_trx      = load_data()
     loyalty_cfg = pc.load_loyalty_config()
+    _db = SessionLocal()
+    try:
+        _inject_resolved_brands(promo, db=_db)
+    finally:
+        _db.close()
     result      = pc.calculate_leaderboard_standings(
         promo         = promo,
         peserta_data  = promo.get("peserta", []),

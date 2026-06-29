@@ -128,6 +128,12 @@ interface MultiTierPesertaRow {
   total_poin:        number;
   total_rupiah:      number;
   breakdown:         MultiTierBreakdown[];
+  volume_mb?:        number;
+  volume_cb?:        number;
+  volume_fb?:        number;
+  poin_mb?:          number;
+  poin_cb?:          number;
+  poin_fb?:          number;
 }
 
 interface MultiTierMonData {
@@ -139,6 +145,7 @@ interface MultiTierMonData {
   total_poin:        number;
   total_rupiah:      number;
   tier_distribution: Record<string, number>;
+  brand_filter?:     string[];
   peserta_detail:    MultiTierPesertaRow[];
   analytics?:        ProgramAnalytics;
 }
@@ -153,6 +160,12 @@ interface FlatMultiplierPesertaRow {
   total_poin:         number;
   total_rupiah:       number;
   keterangan:         string;
+  volume_mb?:         number;
+  volume_cb?:         number;
+  volume_fb?:         number;
+  poin_mb?:           number;
+  poin_cb?:           number;
+  poin_fb?:           number;
 }
 
 interface FlatMultiplierMonData {
@@ -178,6 +191,12 @@ interface FlatPerBatchPesertaRow {
   ton_per_poin: number;
   total_rupiah: number;
   keterangan:   string;
+  volume_mb?:   number;
+  volume_cb?:   number;
+  volume_fb?:   number;
+  poin_mb?:     number;
+  poin_cb?:     number;
+  poin_fb?:     number;
 }
 
 interface FlatPerBatchMonData {
@@ -1113,6 +1132,11 @@ function LegacyMonitoringView({
 // ── Flat Multiplier Monitoring View ──────────────────────────────────────────
 
 function FlatMultiplierMonitoringView({ data, searchTerm, onRemove }: { data: FlatMultiplierMonData } & Pick<MonParticipantActions, "searchTerm" | "onRemove">) {
+  const bf = data.brand_filter ?? [];
+  const showMb = bf.some(b => b.toUpperCase().includes("ELANG"));
+  const showCb = bf.some(b => b.toUpperCase().includes("BADAK"));
+  const showFb = bf.some(b => b.toUpperCase().includes("BANTENG"));
+  const showBrandCols = showMb || showCb || showFb;
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1151,7 +1175,13 @@ function FlatMultiplierMonitoringView({ data, searchTerm, onRemove }: { data: Fl
                   <TableHead className="text-xs">Toko</TableHead>
                   <TableHead className="text-xs">Cluster</TableHead>
                   <TableHead className="text-xs">Brand</TableHead>
-                  <TableHead className="text-xs text-right">Volume (ton)</TableHead>
+                  <TableHead className="text-xs text-right">Vol Total</TableHead>
+                  {showBrandCols && showMb && <TableHead className="text-xs text-right" title="MB = Semen Elang">Vol MB</TableHead>}
+                  {showBrandCols && showCb && <TableHead className="text-xs text-right" title="CB = Semen Badak">Vol CB</TableHead>}
+                  {showBrandCols && showFb && <TableHead className="text-xs text-right" title="FB = Semen Banteng">Vol FB</TableHead>}
+                  {showBrandCols && showMb && <TableHead className="text-xs text-right" title="MB = Semen Elang">Poin MB</TableHead>}
+                  {showBrandCols && showCb && <TableHead className="text-xs text-right" title="CB = Semen Badak">Poin CB</TableHead>}
+                  {showBrandCols && showFb && <TableHead className="text-xs text-right" title="FB = Semen Banteng">Poin FB</TableHead>}
                   <TableHead className="text-xs text-right">Multiplier</TableHead>
                   <TableHead className="text-xs text-right">Total Poin</TableHead>
                   <TableHead className="text-xs text-right">Estimasi Rp</TableHead>
@@ -1171,6 +1201,12 @@ function FlatMultiplierMonitoringView({ data, searchTerm, onRemove }: { data: Fl
                     <TableCell className="text-xs text-muted-foreground">{p.cluster}</TableCell>
                     <TableCell className="text-xs">{p.brand_utama}</TableCell>
                     <TableCell className="text-right text-sm">{fmtNum(p.volume_ton)}</TableCell>
+                    {showBrandCols && showMb && <TableCell className={`text-right text-xs ${(p.volume_mb ?? 0) === 0 ? "text-muted-foreground" : ""}`}>{(p.volume_mb ?? 0).toFixed(1)}</TableCell>}
+                    {showBrandCols && showCb && <TableCell className={`text-right text-xs ${(p.volume_cb ?? 0) === 0 ? "text-muted-foreground" : ""}`}>{(p.volume_cb ?? 0).toFixed(1)}</TableCell>}
+                    {showBrandCols && showFb && <TableCell className={`text-right text-xs ${(p.volume_fb ?? 0) === 0 ? "text-muted-foreground" : ""}`}>{(p.volume_fb ?? 0).toFixed(1)}</TableCell>}
+                    {showBrandCols && showMb && <TableCell className={`text-right text-xs ${(p.poin_mb ?? 0) === 0 ? "text-muted-foreground" : ""}`}>{(p.poin_mb ?? 0).toFixed(2)}</TableCell>}
+                    {showBrandCols && showCb && <TableCell className={`text-right text-xs ${(p.poin_cb ?? 0) === 0 ? "text-muted-foreground" : ""}`}>{(p.poin_cb ?? 0).toFixed(2)}</TableCell>}
+                    {showBrandCols && showFb && <TableCell className={`text-right text-xs ${(p.poin_fb ?? 0) === 0 ? "text-muted-foreground" : ""}`}>{(p.poin_fb ?? 0).toFixed(2)}</TableCell>}
                     <TableCell className="text-right">
                       <span className={`text-sm font-semibold ${p.multiplier_berlaku > 1 ? "text-blue-600" : "text-gray-500"}`}>{p.multiplier_berlaku}×</span>
                     </TableCell>
@@ -1201,6 +1237,11 @@ function FlatMultiplierMonitoringView({ data, searchTerm, onRemove }: { data: Fl
 // ── Flat Per Batch Monitoring View ───────────────────────────────────────────
 
 function FlatPerBatchMonitoringView({ data, searchTerm, onRemove }: { data: FlatPerBatchMonData } & Pick<MonParticipantActions, "searchTerm" | "onRemove">) {
+  const bf = data.brand_filter ?? [];
+  const showMb = bf.some(b => b.toUpperCase().includes("ELANG"));
+  const showCb = bf.some(b => b.toUpperCase().includes("BADAK"));
+  const showFb = bf.some(b => b.toUpperCase().includes("BANTENG"));
+  const showBrandCols = showMb || showCb || showFb;
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1239,8 +1280,14 @@ function FlatPerBatchMonitoringView({ data, searchTerm, onRemove }: { data: Flat
                   <TableHead className="text-xs">Toko</TableHead>
                   <TableHead className="text-xs">Cluster</TableHead>
                   <TableHead className="text-xs">Brand</TableHead>
-                  <TableHead className="text-xs text-right">Volume (ton)</TableHead>
-                  <TableHead className="text-xs text-right">Poin Earned</TableHead>
+                  <TableHead className="text-xs text-right">Vol Total</TableHead>
+                  {showBrandCols && showMb && <TableHead className="text-xs text-right" title="MB = Semen Elang">Vol MB</TableHead>}
+                  {showBrandCols && showCb && <TableHead className="text-xs text-right" title="CB = Semen Badak">Vol CB</TableHead>}
+                  {showBrandCols && showFb && <TableHead className="text-xs text-right" title="FB = Semen Banteng">Vol FB</TableHead>}
+                  {showBrandCols && showMb && <TableHead className="text-xs text-right" title="MB = Semen Elang">Poin MB</TableHead>}
+                  {showBrandCols && showCb && <TableHead className="text-xs text-right" title="CB = Semen Badak">Poin CB</TableHead>}
+                  {showBrandCols && showFb && <TableHead className="text-xs text-right" title="FB = Semen Banteng">Poin FB</TableHead>}
+                  <TableHead className="text-xs text-right">Total Poin</TableHead>
                   <TableHead className="text-xs text-right">Estimasi Rp</TableHead>
                   <TableHead className="text-xs w-10" />
                 </TableRow>
@@ -1257,7 +1304,13 @@ function FlatPerBatchMonitoringView({ data, searchTerm, onRemove }: { data: Flat
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">{p.cluster}</TableCell>
                     <TableCell className="text-xs">{p.brand_utama}</TableCell>
-                    <TableCell className="text-right text-sm">{p.volume_ton.toFixed(2)}</TableCell>
+                    <TableCell className="text-right text-sm">{p.volume_ton.toFixed(1)}</TableCell>
+                    {showBrandCols && showMb && <TableCell className={`text-right text-xs ${(p.volume_mb ?? 0) === 0 ? "text-muted-foreground" : ""}`}>{(p.volume_mb ?? 0).toFixed(1)}</TableCell>}
+                    {showBrandCols && showCb && <TableCell className={`text-right text-xs ${(p.volume_cb ?? 0) === 0 ? "text-muted-foreground" : ""}`}>{(p.volume_cb ?? 0).toFixed(1)}</TableCell>}
+                    {showBrandCols && showFb && <TableCell className={`text-right text-xs ${(p.volume_fb ?? 0) === 0 ? "text-muted-foreground" : ""}`}>{(p.volume_fb ?? 0).toFixed(1)}</TableCell>}
+                    {showBrandCols && showMb && <TableCell className={`text-right text-xs ${(p.poin_mb ?? 0) === 0 ? "text-muted-foreground" : ""}`}>{(p.poin_mb ?? 0).toFixed(2)}</TableCell>}
+                    {showBrandCols && showCb && <TableCell className={`text-right text-xs ${(p.poin_cb ?? 0) === 0 ? "text-muted-foreground" : ""}`}>{(p.poin_cb ?? 0).toFixed(2)}</TableCell>}
+                    {showBrandCols && showFb && <TableCell className={`text-right text-xs ${(p.poin_fb ?? 0) === 0 ? "text-muted-foreground" : ""}`}>{(p.poin_fb ?? 0).toFixed(2)}</TableCell>}
                     <TableCell className="text-right">
                       <span className="text-sm font-semibold text-teal-700">{p.poin_earned.toFixed(2)} poin</span>
                     </TableCell>
