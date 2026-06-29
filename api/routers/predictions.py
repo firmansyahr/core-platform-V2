@@ -194,6 +194,142 @@ def volume_at_risk(n_ahead: int = Query(2, ge=1, le=6)) -> dict:
     }
 
 
+def _monthly_loyalty_volume(df: pd.DataFrame, active_ids: set[str]) -> list[dict]:
+    """Monthly total TON from loyalty-active stores."""
+    df = df.copy()
+    df["_p"] = df["Tanggal Transaksi"].dt.to_period("M").astype(str)
+    df_l = df[df["ID Toko"].isin(active_ids)]
+    if df_l.empty:
+        return []
+    monthly = df_l.groupby("_p")["TON Quantity"].sum().reset_index()
+    monthly.columns = ["periode", "value"]
+    monthly["value"] = monthly["value"].round(2)
+    return monthly.sort_values("periode").to_dict("records")
+
+
+def _monthly_loyalty_achievement(df: pd.DataFrame, active_ids: set[str]) -> list[dict]:
+    """Approximate achievement rate: loyalty vol / non-loyalty vol ratio proxy."""
+    df = df.copy()
+    df["_p"] = df["Tanggal Transaksi"].dt.to_period("M").astype(str)
+    monthly = df.groupby("_p").apply(
+        lambda g: pd.Series({
+            "loyalty":     g.loc[g["ID Toko"].isin(active_ids), "TON Quantity"].sum(),
+            "total":       g["TON Quantity"].sum(),
+        })
+    ).reset_index()
+    monthly.columns = ["periode", "loyalty", "total"]
+    monthly["value"] = (monthly["loyalty"] / monthly["total"].clip(lower=0.001) * 100).round(2)
+    return monthly.sort_values("periode").to_dict("records")
+
+
+@router.get("/loyalty-overview")
+def loyalty_overview(n_ahead: int = Query(3, ge=1, le=6)) -> dict:
+    """Prediksi 3 metrik program loyalty: volume, achievement rate, dan tren member."""
+    from api.routers.loyalty import _get_members
+    try:
+        members = _get_members()
+    except Exception:
+        members = []
+    active_ids = {str(m["id_toko"]) for m in members if m.get("status") == "Aktif"}
+
+    df = load_data()
+
+    vol_hist = _monthly_loyalty_volume(df, active_ids)
+    ach_hist = _monthly_loyalty_achievement(df, active_ids)
+
+    vol_result = predict_series(
+        historical      = vol_hist,
+        n_ahead         = n_ahead,
+        cache_key       = "loyalty_overview_volume",
+        cache_ttl_hours = 6,
+    )
+    ach_result = predict_series(
+        historical      = ach_hist,
+        n_ahead         = n_ahead,
+        cache_key       = "loyalty_overview_achievement",
+        cache_ttl_hours = 6,
+    )
+
+    def _first(r: dict) -> dict | None:
+        preds = r.get("predictions", [])
+        return preds[0] if preds else None
+
+    return {
+        "status": "ok",
+        "data": {
+            "total_member_aktif": len(active_ids),
+            "volume_loyalty": {
+                "prediction":      _first(vol_result),
+                "trend_direction": vol_result.get("trend_direction"),
+                "trend_pct":       vol_result.get("trend_pct"),
+                "method":          vol_result.get("method"),
+                "n_historical":    vol_result.get("n_historical"),
+            },
+            "achievement_rate": {
+                "prediction":      _first(ach_result),
+                "trend_direction": ach_result.get("trend_direction"),
+                "trend_pct":       ach_result.get("trend_pct"),
+                "method":          ach_result.get("method"),
+            },
+        },
+        "meta": _META(),
+    }
+
+
+@router.get("/loyalty-member/{id_toko}")
+def loyalty_member_prediction(
+    id_toko: str,
+    n_ahead: int = Query(3, ge=1, le=6),
+) -> dict:
+    """Prediksi volume toko loyalty dan churn risk 3 bulan ke depan."""
+    df = load_data()
+    df_store = df[df["ID Toko"] == id_toko].copy()
+    if df_store.empty:
+        return {
+            "status": "ok",
+            "data": {"available": False, "churn_risk": "unknown", "predictions": []},
+            "meta": _META(),
+        }
+
+    df_store["_p"] = df_store["Tanggal Transaksi"].dt.to_period("M").astype(str)
+    monthly = df_store.groupby("_p")["TON Quantity"].sum().reset_index()
+    monthly.columns = ["periode", "value"]
+    monthly["value"] = monthly["value"].round(2)
+    historical = monthly.sort_values("periode").to_dict("records")
+
+    result = predict_series(
+        historical      = historical,
+        n_ahead         = n_ahead,
+        cache_key       = f"loyalty_member_{id_toko.replace('-', '_')}",
+        cache_ttl_hours = 6,
+    )
+
+    churn_risk = "low"
+    if result.get("trend_direction") == "turun":
+        recent_vals = [h["value"] for h in historical[-3:]]
+        monotone_decline = (
+            len(recent_vals) >= 3
+            and all(recent_vals[i] >= recent_vals[i + 1] for i in range(len(recent_vals) - 1))
+        )
+        churn_risk = "high" if monotone_decline else "medium"
+
+    return {
+        "status": "ok",
+        "data": {
+            "available":       True,
+            "id_toko":         id_toko,
+            "churn_risk":      churn_risk,
+            "trend_direction": result.get("trend_direction"),
+            "trend_pct":       result.get("trend_pct"),
+            "method":          result.get("method"),
+            "n_historical":    result.get("n_historical"),
+            "historical":      historical[-12:],
+            "predictions":     result.get("predictions", []),
+        },
+        "meta": _META(),
+    }
+
+
 @router.get("/home-executive")
 def home_executive() -> dict:
     """
