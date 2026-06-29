@@ -178,13 +178,19 @@ export default function Navbar() {
             </span>
           </div>
 
-          {/* Desktop nav: Home | AEGIS▾ | Loyalty▾ | ILP | Tracker | Settings | About */}
+          {/* Desktop nav: Home | Summary | AEGIS▾ | Loyalty▾ | ILP | Tracker | Settings | About */}
           <nav className="hidden md:flex items-center gap-0.5">
 
             {/* Home */}
             <a href="/" className={linkCls("/")}>
               <HugeiconsIcon icon={toIcon(HomeIcon)} size={15} />
               Home
+            </a>
+
+            {/* Executive Summary */}
+            <a href="/executive-summary" className={linkCls("/executive-summary")}>
+              <HugeiconsIcon icon={toIcon(AnalyticsIcon)} size={15} />
+              Summary
             </a>
 
             {/* AEGIS dropdown */}
@@ -399,6 +405,11 @@ export default function Navbar() {
             <a href="/" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/")}>
               <HugeiconsIcon icon={toIcon(HomeIcon)} size={16} />
               Home
+            </a>
+
+            <a href="/executive-summary" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/executive-summary")}>
+              <HugeiconsIcon icon={toIcon(AnalyticsIcon)} size={16} />
+              Executive Summary
             </a>
 
             {/* AEGIS mobile */}
