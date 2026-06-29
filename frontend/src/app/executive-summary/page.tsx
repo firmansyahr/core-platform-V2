@@ -5,12 +5,13 @@ import Link from "next/link";
 import {
   Shield, Users, TrendingDown, TrendingUp,
   Target, Heart, FlaskConical, Bot, Layers,
-  BarChart3, Zap, ExternalLink,
+  BarChart3, Zap, ExternalLink, ChevronRight, ListChecks, FileText,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import Navbar from "@/components/Navbar";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -146,7 +147,32 @@ export default function ExecutiveSummaryPage() {
       : String(n);
 
   return (
-    <main className="max-w-5xl mx-auto px-4 py-8 space-y-12">
+    <div className="min-h-screen bg-background">
+      <Navbar />
+      <main className="pt-16 max-w-5xl mx-auto px-4 py-8 space-y-12">
+
+      {/* ── breadcrumb + cross-nav ────────────────────────────────────────── */}
+      <div className="flex items-center justify-between border-b pb-3">
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Link href="/" className="hover:text-foreground transition-colors">Home</Link>
+          <ChevronRight size={13} />
+          <span className="text-foreground font-medium">Executive Summary</span>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/action-center">
+              <ListChecks size={13} className="mr-1.5" />
+              Action Center
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/report">
+              <FileText size={13} className="mr-1.5" />
+              AI Report
+            </Link>
+          </Button>
+        </div>
+      </div>
 
       {/* ── SECTION 1: HERO ───────────────────────────────────────────────── */}
       <section className="border-b pb-8">
@@ -429,6 +455,7 @@ export default function ExecutiveSummaryPage() {
         </span>
       </section>
 
-    </main>
+      </main>
+    </div>
   );
 }

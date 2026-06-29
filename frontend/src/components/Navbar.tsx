@@ -86,9 +86,10 @@ export default function Navbar() {
   const { setTheme, resolvedTheme } = useTheme();
   const [mounted,      setMounted]      = useState(false);
   const [user,         setUser]         = useState<AuthUser | null>(null);
-  const [menuOpen,     setMenuOpen]     = useState(false);
-  const [loyaltyOpen,  setLoyaltyOpen]  = useState(false);
-  const [aegisOpen,    setAegisOpen]    = useState(false);
+  const [menuOpen,          setMenuOpen]          = useState(false);
+  const [loyaltyOpen,       setLoyaltyOpen]       = useState(false);
+  const [aegisOpen,         setAegisOpen]         = useState(false);
+  const [intelligenceOpen,  setIntelligenceOpen]  = useState(false);
   const [openCount,    setOpenCount]    = useState(0);
   const [kritisCount,  setKritisCount]  = useState(0);
   const { notifications, unreadCount, markRead } = useOracleNotifications();
@@ -102,6 +103,7 @@ export default function Navbar() {
     setMenuOpen(false);
     setLoyaltyOpen(false);
     setAegisOpen(false);
+    setIntelligenceOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -138,8 +140,9 @@ export default function Navbar() {
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(href + "/");
 
-  const isAegisActive   = pathname === "/aegis" || pathname.startsWith("/aegis/") || pathname === "/competitor";
-  const isLoyaltyActive = pathname === "/loyalty" || pathname.startsWith("/loyalty/");
+  const isAegisActive        = pathname === "/aegis" || pathname.startsWith("/aegis/") || pathname === "/competitor";
+  const isLoyaltyActive      = pathname === "/loyalty" || pathname.startsWith("/loyalty/");
+  const isIntelligenceActive = pathname === "/executive-summary" || pathname === "/action-center" || pathname === "/report";
 
   const linkCls = (href: string) =>
     `flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150 ${
@@ -183,6 +186,7 @@ export default function Navbar() {
     setMenuOpen(false);
     setLoyaltyOpen(false);
     setAegisOpen(false);
+    setIntelligenceOpen(false);
   };
 
   return (
@@ -209,11 +213,52 @@ export default function Navbar() {
               Home
             </a>
 
-            {/* Executive Summary */}
-            <a href="/executive-summary" className={linkCls("/executive-summary")}>
-              <HugeiconsIcon icon={toIcon(AnalyticsIcon)} size={15} />
-              Summary
-            </a>
+            {/* Intelligence dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className={dropdownBtnCls(isIntelligenceActive)}>
+                  <Sparkles size={15} strokeWidth={1.75} />
+                  Intelligence
+                  {kritisCount > 0 && (
+                    <span className="ml-0.5 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
+                      bg-red-500 text-white flex items-center justify-center leading-none">
+                      {kritisCount > 99 ? "99+" : kritisCount}
+                    </span>
+                  )}
+                  <ChevronDown size={12} className="ml-0.5 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-52">
+                <DropdownMenuItem
+                  onClick={() => nav("/executive-summary")}
+                  className={`text-sm cursor-pointer ${isActive("/executive-summary") ? "font-semibold text-foreground" : ""}`}
+                >
+                  <HugeiconsIcon icon={toIcon(AnalyticsIcon)} size={14} className="mr-2 shrink-0" />
+                  Executive Summary
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => nav("/action-center")}
+                  className={`text-sm cursor-pointer ${isActive("/action-center") ? "font-semibold text-foreground" : ""}`}
+                >
+                  <Zap size={14} strokeWidth={1.75} className="mr-2 shrink-0" />
+                  Action Center
+                  {kritisCount > 0 && (
+                    <span className="ml-auto min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
+                      bg-red-500 text-white flex items-center justify-center leading-none">
+                      {kritisCount > 99 ? "99+" : kritisCount}
+                    </span>
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => nav("/report")}
+                  className={`text-sm cursor-pointer ${isActive("/report") ? "font-semibold text-foreground" : ""}`}
+                >
+                  <FileText size={14} strokeWidth={1.75} className="mr-2 shrink-0" />
+                  AI Report Generator
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {/* AEGIS dropdown */}
             <DropdownMenu>
@@ -283,24 +328,6 @@ export default function Navbar() {
             <a href="/performance" className={linkCls("/performance")}>
               <HugeiconsIcon icon={toIcon(ChartUpIcon)} size={15} />
               Tracker
-            </a>
-
-            {/* Action Center */}
-            <a href="/action-center" className={linkCls("/action-center")}>
-              <Zap size={15} strokeWidth={1.75} />
-              Actions
-              {kritisCount > 0 && (
-                <span className="ml-0.5 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
-                  bg-red-500 text-white flex items-center justify-center leading-none">
-                  {kritisCount > 99 ? "99+" : kritisCount}
-                </span>
-              )}
-            </a>
-
-            {/* Report */}
-            <a href="/report" className={linkCls("/report")}>
-              <FileText size={15} strokeWidth={1.75} />
-              Report
             </a>
 
             {/* ORACLE */}
@@ -441,10 +468,48 @@ export default function Navbar() {
               Home
             </a>
 
-            <a href="/executive-summary" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/executive-summary")}>
-              <HugeiconsIcon icon={toIcon(AnalyticsIcon)} size={16} />
-              Executive Summary
-            </a>
+            {/* Intelligence mobile */}
+            <div>
+              <button
+                onClick={() => setIntelligenceOpen((p) => !p)}
+                className={`w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150 ${
+                  isIntelligenceActive
+                    ? "bg-foreground/8 text-foreground dark:bg-white/10"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Sparkles size={16} strokeWidth={1.75} />
+                  Intelligence
+                  {kritisCount > 0 && (
+                    <span className="ml-1 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
+                      bg-red-500 text-white flex items-center justify-center leading-none">
+                      {kritisCount > 99 ? "99+" : kritisCount}
+                    </span>
+                  )}
+                </span>
+                <ChevronDown size={14} className={`transition-transform duration-200 ${intelligenceOpen ? "rotate-180" : ""}`} />
+              </button>
+              {intelligenceOpen && (
+                <div className="ml-6 mt-1 flex flex-col gap-0.5 border-l border-border pl-3">
+                  <button onClick={() => nav("/executive-summary")} className="text-left px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-100">
+                    📊 Executive Summary
+                  </button>
+                  <button onClick={() => nav("/action-center")} className="flex items-center gap-2 text-left px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-100">
+                    ⚡ Action Center
+                    {kritisCount > 0 && (
+                      <span className="min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
+                        bg-red-500 text-white flex items-center justify-center leading-none">
+                        {kritisCount > 99 ? "99+" : kritisCount}
+                      </span>
+                    )}
+                  </button>
+                  <button onClick={() => nav("/report")} className="text-left px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-100">
+                    📄 AI Report Generator
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* AEGIS mobile */}
             <div>
@@ -524,24 +589,6 @@ export default function Navbar() {
             <a href="/performance" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/performance")}>
               <HugeiconsIcon icon={toIcon(ChartUpIcon)} size={16} />
               Tracker
-            </a>
-
-            {/* Action Center */}
-            <a href="/action-center" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/action-center")}>
-              <Zap size={16} strokeWidth={1.75} />
-              Action Center
-              {kritisCount > 0 && (
-                <span className="ml-1 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
-                  bg-red-500 text-white flex items-center justify-center leading-none">
-                  {kritisCount > 99 ? "99+" : kritisCount}
-                </span>
-              )}
-            </a>
-
-            {/* Report */}
-            <a href="/report" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/report")}>
-              <FileText size={16} strokeWidth={1.75} />
-              Report
             </a>
 
             {/* ORACLE */}

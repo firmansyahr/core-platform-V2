@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { AlertTriangle, Info, Zap, RefreshCw, X, ArrowRight, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, Info, Zap, RefreshCw, X, ArrowRight, Loader2, ChevronRight, Sparkles, FileText } from "lucide-react";
+import Navbar from "@/components/Navbar";
+import { Button } from "@/components/ui/button";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -117,8 +120,33 @@ export default function ActionCenterPage() {
   })).filter(g => g.items.length > 0);
 
   return (
-    <main className="min-h-screen bg-background pt-20 pb-16">
+    <div className="min-h-screen bg-background">
+      <Navbar />
+      <main className="pt-16 pb-16">
       <div className="max-w-3xl mx-auto px-4 sm:px-6">
+
+        {/* Breadcrumb + cross-nav */}
+        <div className="flex items-center justify-between border-b pb-3 mb-6 pt-8">
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Link href="/" className="hover:text-foreground transition-colors">Home</Link>
+            <ChevronRight size={13} />
+            <span className="text-foreground font-medium">Action Center</span>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/executive-summary">
+                <Sparkles size={13} className="mr-1.5" />
+                Executive Summary
+              </Link>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/report">
+                <FileText size={13} className="mr-1.5" />
+                AI Report
+              </Link>
+            </Button>
+          </div>
+        </div>
 
         {/* Header */}
         <div className="flex items-start justify-between mb-6">
@@ -261,6 +289,7 @@ export default function ActionCenterPage() {
           </p>
         )}
       </div>
-    </main>
+      </main>
+    </div>
   );
 }
