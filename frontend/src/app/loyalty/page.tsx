@@ -27,7 +27,7 @@ import {
 import {
   Users, Plus, Upload, Download, Search, X, Check,
   TrendingDown, Zap, BookOpen, Clock, AlertCircle, ChevronRight,
-  Target, Settings, TrendingUp, BarChart2, Activity,
+  Target, Settings, TrendingUp, BarChart2, Activity, Sparkles,
 } from "lucide-react";
 import { apiFetch, API } from "@/lib/fetch";
 
@@ -1107,6 +1107,33 @@ function LoyaltyContent() {
   const [avgRatio,         setAvgRatio]         = useState(0);
   const [promoAktifCount,  setPromoAktifCount]  = useState<number | null>(null);
 
+  interface LoyaltyForecastItem {
+    prediction: { periode: string; value: number; lower: number | null; upper: number | null } | null;
+    trend_direction: string;
+    trend_pct: number;
+    method: string;
+    n_historical?: number;
+  }
+  interface LoyaltyForecast {
+    total_member_aktif: number;
+    volume_loyalty: LoyaltyForecastItem;
+    achievement_rate: LoyaltyForecastItem;
+  }
+  const [loyaltyForecast, setLoyaltyForecast] = useState<LoyaltyForecast | null>(null);
+
+  interface MemberForecast {
+    available: boolean;
+    churn_risk: string;
+    trend_direction: string;
+    trend_pct: number;
+    method: string;
+    historical: { periode: string; value: number }[];
+    predictions: { periode: string; value: number; lower: number | null; upper: number | null }[];
+  }
+  const [expandedMemberId,   setExpandedMemberId]   = useState<string | null>(null);
+  const [memberForecast,     setMemberForecast]     = useState<MemberForecast | null>(null);
+  const [memberForecastLoad, setMemberForecastLoad] = useState(false);
+
   const fetchTargets = useCallback(async (opts?: {
     bulan?: string; cluster?: string; status?: string; search?: string; page?: number;
   }) => {
@@ -1187,6 +1214,12 @@ function LoyaltyContent() {
     apiFetch(`${API}/api/loyalty/targets/summary`)
       .then(r => r.json())
       .then(j => { if (j.status === "ok") setAchievementSummary(j.data); })
+      .catch(() => {});
+
+    // Loyalty forecast — non-blocking
+    apiFetch(`${API}/api/predictions/loyalty-overview`)
+      .then(r => r.json())
+      .then(j => { if (j.status === "ok") setLoyaltyForecast(j.data); })
       .catch(() => {});
   }, [fetchSummary, fetchMembers, fetchTargets]);
 
@@ -1509,6 +1542,66 @@ function LoyaltyContent() {
           </div>
         </div>
 
+        {/* ── Loyalty Forecast Card ──────────────────────────────────────── */}
+        {loyaltyForecast && (() => {
+          const vol = loyaltyForecast.volume_loyalty;
+          const ach = loyaltyForecast.achievement_rate;
+          const concerns: string[] = [];
+          if (vol.trend_direction === "turun") concerns.push("volume loyalty cenderung menurun");
+          if ((ach.prediction?.value ?? 100) < 80) concerns.push(`rata-rata achievement diproyeksikan ${ach.prediction?.value?.toFixed(0)}% (di bawah 80%)`);
+          const narasi = concerns.length > 0
+            ? `⚠ Perhatian: ${concerns.join("; ")}.`
+            : `✓ Program loyalty diproyeksikan sehat — ${loyaltyForecast.total_member_aktif} member aktif dengan tren volume ${vol.trend_direction}.`;
+          return (
+            <Card className="border-green-200 dark:border-green-800">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-green-500" />
+                  Proyeksi Program Loyalty — 3 Bulan ke Depan
+                  <span className="ml-auto text-[10px] font-normal text-muted-foreground">
+                    via {vol.method} · {vol.n_historical} bulan data
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  <div className="text-center p-3 rounded-lg bg-muted/30">
+                    <div className="text-xs text-muted-foreground mb-1">Member Aktif (sekarang)</div>
+                    <div className="text-2xl font-bold text-green-600">{loyaltyForecast.total_member_aktif}</div>
+                    <div className={`text-xs ${vol.trend_direction === "naik" ? "text-green-600" : vol.trend_direction === "turun" ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`}>
+                      {vol.trend_direction === "naik" ? "↑ Volume naik" : vol.trend_direction === "turun" ? "↓ Volume turun" : "→ Stabil"}
+                    </div>
+                  </div>
+                  <div className="text-center p-3 rounded-lg bg-muted/30 border-l border-r border-border">
+                    <div className="text-xs text-muted-foreground mb-1">Est. Volume/Bulan (proyeksi)</div>
+                    <div className="text-2xl font-bold">
+                      {vol.prediction ? `${(vol.prediction.value / 1000).toFixed(1)}K` : "—"}
+                      <span className="text-sm font-normal text-muted-foreground ml-1">ton</span>
+                    </div>
+                    <div className={`text-xs ${vol.trend_pct >= 0 ? "text-green-600" : "text-red-600 dark:text-red-400"}`}>
+                      {vol.trend_pct >= 0 ? "↑" : "↓"} {Math.abs(vol.trend_pct).toFixed(1)}% vs 3 bln lalu
+                    </div>
+                  </div>
+                  <div className="text-center p-3 rounded-lg bg-muted/30">
+                    <div className="text-xs text-muted-foreground mb-1">Achievement Rate (proyeksi)</div>
+                    <div className="text-2xl font-bold">
+                      {ach.prediction ? ach.prediction.value.toFixed(1) : "—"}
+                      <span className="text-sm font-normal text-muted-foreground ml-1">%</span>
+                    </div>
+                    <div className="w-full bg-muted rounded-full h-1.5 mt-2">
+                      <div
+                        className="bg-green-500 h-1.5 rounded-full transition-all"
+                        style={{ width: `${Math.min(ach.prediction?.value ?? 0, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground p-2 bg-muted/30 rounded">{narasi}</div>
+              </CardContent>
+            </Card>
+          );
+        })()}
+
         {/* Navigation grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
@@ -1684,6 +1777,28 @@ function LoyaltyContent() {
                                 >
                                   Take Out
                                 </button>
+                                <button
+                                  onClick={() => {
+                                    if (expandedMemberId === m.id_toko) {
+                                      setExpandedMemberId(null); setMemberForecast(null); return;
+                                    }
+                                    setExpandedMemberId(m.id_toko);
+                                    setMemberForecast(null);
+                                    setMemberForecastLoad(true);
+                                    apiFetch(`${API}/api/predictions/loyalty-member/${encodeURIComponent(m.id_toko)}`)
+                                      .then(r => r.json())
+                                      .then(j => { if (j.data) setMemberForecast(j.data); })
+                                      .catch(() => {})
+                                      .finally(() => setMemberForecastLoad(false));
+                                  }}
+                                  className={`px-2 py-0.5 text-[10px] rounded border transition-colors ${
+                                    expandedMemberId === m.id_toko
+                                      ? "bg-blue-600 text-white border-blue-600"
+                                      : "border-blue-300 text-blue-600 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:hover:bg-blue-950/30"
+                                  }`}
+                                >
+                                  Proyeksi
+                                </button>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -1694,6 +1809,60 @@ function LoyaltyContent() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Member Forecast Panel — muncul saat user klik "Proyeksi" */}
+            {expandedMemberId && (
+              <Card className={`border-l-4 ${
+                memberForecast?.churn_risk === "high" ? "border-l-red-500"
+                : memberForecast?.churn_risk === "medium" ? "border-l-yellow-500"
+                : "border-l-green-500"
+              }`}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4" />
+                      Proyeksi Volume — {filteredMembers.find(m => m.id_toko === expandedMemberId)?.nama_toko ?? expandedMemberId}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {memberForecast?.churn_risk === "high" && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400">⚠ Risiko Keluar</span>
+                      )}
+                      {memberForecast?.churn_risk === "medium" && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-yellow-100 dark:bg-yellow-950/40 text-yellow-700 dark:text-yellow-400">Perlu Perhatian</span>
+                      )}
+                      <button onClick={() => { setExpandedMemberId(null); setMemberForecast(null); }} className="text-muted-foreground hover:text-foreground text-xs">✕</button>
+                    </div>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {memberForecastLoad && <Skeleton className="h-32 w-full rounded-lg" />}
+                  {!memberForecastLoad && memberForecast && memberForecast.available && (
+                    <>
+                      <div className="grid grid-cols-3 gap-2 mb-3">
+                        {memberForecast.predictions.map(p => (
+                          <div key={p.periode} className="text-center p-2 rounded bg-muted/30">
+                            <div className="text-xs text-muted-foreground">{p.periode}</div>
+                            <div className="text-sm font-bold">{p.value.toFixed(1)} ton</div>
+                            {p.lower != null && p.upper != null && (
+                              <div className="text-[10px] text-muted-foreground">{p.lower.toFixed(0)}–{p.upper.toFixed(0)}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      {memberForecast.churn_risk === "high" && (
+                        <div className="mt-2 p-2 rounded bg-red-50 dark:bg-red-950/30 text-xs text-red-700 dark:text-red-400">
+                          ⚠ Volume toko ini menunjukkan tren penurunan selama 3 bulan terakhir dan diproyeksikan terus turun. Pertimbangkan kunjungan TSO atau evaluasi kelanjutan membership.
+                        </div>
+                      )}
+                      <p className="text-[10px] text-muted-foreground mt-2">via {memberForecast.method} · tren {memberForecast.trend_direction} ({memberForecast.trend_pct > 0 ? "+" : ""}{memberForecast.trend_pct.toFixed(1)}%)</p>
+                    </>
+                  )}
+                  {!memberForecastLoad && memberForecast && !memberForecast.available && (
+                    <p className="text-xs text-muted-foreground py-4 text-center">Data transaksi tidak tersedia untuk toko ini.</p>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 

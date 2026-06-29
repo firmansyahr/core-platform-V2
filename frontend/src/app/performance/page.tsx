@@ -23,6 +23,12 @@ import StoreJourneyModal from "@/components/StoreJourneyModal";
 
 const fmtNum = (n: number) => new Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 }).format(n);
 
+function deriveChurnRisk(s: { vol_delta_pct: number; verdict: string }): "high" | "medium" | "low" {
+  if (s.vol_delta_pct < -15 && (s.verdict === "Perlu Perhatian" || s.verdict === "Dalam Pemantauan")) return "high";
+  if (s.vol_delta_pct < -5 || s.verdict === "Perlu Perhatian") return "medium";
+  return "low";
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface OverviewStore {
@@ -131,6 +137,7 @@ export default function PerformancePage() {
   const [search, setSearch]         = useState("");
   const [filterVerdict, setFilterVerdict] = useState("semua");
   const [filterCluster, setFilterCluster] = useState("semua");
+  const [filterChurn,   setFilterChurn]   = useState<"high" | "medium" | null>(null);
   const [selectedToko, setSelectedToko]   = useState<string | null>(null);
 
   const fetchOverview = useCallback(async () => {
@@ -159,6 +166,11 @@ export default function PerformancePage() {
     return overview.stores.filter((s) => {
       if (filterVerdict !== "semua" && s.verdict !== filterVerdict) return false;
       if (filterCluster !== "semua" && s.cluster !== filterCluster) return false;
+      if (filterChurn) {
+        const risk = deriveChurnRisk(s);
+        if (filterChurn === "high" && risk !== "high") return false;
+        if (filterChurn === "medium" && risk !== "medium" && risk !== "high") return false;
+      }
       if (search) {
         const q = search.toLowerCase();
         return (
@@ -169,7 +181,7 @@ export default function PerformancePage() {
       }
       return true;
     });
-  }, [overview, filterVerdict, filterCluster, search]);
+  }, [overview, filterVerdict, filterCluster, filterChurn, search]);
 
   // Top 15 by vol_delta for bar chart
   const barData = useMemo(() => {
@@ -342,6 +354,22 @@ export default function PerformancePage() {
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <CardTitle className="text-base">Performa Toko Loyalty</CardTitle>
                 <div className="flex items-center gap-2 flex-wrap">
+                  {/* Churn Risk filter chips */}
+                  <div className="flex gap-1.5 items-center">
+                    <span className="text-[10px] text-muted-foreground">Churn:</span>
+                    <button
+                      onClick={() => setFilterChurn(f => f === "high" ? null : "high")}
+                      className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors font-medium ${filterChurn === "high" ? "bg-red-600 text-white border-red-600" : "border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400"}`}
+                    >
+                      ⚠ Risiko Keluar
+                    </button>
+                    <button
+                      onClick={() => setFilterChurn(f => f === "medium" ? null : "medium")}
+                      className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors font-medium ${filterChurn === "medium" ? "bg-yellow-500 text-white border-yellow-500" : "border-yellow-400 text-yellow-600 hover:bg-yellow-50 dark:border-yellow-700 dark:text-yellow-400"}`}
+                    >
+                      Perlu Perhatian
+                    </button>
+                  </div>
                   {/* Search */}
                   <div className="relative">
                     <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -411,6 +439,7 @@ export default function PerformancePage() {
                         <TableHead className="text-right">Vol Delta</TableHead>
                         <TableHead className="text-right">FBSI Delta</TableHead>
                         <TableHead>Verdict</TableHead>
+                        <TableHead>Churn Risk</TableHead>
                         <TableHead />
                       </TableRow>
                     </TableHeader>
@@ -451,6 +480,16 @@ export default function PerformancePage() {
                             <span className={`text-xs px-2 py-1 rounded-full font-semibold whitespace-nowrap ${VERDICT_BADGE[s.verdict] ?? ""}`}>
                               {s.verdict}
                             </span>
+                          </TableCell>
+                          <TableCell>
+                            {(() => {
+                              const risk = deriveChurnRisk(s);
+                              return risk === "high"
+                                ? <span className="text-[10px] font-semibold text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-1.5 py-0.5 rounded-full whitespace-nowrap">⚠ Tinggi</span>
+                                : risk === "medium"
+                                ? <span className="text-[10px] font-semibold text-yellow-700 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-950/30 px-1.5 py-0.5 rounded-full whitespace-nowrap">Sedang</span>
+                                : <span className="text-[10px] text-green-600 px-1.5 py-0.5">✓</span>;
+                            })()}
                           </TableCell>
                           <TableCell>
                             <Button
