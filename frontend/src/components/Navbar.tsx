@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
-import { Moon, Sun, Settings, LogOut, Info, Menu, X, ChevronDown, FileText, Sparkles, Bell } from "lucide-react";
+import { Moon, Sun, Settings, LogOut, Info, Menu, X, ChevronDown, FileText, Sparkles, Bell, Zap } from "lucide-react";
 import { useOracleNotifications } from "@/hooks/useOracleNotifications";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -90,6 +90,7 @@ export default function Navbar() {
   const [loyaltyOpen,  setLoyaltyOpen]  = useState(false);
   const [aegisOpen,    setAegisOpen]    = useState(false);
   const [openCount,    setOpenCount]    = useState(0);
+  const [kritisCount,  setKritisCount]  = useState(0);
   const { notifications, unreadCount, markRead } = useOracleNotifications();
 
   useEffect(() => {
@@ -107,6 +108,27 @@ export default function Navbar() {
     fetch(`${API}/api/aegis/cad-history/summary`)
       .then((r) => r.json())
       .then((r) => setOpenCount(r.data?.open ?? 0))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const CACHE_KEY = "ac-kritis-count";
+    const CACHE_TS  = "ac-kritis-ts";
+    const TTL_MS    = 5 * 60 * 1000; // 5 minutes
+    const cached    = sessionStorage.getItem(CACHE_KEY);
+    const cachedTs  = Number(sessionStorage.getItem(CACHE_TS) ?? 0);
+    if (cached && Date.now() - cachedTs < TTL_MS) {
+      setKritisCount(parseInt(cached) || 0);
+      return;
+    }
+    fetch(`${API}/api/action-center/items`, { signal: AbortSignal.timeout(10000) })
+      .then((r) => r.json())
+      .then((d) => {
+        const count = d.meta?.kritis ?? 0;
+        setKritisCount(count);
+        sessionStorage.setItem(CACHE_KEY, String(count));
+        sessionStorage.setItem(CACHE_TS, String(Date.now()));
+      })
       .catch(() => {});
   }, []);
 
@@ -261,6 +283,18 @@ export default function Navbar() {
             <a href="/performance" className={linkCls("/performance")}>
               <HugeiconsIcon icon={toIcon(ChartUpIcon)} size={15} />
               Tracker
+            </a>
+
+            {/* Action Center */}
+            <a href="/action-center" className={linkCls("/action-center")}>
+              <Zap size={15} strokeWidth={1.75} />
+              Actions
+              {kritisCount > 0 && (
+                <span className="ml-0.5 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
+                  bg-red-500 text-white flex items-center justify-center leading-none">
+                  {kritisCount > 99 ? "99+" : kritisCount}
+                </span>
+              )}
             </a>
 
             {/* Report */}
@@ -490,6 +524,18 @@ export default function Navbar() {
             <a href="/performance" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/performance")}>
               <HugeiconsIcon icon={toIcon(ChartUpIcon)} size={16} />
               Tracker
+            </a>
+
+            {/* Action Center */}
+            <a href="/action-center" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/action-center")}>
+              <Zap size={16} strokeWidth={1.75} />
+              Action Center
+              {kritisCount > 0 && (
+                <span className="ml-1 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
+                  bg-red-500 text-white flex items-center justify-center leading-none">
+                  {kritisCount > 99 ? "99+" : kritisCount}
+                </span>
+              )}
             </a>
 
             {/* Report */}
