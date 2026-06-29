@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { ChevronRight, Sparkles, RefreshCw, FileText, Gift, AlertTriangle, Swords, TrendingUp, GitBranch, Scale, CheckCircle, AlertCircle } from "lucide-react";
+import { ChevronRight, Sparkles, RefreshCw, FileText, Gift, AlertTriangle, Swords, TrendingUp, GitBranch, Scale, CheckCircle, AlertCircle, Package } from "lucide-react";
 import AegisMap from "@/components/aegis/AegisMap";
 import type { RegionMapData } from "@/components/aegis/AegisMap";
 import { apiFetch } from "@/lib/fetch";
@@ -390,6 +390,23 @@ export default function HomePage() {
   const [causalData,     setCausalData]     = useState<CausalSummary | null>(null);
   const [causalLoad,     setCausalLoad]     = useState(true);
 
+  interface ExecForecastItem {
+    prediction: { periode: string; value: number; lower: number | null; upper: number | null } | null;
+    trend_direction: string;
+    trend_pct: number;
+    method: string;
+  }
+  interface ExecForecast {
+    warning_trend:          ExecForecastItem;
+    volume_at_risk:         ExecForecastItem;
+    market_share_internal:  ExecForecastItem;
+  }
+  interface ExecForecastResponse {
+    data:  ExecForecast;
+    meta:  { generated_at: string };
+  }
+  const [execForecast, setExecForecast] = useState<ExecForecastResponse | null>(null);
+
   useEffect(() => {
     Promise.all([
       fetch(`${API}/api/home/summary`).then((r) => r.json()),
@@ -478,6 +495,13 @@ export default function HomePage() {
       .finally(() => setMapLoading(false));
   }, []);
 
+  useEffect(() => {
+    fetch(`${API}/api/predictions/home-executive`)
+      .then((r) => r.json())
+      .then((d) => setExecForecast(d))
+      .catch(() => {});
+  }, []);
+
   // Donut chart data
   const brandData = brandMix
     ? [
@@ -540,6 +564,116 @@ export default function HomePage() {
               </CardContent>
             </Card>
           )}
+
+          {/* ── Executive Forecast Card ─────────────────────────────────── */}
+          {execForecast?.data && (() => {
+            const fc   = execForecast.data;
+            const meta = execForecast.meta;
+            const w  = fc.warning_trend;
+            const v  = fc.volume_at_risk;
+            const m  = fc.market_share_internal;
+
+            const concerns: string[]  = [];
+            const positives: string[] = [];
+            if (w.trend_direction === "naik")   concerns.push(`toko warning diproyeksikan naik ${w.trend_pct.toFixed(1)}%`);
+            if (v.trend_direction === "naik")   concerns.push(`volume berisiko naik ${v.trend_pct.toFixed(1)}%`);
+            if (m.trend_direction === "turun")  concerns.push(`market share internal tergerus ${Math.abs(m.trend_pct).toFixed(1)}pp`);
+            if (w.trend_direction === "turun")  positives.push("warning menurun");
+            if (m.trend_direction === "naik")   positives.push("market share internal menguat");
+
+            const narasi = concerns.length > 0
+              ? `⚠ Perhatian bulan depan: ${concerns.join(", ")}. ${positives.length > 0 ? `Positif: ${positives.join(", ")}.` : ""}`
+              : positives.length > 0
+              ? `✓ Proyeksi positif: ${positives.join(", ")}.`
+              : "→ Kondisi diproyeksikan stabil bulan depan.";
+
+            const genAt = meta?.generated_at
+              ? new Date(meta.generated_at).toLocaleDateString("id-ID", { month: "long", year: "numeric" })
+              : "terkini";
+
+            return (
+              <Card className="border-blue-200 dark:border-blue-800 bg-gradient-to-r from-blue-50/50 to-transparent dark:from-blue-950/20">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-blue-500" />
+                    Proyeksi Bulan Depan
+                    <span className="text-xs font-normal text-muted-foreground ml-1">
+                      — berdasarkan tren {genAt}
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-3 gap-4">
+
+                    {/* Warning Trend */}
+                    <div className="flex flex-col gap-1">
+                      <div className="text-xs text-muted-foreground flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3 text-orange-500" />
+                        Toko Warning
+                      </div>
+                      <div className="text-2xl font-bold">
+                        {w.prediction ? Math.round(w.prediction.value).toLocaleString("id-ID") : "—"}
+                      </div>
+                      <div className={`text-xs flex items-center gap-1 ${
+                        w.trend_direction === "naik" ? "text-red-600 dark:text-red-400"
+                        : w.trend_direction === "turun" ? "text-green-600" : "text-muted-foreground"
+                      }`}>
+                        {w.trend_direction === "naik" ? "↑" : w.trend_direction === "turun" ? "↓" : "→"}
+                        {" "}{Math.abs(w.trend_pct).toFixed(1)}% vs 3 bulan lalu
+                      </div>
+                      {w.prediction?.lower != null && w.prediction?.upper != null && (
+                        <div className="text-xs text-muted-foreground">
+                          CI: {Math.round(w.prediction.lower).toLocaleString("id-ID")} – {Math.round(w.prediction.upper).toLocaleString("id-ID")}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Volume at Risk */}
+                    <div className="flex flex-col gap-1 border-l pl-4">
+                      <div className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Package className="h-3 w-3 text-yellow-500" />
+                        Volume Berisiko
+                      </div>
+                      <div className="text-2xl font-bold">
+                        {v.prediction ? `${(v.prediction.value / 1000).toFixed(1)}K` : "—"}
+                        <span className="text-sm font-normal text-muted-foreground ml-1">ton</span>
+                      </div>
+                      <div className={`text-xs flex items-center gap-1 ${
+                        v.trend_direction === "naik" ? "text-red-600 dark:text-red-400" : "text-green-600"
+                      }`}>
+                        {v.trend_direction === "naik" ? "↑" : "↓"}
+                        {" "}{Math.abs(v.trend_pct).toFixed(1)}%
+                      </div>
+                    </div>
+
+                    {/* Market Share Internal */}
+                    <div className="flex flex-col gap-1 border-l pl-4">
+                      <div className="text-xs text-muted-foreground flex items-center gap-1">
+                        <TrendingUp className="h-3 w-3 text-blue-500" />
+                        Market Share Internal
+                      </div>
+                      <div className="text-2xl font-bold">
+                        {m.prediction ? m.prediction.value.toFixed(1) : "—"}
+                        <span className="text-sm font-normal text-muted-foreground ml-1">%</span>
+                      </div>
+                      <div className={`text-xs flex items-center gap-1 ${
+                        m.trend_direction === "turun" ? "text-red-600 dark:text-red-400"
+                        : m.trend_direction === "naik" ? "text-green-600" : "text-muted-foreground"
+                      }`}>
+                        {m.trend_direction === "turun" ? "↓" : m.trend_direction === "naik" ? "↑" : "→"}
+                        {" "}{Math.abs(m.trend_pct).toFixed(1)}pp vs 3 bulan lalu
+                      </div>
+                    </div>
+
+                  </div>
+
+                  <div className="mt-4 p-3 rounded-lg bg-muted/40 text-xs text-muted-foreground leading-relaxed">
+                    {narasi}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {/* ── KPI Cards ───────────────────────────────────────────────── */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
