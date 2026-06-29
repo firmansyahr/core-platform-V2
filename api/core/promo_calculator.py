@@ -658,6 +658,8 @@ def calculate_flat_multiplier_program(
     _use_sqlite = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
     db = SessionLocal() if _use_sqlite else None
 
+    vol_by_brand = _compute_vol_by_brand(df_period, [str(p["id_toko"]) for p in peserta_data])
+
     results: list[dict] = []
     try:
         for peserta in peserta_data:
@@ -670,20 +672,23 @@ def calculate_flat_multiplier_program(
             provinsi_toko  = wilayah.get("Provinsi Toko", "")
             kabupaten_toko = wilayah.get("Kabupaten Toko", "")
 
-            if allowed_brands and len(allowed_brands) == 1:
-                rate_brand = allowed_brands[0]
-            elif allowed_brands:
-                bu = peserta.get("brand_utama", "")
-                rate_brand = bu if bu.upper() in allowed_upper_set else allowed_brands[0]
-            else:
-                rate_brand = brand
-
             mult_efektif = multiplier
             keterangan   = f"{multiplier}X flat multiplier"
 
-            pv           = _get_brand_rate_for_promo(rate_brand, provinsi_toko, kabupaten_toko, base_rate, db)
-            total_poin   = round(volume * mult_efektif, 2)
-            total_rupiah = round(total_poin * pv, 0)
+            vbb     = vol_by_brand.get(id_toko, {"mb": 0.0, "cb": 0.0, "fb": 0.0})
+            poin_mb = round(vbb["mb"] * mult_efektif, 2)
+            poin_cb = round(vbb["cb"] * mult_efektif, 2)
+            poin_fb = round(vbb["fb"] * mult_efektif, 2)
+            total_poin = round(volume * mult_efektif, 2)
+
+            pv_mb = _get_brand_rate_for_promo("SEMEN ELANG",   provinsi_toko, kabupaten_toko, base_rate, db)
+            pv_cb = _get_brand_rate_for_promo("SEMEN BADAK",   provinsi_toko, kabupaten_toko, base_rate, db)
+            pv_fb = _get_brand_rate_for_promo("SEMEN BANTENG", provinsi_toko, kabupaten_toko, base_rate, db)
+
+            rupiah_mb    = round(poin_mb * pv_mb, 0)
+            rupiah_cb    = round(poin_cb * pv_cb, 0)
+            rupiah_fb    = round(poin_fb * pv_fb, 0)
+            total_rupiah = rupiah_mb + rupiah_cb + rupiah_fb
 
             results.append({
                 "id_toko":            id_toko,
@@ -694,6 +699,15 @@ def calculate_flat_multiplier_program(
                 "volume_ton":         round(volume, 2),
                 "multiplier_berlaku": mult_efektif,
                 "total_poin":         total_poin,
+                "volume_mb":          vbb["mb"],
+                "volume_cb":          vbb["cb"],
+                "volume_fb":          vbb["fb"],
+                "poin_mb":            poin_mb,
+                "poin_cb":            poin_cb,
+                "poin_fb":            poin_fb,
+                "rupiah_mb":          rupiah_mb,
+                "rupiah_cb":          rupiah_cb,
+                "rupiah_fb":          rupiah_fb,
                 "total_rupiah":       total_rupiah,
                 "keterangan":         keterangan,
             })
@@ -716,18 +730,6 @@ def calculate_flat_multiplier_program(
         for r in results
     ]
     analytics = compute_program_analytics(analytics_rows, baseline, total_rupiah_prog)
-
-    vol_by_brand = _compute_vol_by_brand(df_period, [r["id_toko"] for r in results])
-    for r in results:
-        vbb = vol_by_brand.get(r["id_toko"], {"mb": 0.0, "cb": 0.0, "fb": 0.0})
-        r["volume_mb"] = vbb["mb"]
-        r["volume_cb"] = vbb["cb"]
-        r["volume_fb"] = vbb["fb"]
-        total_vol  = r["volume_ton"] or 1.0
-        total_poin = r.get("total_poin", 0)
-        r["poin_mb"] = round(vbb["mb"] / total_vol * total_poin, 2)
-        r["poin_cb"] = round(vbb["cb"] / total_vol * total_poin, 2)
-        r["poin_fb"] = round(vbb["fb"] / total_vol * total_poin, 2)
 
     return {
         "tipe_program":   "flat_multiplier",
@@ -781,6 +783,8 @@ def calculate_flat_per_batch_program(
     _use_sqlite = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
     db = SessionLocal() if _use_sqlite else None
 
+    vol_by_brand = _compute_vol_by_brand(df_period, [str(p["id_toko"]) for p in peserta_data])
+
     results: list[dict] = []
     try:
         for peserta in peserta_data:
@@ -793,19 +797,21 @@ def calculate_flat_per_batch_program(
             provinsi_toko  = wilayah.get("Provinsi Toko", "")
             kabupaten_toko = wilayah.get("Kabupaten Toko", "")
 
-            if allowed_brands and len(allowed_brands) == 1:
-                rate_brand = allowed_brands[0]
-            elif allowed_brands:
-                bu = peserta.get("brand_utama", "")
-                rate_brand = bu if bu.upper() in allowed_upper_set else allowed_brands[0]
-            else:
-                rate_brand = brand
+            vbb         = vol_by_brand.get(id_toko, {"mb": 0.0, "cb": 0.0, "fb": 0.0})
+            poin_mb_raw = round(vbb["mb"] / ton_per_poin, 2)
+            poin_cb_raw = round(vbb["cb"] / ton_per_poin, 2)
+            poin_fb_raw = round(vbb["fb"] / ton_per_poin, 2)
+            poin_earned = round(volume / ton_per_poin, 2)
+            keterangan  = f"{volume} ton / {ton_per_poin} ton per poin = {poin_earned} poin"
 
-            poin_earned  = round(volume / ton_per_poin, 2)
-            keterangan   = f"{volume} ton / {ton_per_poin} ton per poin = {poin_earned} poin"
+            pv_mb = _get_brand_rate_for_promo("SEMEN ELANG",   provinsi_toko, kabupaten_toko, base_rate, db)
+            pv_cb = _get_brand_rate_for_promo("SEMEN BADAK",   provinsi_toko, kabupaten_toko, base_rate, db)
+            pv_fb = _get_brand_rate_for_promo("SEMEN BANTENG", provinsi_toko, kabupaten_toko, base_rate, db)
 
-            pv           = _get_brand_rate_for_promo(rate_brand, provinsi_toko, kabupaten_toko, base_rate, db)
-            total_rupiah = round(poin_earned * pv, 0)
+            rupiah_mb    = round(poin_mb_raw * pv_mb, 0)
+            rupiah_cb    = round(poin_cb_raw * pv_cb, 0)
+            rupiah_fb    = round(poin_fb_raw * pv_fb, 0)
+            total_rupiah = rupiah_mb + rupiah_cb + rupiah_fb
 
             results.append({
                 "id_toko":       id_toko,
@@ -816,6 +822,15 @@ def calculate_flat_per_batch_program(
                 "volume_ton":    round(volume, 2),
                 "poin_earned":   poin_earned,
                 "ton_per_poin":  ton_per_poin,
+                "volume_mb":     vbb["mb"],
+                "volume_cb":     vbb["cb"],
+                "volume_fb":     vbb["fb"],
+                "poin_mb":       poin_mb_raw,
+                "poin_cb":       poin_cb_raw,
+                "poin_fb":       poin_fb_raw,
+                "rupiah_mb":     rupiah_mb,
+                "rupiah_cb":     rupiah_cb,
+                "rupiah_fb":     rupiah_fb,
                 "total_rupiah":  total_rupiah,
                 "keterangan":    keterangan,
             })
@@ -838,18 +853,6 @@ def calculate_flat_per_batch_program(
         for r in results
     ]
     analytics = compute_program_analytics(analytics_rows, baseline, total_rupiah_prog)
-
-    vol_by_brand = _compute_vol_by_brand(df_period, [r["id_toko"] for r in results])
-    for r in results:
-        vbb = vol_by_brand.get(r["id_toko"], {"mb": 0.0, "cb": 0.0, "fb": 0.0})
-        r["volume_mb"] = vbb["mb"]
-        r["volume_cb"] = vbb["cb"]
-        r["volume_fb"] = vbb["fb"]
-        total_vol = r["volume_ton"] or 1.0
-        poin      = r.get("poin_earned", 0)
-        r["poin_mb"] = round(vbb["mb"] / total_vol * poin, 2)
-        r["poin_cb"] = round(vbb["cb"] / total_vol * poin, 2)
-        r["poin_fb"] = round(vbb["fb"] / total_vol * poin, 2)
 
     return {
         "tipe_program":   "flat_per_batch",
