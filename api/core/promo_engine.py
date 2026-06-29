@@ -3,7 +3,12 @@ from __future__ import annotations
 
 import pandas as pd
 
-from api.core.promo_calculator import filter_transactions_by_brand, resolve_brands_for_promo
+from api.core.brand_config_engine import get_brand_reward_multiplier
+from api.core.promo_calculator import (
+    filter_transactions_by_brand,
+    normalize_brand_name,
+    resolve_brands_for_promo,
+)
 
 PRICE_PER_TON_ESTIMATE = 800_000  # Rp/ton, fallback for cashback when Harga column absent
 
@@ -81,7 +86,11 @@ def calculate_promo_achievement(promo: dict, df_transaksi: pd.DataFrame) -> pd.D
 
         reward_rate_earned = 0.0
         if rr_cfg.get("enabled"):
-            reward_rate_earned = realisasi_ton * _effective_rate(p, rr_cfg)
+            brand = str(p.get("brand_utama") or "SEMEN ELANG")
+            brand_multiplier = get_brand_reward_multiplier(
+                normalize_brand_name(brand), "", "", db=None
+            )
+            reward_rate_earned = realisasi_ton * _effective_rate(p, rr_cfg) * brand_multiplier
 
         bonus_earned = 0.0
         if tb_cfg.get("enabled") and target_ton > 0:

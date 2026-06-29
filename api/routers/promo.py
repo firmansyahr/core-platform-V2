@@ -980,6 +980,126 @@ def complete_promo(promo_id: str) -> dict:
     return {"status": "ok", "data": updated, "meta": _meta(summary=summary)}
 
 
+# ── POST /api/promo/{promo_id}/recalculate ───────────────────────────────────
+
+@router.post("/{promo_id}/recalculate")
+def recalculate_promo(promo_id: str) -> dict:
+    """
+    Recalculate final_achievements untuk promo Selesai menggunakan brand filter
+    yang benar dari brand_selection_json.
+
+    Diperlukan setelah fix brand filter untuk update data lama yang tersimpan
+    sebelum fix diterapkan.
+    """
+    promo = _get_promo_by_id(promo_id)
+    if promo is None:
+        raise HTTPException(404, detail="Promo tidak ditemukan")
+    if promo["status"] != "Selesai":
+        raise HTTPException(400, detail="Hanya promo berstatus Selesai yang bisa di-recalculate")
+
+    df_trx = load_data()
+
+    # Inject resolved brands agar brand filter konsisten dengan fix terbaru
+    if USE_SQLITE:
+        _db = SessionLocal()
+        try:
+            _inject_resolved_brands(promo, db=_db)
+        finally:
+            _db.close()
+    else:
+        _inject_resolved_brands(promo)
+
+    ach_df  = calculate_promo_achievement(promo, df_trx)
+    if ach_df.empty:
+        raise HTTPException(500, detail="Recalculation menghasilkan data kosong — cek rentang tanggal promo")
+
+    summary = get_promo_summary(promo, ach_df)
+    new_achievements = ach_df.to_dict("records")
+
+    updated = _update_promo_status(
+        promo_id,
+        final_achievements = new_achievements,
+        final_summary      = summary,
+    )
+
+    return {
+        "status":  "ok",
+        "message": f"Recalculated {len(ach_df)} peserta",
+        "data": {
+            "overall_achievement_pct": summary.get("overall_achievement_pct"),
+            "total_realisasi_ton":     summary.get("total_realisasi_ton"),
+            "total_target_ton":        summary.get("total_target_ton"),
+            "brand_filter":            promo.get("brand_selection_json"),
+            "peserta_count":           len(ach_df),
+        },
+        "meta": _meta(),
+    }
+
+
+# ── POST /api/promo/recalculate-all ─────────────────────────────────────────
+
+@router.post("/recalculate-all")
+def recalculate_all_promos() -> dict:
+    """
+    Recalculate final_achievements untuk SEMUA promo Selesai sekaligus.
+    Berguna untuk one-shot migration setelah brand filter fix diterapkan.
+    """
+    selesai_promos = [p for p in _get_promos() if p.get("status") == "Selesai"]
+    if not selesai_promos:
+        return {"status": "ok", "message": "Tidak ada promo Selesai", "results": []}
+
+    df_trx = load_data()
+    results: list[dict] = []
+
+    if USE_SQLITE:
+        _db = SessionLocal()
+    else:
+        _db = None
+
+    try:
+        for promo in selesai_promos:
+            promo_id = promo["id"]
+            try:
+                if _db is not None:
+                    _inject_resolved_brands(promo, db=_db)
+                else:
+                    _inject_resolved_brands(promo)
+
+                ach_df = calculate_promo_achievement(promo, df_trx)
+                if ach_df.empty:
+                    results.append({"promo_id": promo_id, "status": "empty_result"})
+                    continue
+
+                summary = get_promo_summary(promo, ach_df)
+                _update_promo_status(
+                    promo_id,
+                    final_achievements=ach_df.to_dict("records"),
+                    final_summary=summary,
+                )
+                results.append({
+                    "promo_id":               promo_id,
+                    "status":                 "recalculated",
+                    "peserta_count":          len(ach_df),
+                    "overall_achievement_pct": summary.get("overall_achievement_pct"),
+                    "total_realisasi_ton":    summary.get("total_realisasi_ton"),
+                })
+            except Exception as exc:
+                results.append({"promo_id": promo_id, "status": "error", "error": str(exc)})
+    finally:
+        if _db is not None:
+            _db.close()
+
+    ok_count  = sum(1 for r in results if r["status"] == "recalculated")
+    err_count = sum(1 for r in results if r["status"] == "error")
+
+    return {
+        "status":  "ok",
+        "message": f"{ok_count} promo berhasil di-recalculate, {err_count} error",
+        "results": results,
+        "meta":    _meta(),
+    }
+
+
 # ── POST /api/promo/{promo_id}/cancel ────────────────────────────────────────
 
 @router.post("/{promo_id}/cancel")
