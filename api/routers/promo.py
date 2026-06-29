@@ -824,6 +824,70 @@ def create_promo(body: CreatePromoBody) -> dict:
     return {"status": "ok", "data": promo}
 
 
+# ── POST /api/promo/recalculate-all ─────────────────────────────────────────
+
+@router.post("/recalculate-all")
+def recalculate_all_promos() -> dict:
+    """
+    Recalculate final_achievements untuk SEMUA promo Selesai sekaligus.
+    Berguna untuk one-shot migration setelah brand filter fix diterapkan.
+    """
+    selesai_promos = [p for p in _get_promos() if p.get("status") == "Selesai"]
+    if not selesai_promos:
+        return {"status": "ok", "message": "Tidak ada promo Selesai", "results": []}
+
+    df_trx = load_data()
+    results: list[dict] = []
+
+    if USE_SQLITE:
+        _db = SessionLocal()
+    else:
+        _db = None
+
+    try:
+        for promo in selesai_promos:
+            promo_id = promo["id"]
+            try:
+                if _db is not None:
+                    _inject_resolved_brands(promo, db=_db)
+                else:
+                    _inject_resolved_brands(promo)
+
+                ach_df = calculate_promo_achievement(promo, df_trx)
+                if ach_df.empty:
+                    results.append({"promo_id": promo_id, "status": "empty_result"})
+                    continue
+
+                summary = get_promo_summary(promo, ach_df)
+                _update_promo_status(
+                    promo_id,
+                    final_achievements=ach_df.to_dict("records"),
+                    final_summary=summary,
+                )
+                results.append({
+                    "promo_id":               promo_id,
+                    "status":                 "recalculated",
+                    "peserta_count":          len(ach_df),
+                    "overall_achievement_pct": summary.get("overall_achievement_pct"),
+                    "total_realisasi_ton":    summary.get("total_realisasi_ton"),
+                })
+            except Exception as exc:
+                results.append({"promo_id": promo_id, "status": "error", "error": str(exc)})
+    finally:
+        if _db is not None:
+            _db.close()
+
+    ok_count  = sum(1 for r in results if r["status"] == "recalculated")
+    err_count = sum(1 for r in results if r["status"] == "error")
+
+    return {
+        "status":  "ok",
+        "message": f"{ok_count} promo berhasil di-recalculate, {err_count} error",
+        "results": results,
+        "meta":    _meta(),
+    }
+
+
 # ── GET /api/promo/{promo_id} ─────────────────────────────────────────────────
 
 @router.get("/{promo_id}")
@@ -1033,70 +1097,6 @@ def recalculate_promo(promo_id: str) -> dict:
             "peserta_count":           len(ach_df),
         },
         "meta": _meta(),
-    }
-
-
-# ── POST /api/promo/recalculate-all ─────────────────────────────────────────
-
-@router.post("/recalculate-all")
-def recalculate_all_promos() -> dict:
-    """
-    Recalculate final_achievements untuk SEMUA promo Selesai sekaligus.
-    Berguna untuk one-shot migration setelah brand filter fix diterapkan.
-    """
-    selesai_promos = [p for p in _get_promos() if p.get("status") == "Selesai"]
-    if not selesai_promos:
-        return {"status": "ok", "message": "Tidak ada promo Selesai", "results": []}
-
-    df_trx = load_data()
-    results: list[dict] = []
-
-    if USE_SQLITE:
-        _db = SessionLocal()
-    else:
-        _db = None
-
-    try:
-        for promo in selesai_promos:
-            promo_id = promo["id"]
-            try:
-                if _db is not None:
-                    _inject_resolved_brands(promo, db=_db)
-                else:
-                    _inject_resolved_brands(promo)
-
-                ach_df = calculate_promo_achievement(promo, df_trx)
-                if ach_df.empty:
-                    results.append({"promo_id": promo_id, "status": "empty_result"})
-                    continue
-
-                summary = get_promo_summary(promo, ach_df)
-                _update_promo_status(
-                    promo_id,
-                    final_achievements=ach_df.to_dict("records"),
-                    final_summary=summary,
-                )
-                results.append({
-                    "promo_id":               promo_id,
-                    "status":                 "recalculated",
-                    "peserta_count":          len(ach_df),
-                    "overall_achievement_pct": summary.get("overall_achievement_pct"),
-                    "total_realisasi_ton":    summary.get("total_realisasi_ton"),
-                })
-            except Exception as exc:
-                results.append({"promo_id": promo_id, "status": "error", "error": str(exc)})
-    finally:
-        if _db is not None:
-            _db.close()
-
-    ok_count  = sum(1 for r in results if r["status"] == "recalculated")
-    err_count = sum(1 for r in results if r["status"] == "error")
-
-    return {
-        "status":  "ok",
-        "message": f"{ok_count} promo berhasil di-recalculate, {err_count} error",
-        "results": results,
-        "meta":    _meta(),
     }
 
 
