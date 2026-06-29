@@ -22,6 +22,8 @@ from api.core.promo_engine import (
     PRICE_PER_TON_ESTIMATE,
     calculate_promo_achievement,
     estimate_budget,
+    estimate_budget_v3,
+    _V3_TYPES,
     get_cluster_comparison,
     get_daily_trend,
     get_promo_summary,
@@ -409,15 +411,25 @@ def _infer_jenis(cfg: dict) -> str:
     return "reward_rate"
 
 
-def _rebuild_summary(peserta: list[dict], konfigurasi: dict) -> dict:
+def _rebuild_summary(
+    peserta: list[dict],
+    konfigurasi: dict,
+    *,
+    tipe_program: str | None = None,
+    reward_config: dict | None = None,
+) -> dict:
     per_cluster: dict[str, int] = {}
     for p in peserta:
         cl = str(p.get("cluster", "Unknown"))
         per_cluster[cl] = per_cluster.get(cl, 0) + 1
+    if tipe_program in _V3_TYPES and reward_config is not None:
+        budget = estimate_budget_v3(peserta, tipe_program, reward_config)
+    else:
+        budget = estimate_budget(peserta, konfigurasi)
     return {
         "total_toko":            len(peserta),
         "per_cluster":           per_cluster,
-        "estimasi_budget_total": estimate_budget(peserta, konfigurasi),
+        "estimasi_budget_total": budget,
     }
 
 
@@ -824,6 +836,51 @@ def create_promo(body: CreatePromoBody) -> dict:
     return {"status": "ok", "data": promo}
 
 
+# ── POST /api/promo/rebuild-summaries ────────────────────────────────────────
+
+@router.post("/rebuild-summaries")
+def rebuild_all_summaries() -> dict:
+    """Update summary_peserta.estimasi_budget_total untuk semua promo v3."""
+    results: list[dict] = []
+    if USE_SQLITE:
+        _db = SessionLocal()
+        try:
+            promo_rows = _db.query(PromoRow).filter(
+                PromoRow.tipe_program.in_(list(_V3_TYPES))
+            ).all()
+            for row in promo_rows:
+                try:
+                    peserta_rows = _db.query(PromoPesertaRow).filter_by(promo_id=row.id).all()
+                    peserta = [{"id_toko": p.id_toko, "target_ton": p.target_ton, "cluster": p.cluster} for p in peserta_rows]
+                    rc      = row.reward_config or {}
+                    budget  = estimate_budget_v3(peserta, row.tipe_program, rc)
+                    current = dict(row.summary_peserta or {})
+                    current["estimasi_budget_total"] = budget
+                    row.summary_peserta = current
+                    results.append({"promo_id": row.id, "tipe": row.tipe_program, "estimasi_budget_total": budget, "status": "updated"})
+                except Exception as exc:
+                    results.append({"promo_id": row.id, "status": "error", "error": str(exc)})
+            _db.commit()
+        finally:
+            _db.close()
+    else:
+        with _LOCK:
+            promos = _rp(_PROMOS_PATH)
+            for p in promos:
+                if p.get("tipe_program") not in _V3_TYPES:
+                    continue
+                try:
+                    rc     = p.get("reward_config") or {}
+                    budget = estimate_budget_v3(p.get("peserta", []), p["tipe_program"], rc)
+                    p.setdefault("summary_peserta", {})["estimasi_budget_total"] = budget
+                    results.append({"promo_id": p["id"], "tipe": p["tipe_program"], "estimasi_budget_total": budget, "status": "updated"})
+                except Exception as exc:
+                    results.append({"promo_id": p.get("id"), "status": "error", "error": str(exc)})
+            _wp(_PROMOS_PATH, promos)
+
+    return {"status": "ok", "message": f"{sum(1 for r in results if r['status']=='updated')} promo diperbarui", "results": results, "meta": _meta()}
+
+
 # ── POST /api/promo/recalculate-all ─────────────────────────────────────────
 
 @router.post("/recalculate-all")
@@ -925,7 +982,7 @@ def update_promo(promo_id: str, body: UpdatePromoBody) -> dict:
                 p.reward_config   = cfg
                 p.jenis_promo     = _infer_jenis(cfg)
                 peserta_dicts     = [_peserta_to_dict(pp) for pp in peserta_rows]
-                p.summary_peserta = _rebuild_summary(peserta_dicts, cfg)
+                p.summary_peserta = _rebuild_summary(peserta_dicts, cfg, tipe_program=p.tipe_program, reward_config=p.reward_config)
 
             db.commit()
             updated = _promo_row_to_dict(p, peserta_rows)
@@ -953,7 +1010,7 @@ def update_promo(promo_id: str, body: UpdatePromoBody) -> dict:
             cfg = body.konfigurasi_promo.model_dump()
             promos[idx]["konfigurasi_promo"] = cfg
             promos[idx]["jenis_promo"]       = _infer_jenis(cfg)
-            promos[idx]["summary_peserta"]   = _rebuild_summary(promos[idx]["peserta"], cfg)
+            promos[idx]["summary_peserta"]   = _rebuild_summary(promos[idx]["peserta"], cfg, tipe_program=promos[idx].get("tipe_program"), reward_config=promos[idx].get("reward_config"))
 
         _wp(_PROMOS_PATH, promos)
         updated = promos[idx]
@@ -1189,7 +1246,7 @@ def add_peserta(promo_id: str, body: AddPesertaBody) -> dict:
         if body.id_toko in existing_ids:
             raise HTTPException(409, detail=f"Toko {body.id_toko} sudah terdaftar")
         updated_peserta = promo["peserta"] + [new_entry]
-        summary = _rebuild_summary(updated_peserta, promo.get("konfigurasi_promo", {}))
+        summary = _rebuild_summary(updated_peserta, promo.get("konfigurasi_promo", {}), tipe_program=promo.get("tipe_program"), reward_config=promo.get("reward_config"))
         _set_peserta_list(promo_id, updated_peserta, summary)
         return {"status": "ok", "data": updated_peserta}
 
@@ -1207,7 +1264,8 @@ def add_peserta(promo_id: str, body: AddPesertaBody) -> dict:
 
         promos[idx]["peserta"].append(new_entry)
         promos[idx]["summary_peserta"] = _rebuild_summary(
-            promos[idx]["peserta"], promos[idx].get("konfigurasi_promo", {})
+            promos[idx]["peserta"], promos[idx].get("konfigurasi_promo", {}),
+            tipe_program=promos[idx].get("tipe_program"), reward_config=promos[idx].get("reward_config"),
         )
         _wp(_PROMOS_PATH, promos)
         updated_peserta = promos[idx]["peserta"]
@@ -1313,7 +1371,7 @@ def upload_peserta(promo_id: str, file: UploadFile = File(...)) -> dict:
 
         if new_peserta:
             updated_peserta = promo["peserta"] + new_peserta
-            summary = _rebuild_summary(updated_peserta, promo.get("konfigurasi_promo", {}))
+            summary = _rebuild_summary(updated_peserta, promo.get("konfigurasi_promo", {}), tipe_program=promo.get("tipe_program"), reward_config=promo.get("reward_config"))
             _set_peserta_list(promo_id, updated_peserta, summary)
 
         return {
@@ -1425,7 +1483,7 @@ def add_peserta_mon(promo_id: str, body: AddPesertaMonBody) -> dict:
         if any(str(p["id_toko"]) == body.id_toko for p in promo["peserta"]):
             raise HTTPException(409, detail=f"Toko {body.id_toko} sudah terdaftar dalam program ini")
         updated_peserta = promo["peserta"] + [new_p]
-        summary = _rebuild_summary(updated_peserta, promo.get("konfigurasi_promo", {}))
+        summary = _rebuild_summary(updated_peserta, promo.get("konfigurasi_promo", {}), tipe_program=promo.get("tipe_program"), reward_config=promo.get("reward_config"))
         _set_peserta_list(promo_id, updated_peserta, summary)
         return {"status": "ok", "data": new_p, "meta": _meta()}
 
@@ -1442,7 +1500,8 @@ def add_peserta_mon(promo_id: str, body: AddPesertaMonBody) -> dict:
 
         promos[idx]["peserta"].append(new_p)
         promos[idx]["summary_peserta"] = _rebuild_summary(
-            promos[idx]["peserta"], promos[idx].get("konfigurasi_promo", {})
+            promos[idx]["peserta"], promos[idx].get("konfigurasi_promo", {}),
+            tipe_program=promos[idx].get("tipe_program"), reward_config=promos[idx].get("reward_config"),
         )
         _wp(_PROMOS_PATH, promos)
 
@@ -1470,7 +1529,7 @@ def update_peserta(promo_id: str, id_toko: str, body: UpdatePesertaBody) -> dict
         if body.catatan     is not None: peserta[pidx]["catatan"]     = body.catatan
 
         updated = peserta[pidx]
-        summary = _rebuild_summary(peserta, promo.get("konfigurasi_promo", {}))
+        summary = _rebuild_summary(peserta, promo.get("konfigurasi_promo", {}), tipe_program=promo.get("tipe_program"), reward_config=promo.get("reward_config"))
         _set_peserta_list(promo_id, peserta, summary)
         return {"status": "ok", "data": updated, "meta": _meta()}
 
@@ -1495,7 +1554,8 @@ def update_peserta(promo_id: str, id_toko: str, body: UpdatePesertaBody) -> dict
 
         updated = promos[idx]["peserta"][pidx]
         promos[idx]["summary_peserta"] = _rebuild_summary(
-            promos[idx]["peserta"], promos[idx].get("konfigurasi_promo", {})
+            promos[idx]["peserta"], promos[idx].get("konfigurasi_promo", {}),
+            tipe_program=promos[idx].get("tipe_program"), reward_config=promos[idx].get("reward_config"),
         )
         _wp(_PROMOS_PATH, promos)
 
@@ -1516,7 +1576,7 @@ def remove_peserta(promo_id: str, id_toko: str) -> dict:
         updated_peserta = [p for p in promo["peserta"] if str(p["id_toko"]) != id_toko]
         if len(updated_peserta) == before:
             raise HTTPException(404, detail=f"Toko {id_toko} tidak ditemukan di peserta")
-        summary = _rebuild_summary(updated_peserta, promo.get("konfigurasi_promo", {}))
+        summary = _rebuild_summary(updated_peserta, promo.get("konfigurasi_promo", {}), tipe_program=promo.get("tipe_program"), reward_config=promo.get("reward_config"))
         _set_peserta_list(promo_id, updated_peserta, summary)
         return {"status": "ok", "data": updated_peserta}
 
@@ -1534,7 +1594,7 @@ def remove_peserta(promo_id: str, id_toko: str) -> dict:
             raise HTTPException(404, detail=f"Toko {id_toko} tidak ditemukan di peserta")
 
         cfg = promos[idx].get("konfigurasi_promo", {})
-        promos[idx]["summary_peserta"] = _rebuild_summary(promos[idx]["peserta"], cfg)
+        promos[idx]["summary_peserta"] = _rebuild_summary(promos[idx]["peserta"], cfg, tipe_program=promos[idx].get("tipe_program"), reward_config=promos[idx].get("reward_config"))
         _wp(_PROMOS_PATH, promos)
         updated = promos[idx]["peserta"]
 
@@ -1605,7 +1665,9 @@ def get_monitoring(
             loyalty_config = loyalty_cfg,
         )
         # backward-compat flag for multi_tier
-        result["is_multi_tier"] = (tipe == "multi_tier")
+        result["is_multi_tier"]      = (tipe == "multi_tier")
+        result["est_budget"]         = int((promo.get("summary_peserta") or {}).get("estimasi_budget_total", 0))
+        result["total_reward_earned"] = int(result.get("total_rupiah", 0))
         return {"status": "ok", "data": result, "meta": _meta()}
 
     # Legacy konfigurasi_promo flow

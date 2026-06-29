@@ -46,6 +46,47 @@ def estimate_budget(peserta: list[dict], konfigurasi: dict) -> int:
     return round(total)
 
 
+_V3_TYPES = frozenset(("flat_multiplier", "flat_per_batch", "multi_tier", "leaderboard"))
+
+
+def estimate_budget_v3(
+    peserta: list[dict],
+    tipe_program: str,
+    reward_config: dict,
+    loyalty_config: dict | None = None,
+) -> int:
+    """Estimasi budget promo v3 dengan asumsi semua peserta achieve 100% target."""
+    bpv     = (loyalty_config or {}).get("brand_point_values", {})
+    pv_mb   = float(bpv.get("Semen Elang", 5000))
+    total   = 0.0
+
+    if tipe_program == "flat_multiplier":
+        mult = float(reward_config.get("multiplier", 1))
+        for p in peserta:
+            total += float(p.get("target_ton") or 0) * mult * pv_mb
+
+    elif tipe_program == "flat_per_batch":
+        tpp = float(reward_config.get("ton_per_poin", 2)) or 2.0
+        for p in peserta:
+            total += (float(p.get("target_ton") or 0) / tpp) * pv_mb
+
+    elif tipe_program == "multi_tier":
+        tiers = reward_config.get("tiers", [])
+        top_mult = max((float(t.get("multiplier", 1)) for t in tiers), default=1.0)
+        for p in peserta:
+            total += float(p.get("target_ton") or 0) * top_mult * pv_mb
+
+    elif tipe_program == "leaderboard":
+        positions = reward_config.get("reward_positions", [])
+        if positions:
+            total = sum(float(pos.get("reward_value", 0)) for pos in positions)
+        else:
+            for p in peserta:
+                total += float(p.get("target_ton") or 0) * pv_mb
+
+    return round(total)
+
+
 def calculate_promo_achievement(promo: dict, df_transaksi: pd.DataFrame) -> pd.DataFrame:
     """Compute per-participant achievement for the promo period."""
     peserta = promo.get("peserta", [])
