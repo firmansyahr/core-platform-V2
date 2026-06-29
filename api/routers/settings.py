@@ -20,7 +20,8 @@ from api.core.aegis_engine import (
     get_store_crs,
 )
 from api.core.ilp_engine import get_ilp_features, get_ilp_hierarchy
-from api.database import SessionLocal
+from sqlalchemy.orm import Session
+from api.database import SessionLocal, get_db
 from api.models import LoyaltyConfig
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -146,6 +147,32 @@ def update_brand_point_values(
         "status": "ok",
         "data": {"brand_point_values": body.brand_point_values},
         "meta": {"generated_at": datetime.now(timezone.utc).isoformat()},
+    }
+
+
+@router.get("/debug/brand-config")
+def debug_brand_config(db: Session = Depends(get_db)):
+    from api.models import BrandConfig
+    from api.core.brand_config_engine import get_brand_config_for_toko, DEFAULT_CONFIG
+
+    rows = db.query(BrandConfig).all()
+    resolved = get_brand_config_for_toko("", "", db)
+
+    return {
+        "total_rows": len(rows),
+        "rows": [
+            {
+                "id": r.id,
+                "provinsi": r.provinsi,
+                "kabupaten": r.kabupaten,
+                "mb_brands": r.mb_brands,
+                "cb_brands": r.cb_brands,
+                "fb_brands": r.fb_brands,
+            }
+            for r in rows
+        ],
+        "resolved_empty_wilayah": resolved,
+        "DEFAULT_CONFIG": DEFAULT_CONFIG,
     }
 
 
