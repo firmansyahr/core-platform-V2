@@ -150,6 +150,63 @@ def update_brand_point_values(
     }
 
 
+@router.get("/brand-config")
+def get_brand_config_list(db: Session = Depends(get_db)):
+    from api.models import BrandConfig
+    rows = db.query(BrandConfig).all()
+    return {
+        "status": "ok",
+        "data": [
+            {
+                "id": r.id,
+                "provinsi": r.provinsi,
+                "kabupaten": r.kabupaten,
+                "mb_brands": r.mb_brands,
+                "cb_brands": r.cb_brands,
+                "fb_brands": r.fb_brands,
+                "scope": "global" if r.provinsi is None
+                         else ("provinsi" if r.kabupaten is None else "kabupaten"),
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.post("/brand-config/global")
+def upsert_global_brand_config(db: Session = Depends(get_db)):
+    """Seed/update row global BrandConfig dengan nilai default yang benar."""
+    from api.models import BrandConfig
+
+    row = db.query(BrandConfig).filter(
+        BrandConfig.provinsi.is_(None),
+        BrandConfig.kabupaten.is_(None),
+    ).first()
+
+    if row:
+        row.mb_brands = ["SEMEN ELANG"]
+        row.cb_brands = ["SEMEN BADAK"]
+        row.fb_brands = ["SEMEN BANTENG"]
+    else:
+        row = BrandConfig(
+            mb_brands=["SEMEN ELANG"],
+            cb_brands=["SEMEN BADAK"],
+            fb_brands=["SEMEN BANTENG"],
+        )
+        db.add(row)
+
+    db.commit()
+    db.refresh(row)
+
+    return {
+        "status": "ok",
+        "data": {
+            "mb_brands": row.mb_brands,
+            "cb_brands": row.cb_brands,
+            "fb_brands": row.fb_brands,
+        },
+    }
+
+
 @router.get("/debug/brand-config")
 def debug_brand_config(db: Session = Depends(get_db)):
     from api.models import BrandConfig

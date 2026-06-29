@@ -16,14 +16,43 @@ from api.routers import aegis, auth, brand_config, cad_history, cannibalization,
 # tanpa handler. Ditemukan saat verifikasi token usage logging (LANGKAH 4
 # smart routing) tidak muncul di log padahal kode-nya jalan.
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s | %(message)s")
+logger = logging.getLogger(__name__)
+
+
+def _seed_brand_config_global(db) -> None:
+    from api.models import BrandConfig
+    try:
+        row = db.query(BrandConfig).filter(
+            BrandConfig.provinsi.is_(None),
+            BrandConfig.kabupaten.is_(None),
+        ).first()
+        if row and not row.fb_brands:
+            row.fb_brands = ["SEMEN BANTENG"]
+            db.commit()
+            logger.info("BrandConfig global: fb_brands seeded")
+        elif not row:
+            db.add(BrandConfig(
+                mb_brands=["SEMEN ELANG"],
+                cb_brands=["SEMEN BADAK"],
+                fb_brands=["SEMEN BANTENG"],
+            ))
+            db.commit()
+            logger.info("BrandConfig global: row created")
+    except Exception as exc:
+        logger.warning("BrandConfig seed error: %s", exc)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from api.startup import ensure_data_files
     ensure_data_files()
-    from api.database import init_db
+    from api.database import init_db, SessionLocal
     init_db()
+    _db = SessionLocal()
+    try:
+        _seed_brand_config_global(_db)
+    finally:
+        _db.close()
     print("[startup] Pre-loading data ke memory...", flush=True)
     from api.core.data_loader import preload_data
     preload_data()
