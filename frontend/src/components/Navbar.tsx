@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
-import { Moon, Sun, Settings, LogOut, Info, Menu, X, ChevronDown, FileText, Sparkles, Bell, Zap } from "lucide-react";
+import { Moon, Sun, Settings, LogOut, Info, Menu, X, ChevronDown, FileText, Sparkles, Bell, Zap, Bot } from "lucide-react";
 import { useOracleNotifications } from "@/hooks/useOracleNotifications";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -204,7 +204,7 @@ export default function Navbar() {
             </span>
           </div>
 
-          {/* Desktop nav: Home | Summary | AEGIS▾ | Loyalty▾ | ILP | Tracker | Settings | About */}
+          {/* Desktop nav: Home | AEGIS▾ | Loyalty▾ | ILP | Tracker | ORACLE | Intelligence▾ | Settings | About */}
           <nav className="hidden md:flex items-center gap-0.5">
 
             {/* Home */}
@@ -212,53 +212,6 @@ export default function Navbar() {
               <HugeiconsIcon icon={toIcon(HomeIcon)} size={15} />
               Home
             </a>
-
-            {/* Intelligence dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className={dropdownBtnCls(isIntelligenceActive)}>
-                  <Sparkles size={15} strokeWidth={1.75} />
-                  Intelligence
-                  {kritisCount > 0 && (
-                    <span className="ml-0.5 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
-                      bg-red-500 text-white flex items-center justify-center leading-none">
-                      {kritisCount > 99 ? "99+" : kritisCount}
-                    </span>
-                  )}
-                  <ChevronDown size={12} className="ml-0.5 opacity-50" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-52">
-                <DropdownMenuItem
-                  onClick={() => nav("/executive-summary")}
-                  className={`text-sm cursor-pointer ${isActive("/executive-summary") ? "font-semibold text-foreground" : ""}`}
-                >
-                  <HugeiconsIcon icon={toIcon(AnalyticsIcon)} size={14} className="mr-2 shrink-0" />
-                  Executive Summary
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => nav("/action-center")}
-                  className={`text-sm cursor-pointer ${isActive("/action-center") ? "font-semibold text-foreground" : ""}`}
-                >
-                  <Zap size={14} strokeWidth={1.75} className="mr-2 shrink-0" />
-                  Action Center
-                  {kritisCount > 0 && (
-                    <span className="ml-auto min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
-                      bg-red-500 text-white flex items-center justify-center leading-none">
-                      {kritisCount > 99 ? "99+" : kritisCount}
-                    </span>
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => nav("/report")}
-                  className={`text-sm cursor-pointer ${isActive("/report") ? "font-semibold text-foreground" : ""}`}
-                >
-                  <FileText size={14} strokeWidth={1.75} className="mr-2 shrink-0" />
-                  AI Report Generator
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
 
             {/* AEGIS dropdown */}
             <DropdownMenu>
@@ -332,9 +285,56 @@ export default function Navbar() {
 
             {/* ORACLE */}
             <a href="/analytics/oracle" className={linkCls("/analytics/oracle")}>
-              <Sparkles size={15} strokeWidth={1.75} />
+              <Bot size={15} strokeWidth={1.75} />
               ORACLE
             </a>
+
+            {/* Intelligence dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className={dropdownBtnCls(isIntelligenceActive)}>
+                  <Sparkles size={15} strokeWidth={1.75} />
+                  Intelligence
+                  {kritisCount > 0 && (
+                    <span className="ml-0.5 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
+                      bg-red-500 text-white flex items-center justify-center leading-none">
+                      {kritisCount > 99 ? "99+" : kritisCount}
+                    </span>
+                  )}
+                  <ChevronDown size={12} className="ml-0.5 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-52">
+                <DropdownMenuItem
+                  onClick={() => nav("/executive-summary")}
+                  className={`text-sm cursor-pointer ${isActive("/executive-summary") ? "font-semibold text-foreground" : ""}`}
+                >
+                  <HugeiconsIcon icon={toIcon(AnalyticsIcon)} size={14} className="mr-2 shrink-0" />
+                  Executive Summary
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => nav("/action-center")}
+                  className={`text-sm cursor-pointer ${isActive("/action-center") ? "font-semibold text-foreground" : ""}`}
+                >
+                  <Zap size={14} strokeWidth={1.75} className="mr-2 shrink-0" />
+                  Action Center
+                  {kritisCount > 0 && (
+                    <span className="ml-auto min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
+                      bg-red-500 text-white flex items-center justify-center leading-none">
+                      {kritisCount > 99 ? "99+" : kritisCount}
+                    </span>
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => nav("/report")}
+                  className={`text-sm cursor-pointer ${isActive("/report") ? "font-semibold text-foreground" : ""}`}
+                >
+                  <FileText size={14} strokeWidth={1.75} className="mr-2 shrink-0" />
+                  AI Report Generator
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             {/* Settings */}
             <a href="/settings" className={linkCls("/settings")}>
@@ -468,49 +468,6 @@ export default function Navbar() {
               Home
             </a>
 
-            {/* Intelligence mobile */}
-            <div>
-              <button
-                onClick={() => setIntelligenceOpen((p) => !p)}
-                className={`w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150 ${
-                  isIntelligenceActive
-                    ? "bg-foreground/8 text-foreground dark:bg-white/10"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <Sparkles size={16} strokeWidth={1.75} />
-                  Intelligence
-                  {kritisCount > 0 && (
-                    <span className="ml-1 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
-                      bg-red-500 text-white flex items-center justify-center leading-none">
-                      {kritisCount > 99 ? "99+" : kritisCount}
-                    </span>
-                  )}
-                </span>
-                <ChevronDown size={14} className={`transition-transform duration-200 ${intelligenceOpen ? "rotate-180" : ""}`} />
-              </button>
-              {intelligenceOpen && (
-                <div className="ml-6 mt-1 flex flex-col gap-0.5 border-l border-border pl-3">
-                  <button onClick={() => nav("/executive-summary")} className="text-left px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-100">
-                    📊 Executive Summary
-                  </button>
-                  <button onClick={() => nav("/action-center")} className="flex items-center gap-2 text-left px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-100">
-                    ⚡ Action Center
-                    {kritisCount > 0 && (
-                      <span className="min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
-                        bg-red-500 text-white flex items-center justify-center leading-none">
-                        {kritisCount > 99 ? "99+" : kritisCount}
-                      </span>
-                    )}
-                  </button>
-                  <button onClick={() => nav("/report")} className="text-left px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-100">
-                    📄 AI Report Generator
-                  </button>
-                </div>
-              )}
-            </div>
-
             {/* AEGIS mobile */}
             <div>
               <button
@@ -593,9 +550,52 @@ export default function Navbar() {
 
             {/* ORACLE */}
             <a href="/analytics/oracle" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/analytics/oracle")}>
-              <Sparkles size={16} strokeWidth={1.75} />
+              <Bot size={16} strokeWidth={1.75} />
               ORACLE
             </a>
+
+            {/* Intelligence mobile */}
+            <div>
+              <button
+                onClick={() => setIntelligenceOpen((p) => !p)}
+                className={`w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150 ${
+                  isIntelligenceActive
+                    ? "bg-foreground/8 text-foreground dark:bg-white/10"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Sparkles size={16} strokeWidth={1.75} />
+                  Intelligence
+                  {kritisCount > 0 && (
+                    <span className="ml-1 min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
+                      bg-red-500 text-white flex items-center justify-center leading-none">
+                      {kritisCount > 99 ? "99+" : kritisCount}
+                    </span>
+                  )}
+                </span>
+                <ChevronDown size={14} className={`transition-transform duration-200 ${intelligenceOpen ? "rotate-180" : ""}`} />
+              </button>
+              {intelligenceOpen && (
+                <div className="ml-6 mt-1 flex flex-col gap-0.5 border-l border-border pl-3">
+                  <button onClick={() => nav("/executive-summary")} className="text-left px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-100">
+                    📊 Executive Summary
+                  </button>
+                  <button onClick={() => nav("/action-center")} className="flex items-center gap-2 text-left px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-100">
+                    ⚡ Action Center
+                    {kritisCount > 0 && (
+                      <span className="min-w-[17px] h-[17px] px-1 rounded-full text-[10px] font-bold
+                        bg-red-500 text-white flex items-center justify-center leading-none">
+                        {kritisCount > 99 ? "99+" : kritisCount}
+                      </span>
+                    )}
+                  </button>
+                  <button onClick={() => nav("/report")} className="text-left px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-100">
+                    📄 AI Report Generator
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Settings */}
             <a href="/settings" onClick={() => setMenuOpen(false)} className={mobileLinkCls("/settings")}>

@@ -6,7 +6,7 @@ import {
   Brain, Cpu, Target, Zap, Layers, GitBranch,
   ShieldCheck, Activity, Swords, Bot, Sparkles,
   CheckCircle2, XCircle, Scale, GitMerge,
-  ExternalLink, Map, FileText, Award,
+  ExternalLink, Map, FileText, Award, Bell,
 } from "lucide-react";
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -144,8 +144,8 @@ const AI_CAPS = [
   {
     icon: TrendingUp,
     title: "Prophet Forecasting",
-    desc: "Prediksi AEGIS Score 4 minggu ke depan",
-    detail: "Confidence interval 80% · Seasonal aware",
+    desc: "Prediksi trendline adaptif di 3 modul platform",
+    detail: "AEGIS-PREDICT (4 minggu) · Loyalty trendline · Competitor market share (Prophet + LinReg + Delta adaptive) · CI 80% · Seasonal aware",
     color: "text-sky-600 dark:text-sky-400",
     bg: "bg-sky-50 dark:bg-sky-950/20",
   },
@@ -224,6 +224,22 @@ const GEN_AI_CAPS = [
     color: "text-pink-600 dark:text-pink-400",
     bg: "bg-pink-50 dark:bg-pink-950/20",
   },
+  {
+    icon: Award,
+    title: "Executive Summary",
+    desc: "Ringkasan kondisi platform lintas-modul dalam satu halaman — orientasi cepat untuk stakeholder",
+    detail: "Health score AEGIS · Loyalty achievement snapshot · Competitor risk overview · KPI utama · Cross-module aggregation",
+    color: "text-violet-600 dark:text-violet-400",
+    bg: "bg-violet-50 dark:bg-violet-950/20",
+  },
+  {
+    icon: Bell,
+    title: "Action Center",
+    desc: "Agregasi rekomendasi aksi terprioritasi dari semua modul dalam satu tampilan",
+    detail: "3 severity level (Kritis/Penting/Info) · Source: AEGIS, Loyalty, Competitor Intelligence · Badge real-time di navbar · Dismiss per item · 5-menit cache TTL",
+    color: "text-amber-600 dark:text-amber-400",
+    bg: "bg-amber-50 dark:bg-amber-950/20",
+  },
 ];
 
 const WHY_ITEMS = [
@@ -268,6 +284,8 @@ const STEPS = [
   { n: 9, icon: "📈", title: "Performance Tracker",       desc: "Evaluasi outcome program: volume delta, FBSI delta, dan verdict otomatis per toko." },
   { n: 10, icon: "🤝", title: "Competitor Intelligence", desc: "Triangulasi AEGIS + ASPERSSI per provinsi: konfirmasi ancaman kompetitor, ranking brand dari dua sumber, dan prediksi market share dengan label keandalan." },
   { n: 11, icon: "📄", title: "AI Report Generator",    desc: "Generate laporan bulanan otomatis — ringkasan eksekutif, analisis AEGIS, evaluasi loyalty, dan rekomendasi tindakan dalam satu klik. Tinjau di browser sebelum unduh PDF." },
+  { n: 12, icon: "📊", title: "Executive Summary",     desc: "Ringkasan lintas-modul dalam satu halaman: health score AEGIS, Loyalty achievement, Competitor snapshot, dan KPI utama — orientasi cepat kondisi platform untuk stakeholder." },
+  { n: 13, icon: "⚡", title: "Action Center",         desc: "Rekomendasi aksi terprioritasi dari semua modul. Severity Kritis → tindak segera, Penting → dalam 48 jam, Info → pantau berkala. Dismiss item yang sudah ditangani." },
 ];
 
 const ACCESS_MATRIX = [
@@ -282,6 +300,8 @@ const ACCESS_MATRIX = [
   { feature: "Program Promo",            admin: true,  viewer: true  },
   { feature: "Performance Tracker",      admin: true,  viewer: true  },
   { feature: "Competitor Intelligence",  admin: true,  viewer: true  },
+  { feature: "Executive Summary",         admin: true,  viewer: true  },
+  { feature: "Action Center",            admin: true,  viewer: true  },
   { feature: "AI Report Generator",      admin: true,  viewer: true  },
   { feature: "ORACLE Intelligence",      admin: true,  viewer: true  },
   { feature: "Settings (view)",          admin: true,  viewer: true  },
@@ -627,7 +647,7 @@ export default function AboutPage() {
               <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest text-center mb-6">
                 Generative AI (Claude API)
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
                 {GEN_AI_CAPS.map((cap) => {
                   const Icon = cap.icon;
                   return (
