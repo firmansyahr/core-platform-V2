@@ -233,6 +233,34 @@ def debug_brand_config(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/debug/toko-wilayah/{toko_id}")
+def debug_toko_wilayah(toko_id: str, db: Session = Depends(get_db)):
+    from api.core.brand_config_engine import get_brand_config_for_toko
+
+    df    = load_data()
+    rows  = df[df["ID Toko"] == toko_id]
+
+    if rows.empty:
+        return {"error": f"Toko {toko_id} tidak ditemukan di data transaksi"}
+
+    sample    = rows.iloc[0]
+    provinsi  = sample.get("Provinsi Toko", "")
+    kabupaten = sample.get("Kabupaten Toko", "")
+    cfg       = get_brand_config_for_toko(provinsi, kabupaten, db)
+
+    brand_col = next((c for c in rows.columns if "brand" in c.lower()), None)
+    brands_in_trx = rows[brand_col].unique().tolist() if brand_col else []
+
+    return {
+        "toko_id":                    toko_id,
+        "provinsi_raw":               provinsi,
+        "kabupaten_raw":              kabupaten,
+        "resolved_brand_config":      cfg,
+        "brands_found_in_transactions": brands_in_trx,
+        "total_transaction_rows":     len(rows),
+    }
+
+
 @router.post("/reload")
 def reload_data(_user: UserInfo = Depends(get_current_admin_user)) -> dict[str, Any]:
     load_data.cache_clear()
