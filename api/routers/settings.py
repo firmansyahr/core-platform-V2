@@ -206,51 +206,6 @@ def upsert_global_brand_config(db: Session = Depends(get_db)):
         },
     }
 
-@router.get("/debug/brand-config")
-def debug_brand_config(db: Session = Depends(get_db)):
-    from api.models import BrandConfig
-    from api.core.brand_config_engine import get_brand_config_for_toko, DEFAULT_CONFIG
-    rows = db.query(BrandConfig).all()
-    resolved = get_brand_config_for_toko("", "", db)
-    return {
-        "total_rows": len(rows),
-        "rows": [
-            {
-                "provinsi":   r.provinsi,
-                "kabupaten":  r.kabupaten,
-                "mb_brands":  r.mb_brands,
-                "cb_brands":  r.cb_brands,
-                "fb_brands":  r.fb_brands,
-            }
-            for r in rows
-        ],
-        "resolved_for_empty_wilayah": resolved,
-        "DEFAULT_CONFIG":             DEFAULT_CONFIG,
-    }
-
-
-@router.get("/debug/toko-wilayah/{toko_id}")
-def debug_toko_wilayah(toko_id: str, db: Session = Depends(get_db)):
-    from api.core.brand_config_engine import get_brand_config_for_toko
-
-    df   = load_data()
-    rows = df[df["ID Toko"] == toko_id]
-    if rows.empty:
-        return {"error": f"Toko {toko_id} tidak ditemukan"}
-
-    sample    = rows.iloc[0]
-    provinsi  = sample.get("Provinsi Toko", "")
-    kabupaten = sample.get("Kabupaten Toko", "")
-    cfg       = get_brand_config_for_toko(provinsi, kabupaten, db)
-
-    return {
-        "toko_id":               toko_id,
-        "provinsi_raw":          provinsi,
-        "kabupaten_raw":         kabupaten,
-        "resolved_brand_config": cfg,
-    }
-
-
 @router.post("/reload")
 def reload_data(_user: UserInfo = Depends(get_current_admin_user)) -> dict[str, Any]:
     load_data.cache_clear()
