@@ -80,11 +80,23 @@ def normalize_brand_name(brand: str) -> str:
 
 def get_default_brands_from_settings(db=None) -> list[str]:
     """
-    Return daftar brand default (MB + CB, tanpa FB) dari BrandConfig global di DB,
+    Return daftar brand default (MB + CB + FB) dari BrandConfig global di DB,
     atau fallback ke DEFAULT_CONFIG dari brand_config_engine.
+
+    Ini fallback global untuk konteks tanpa db (db=None). Untuk resolusi
+    per-toko yang sebenarnya, gunakan filter_transactions_by_brand_per_toko()
+    yang query get_brand_config_for_toko() per kabupaten toko masing-masing.
+
+    fb_brands diikutsertakan — mode "default" mengikuti config wilayah apa
+    adanya, termasuk Fighting Brand jika kabupaten tersebut dikonfigurasi
+    punya FB.
     """
     from api.core.brand_config_engine import DEFAULT_CONFIG
-    fallback: list[str] = DEFAULT_CONFIG["mb_brands"] + DEFAULT_CONFIG["cb_brands"]
+    fallback: list[str] = (
+        DEFAULT_CONFIG["mb_brands"]
+        + DEFAULT_CONFIG["cb_brands"]
+        + DEFAULT_CONFIG["fb_brands"]
+    )
     if db is None:
         return list(fallback)
     try:
@@ -94,7 +106,11 @@ def get_default_brands_from_settings(db=None) -> list[str]:
             BrandConfig.kabupaten.is_(None),
         ).first()
         if global_cfg:
-            return (global_cfg.mb_brands or []) + (global_cfg.cb_brands or [])
+            return (
+                (global_cfg.mb_brands or [])
+                + (global_cfg.cb_brands or [])
+                + (global_cfg.fb_brands or [])
+            )
     except Exception as exc:
         import logging
         logging.getLogger(__name__).warning("get_default_brands_from_settings error: %s", exc)
@@ -271,7 +287,7 @@ def filter_transactions_by_brand_per_toko(
             wilayah.get("Kabupaten Toko", ""),
             db,
         )
-        for b in cfg["mb_brands"] + cfg["cb_brands"]:
+        for b in cfg["mb_brands"] + cfg["cb_brands"] + cfg["fb_brands"]:
             valid_pairs.add((id_toko, normalize_brand_name(b)))
 
     if not valid_pairs:
@@ -753,7 +769,7 @@ def calculate_flat_multiplier_program(
             kabupaten_toko = wilayah.get("Kabupaten Toko", "")
             if "default" in modes:
                 _cfg = get_brand_config_for_toko(provinsi_toko, kabupaten_toko, db)
-                brand_display = ", ".join(_cfg["mb_brands"] + _cfg["cb_brands"])
+                brand_display = ", ".join(_cfg["mb_brands"] + _cfg["cb_brands"] + _cfg["fb_brands"])
             else:
                 brand_display = brand_program or brand
 
@@ -890,7 +906,7 @@ def calculate_flat_per_batch_program(
             kabupaten_toko = wilayah.get("Kabupaten Toko", "")
             if "default" in modes:
                 _cfg = get_brand_config_for_toko(provinsi_toko, kabupaten_toko, db)
-                brand_display = ", ".join(_cfg["mb_brands"] + _cfg["cb_brands"])
+                brand_display = ", ".join(_cfg["mb_brands"] + _cfg["cb_brands"] + _cfg["fb_brands"])
             else:
                 brand_display = brand_program or brand
 
