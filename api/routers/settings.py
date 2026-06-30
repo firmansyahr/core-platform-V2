@@ -185,12 +185,12 @@ def upsert_global_brand_config(db: Session = Depends(get_db)):
     if row:
         row.mb_brands = ["SEMEN ELANG"]
         row.cb_brands = ["SEMEN BADAK"]
-        row.fb_brands = ["SEMEN BANTENG"]
+        row.fb_brands = []
     else:
         row = BrandConfig(
             mb_brands=["SEMEN ELANG"],
             cb_brands=["SEMEN BADAK"],
-            fb_brands=["SEMEN BANTENG"],
+            fb_brands=[],
         )
         db.add(row)
 
