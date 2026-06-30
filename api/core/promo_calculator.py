@@ -8,7 +8,7 @@ from typing import Any
 
 import pandas as pd
 
-from api.core.brand_config_engine import get_brand_reward_multiplier
+from api.core.brand_config_engine import get_brand_config_for_toko, get_brand_reward_multiplier
 
 _CONFIG_PATH = Path("api/data/loyalty_config.json")
 _USE_SQLITE  = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
@@ -220,6 +220,71 @@ def filter_transactions_by_brand(
             df[brand_col].unique().tolist(),
         )
     return filtered
+
+
+def filter_transactions_by_brand_per_toko(
+    df: pd.DataFrame,
+    promo: dict,
+    peserta_data: list[dict],
+    db=None,
+) -> pd.DataFrame:
+    """
+    Filter transaksi per toko berdasarkan brand config wilayah masing-masing
+    toko (hierarki kabupaten → provinsi → global). Khusus untuk mode "default"
+    agar toko di kabupaten dengan BrandConfig berbeda tidak kena filter homogen.
+
+    Mode fighting_brand/custom → delegate ke filter_transactions_by_brand()
+    karena brand sudah eksplisit, tidak butuh resolusi per-wilayah.
+
+    Vectorized: valid pairs (toko_id, brand_norm) dihitung sekali sebagai set,
+    lalu mask diterapkan O(n) untuk hindari row-wise apply pada dataset besar.
+    """
+    bsj = promo.get("brand_selection_json")
+    modes: list[str] = []
+    if bsj:
+        try:
+            modes = json.loads(bsj).get("modes") or []
+        except Exception:
+            pass
+
+    if "default" not in modes:
+        return filter_transactions_by_brand(df, resolve_brands_for_promo(promo))
+
+    brand_col = next((c for c in df.columns if "brand" in c.lower()), None)
+    if brand_col is None:
+        return df
+
+    # Resolve provinsi/kabupaten per toko dari df sebelum difilter
+    toko_wilayah: dict[str, dict] = (
+        df.groupby("ID Toko")[["Provinsi Toko", "Kabupaten Toko"]]
+        .first()
+        .to_dict("index")
+    ) if not df.empty else {}
+
+    # Build set (toko_id, brand_norm) yang valid — O(P×B) pre-compute
+    valid_pairs: set[tuple[str, str]] = set()
+    for peserta in peserta_data:
+        id_toko   = str(peserta["id_toko"])
+        wilayah   = toko_wilayah.get(id_toko, {})
+        cfg = get_brand_config_for_toko(
+            wilayah.get("Provinsi Toko", ""),
+            wilayah.get("Kabupaten Toko", ""),
+            db,
+        )
+        for b in cfg["mb_brands"] + cfg["cb_brands"]:
+            valid_pairs.add((id_toko, normalize_brand_name(b)))
+
+    if not valid_pairs:
+        return df.iloc[:0]
+
+    # Vectorized O(n) mask — hindari row-wise apply
+    id_series    = df["ID Toko"].astype(str)
+    brand_series = df[brand_col].apply(normalize_brand_name)
+    mask = pd.Series(
+        [pair in valid_pairs for pair in zip(id_series, brand_series)],
+        index=df.index,
+    )
+    return df[mask]
 
 
 def _get_brand_rate_for_promo(
@@ -543,7 +608,15 @@ def calculate_program_reward_summary(
     selesai = pd.Timestamp(promo["periode_selesai"]).normalize()
 
     allowed_brands = resolve_brands_for_promo(promo)
-    df_filtered    = filter_transactions_by_brand(transaksi_df.copy(), allowed_brands)
+    from api.database import SessionLocal
+    _use_sqlite_mt = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
+    _db_mt = SessionLocal() if _use_sqlite_mt else None
+    try:
+        df_filtered = filter_transactions_by_brand_per_toko(
+            transaksi_df.copy(), promo, peserta_data, db=_db_mt)
+    finally:
+        if _db_mt is not None:
+            _db_mt.close()
     df             = df_filtered.copy()
     df["_dt"]      = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
     df_period      = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
@@ -638,7 +711,20 @@ def calculate_flat_multiplier_program(
     selesai = pd.Timestamp(promo["periode_selesai"]).normalize()
 
     allowed_brands = resolve_brands_for_promo(promo)
-    df_filtered    = filter_transactions_by_brand(transaksi_df.copy(), allowed_brands)
+
+    _bsj_fm = promo.get("brand_selection_json")
+    modes: list[str] = []
+    if _bsj_fm:
+        try:
+            modes = json.loads(_bsj_fm).get("modes") or []
+        except Exception:
+            pass
+
+    from api.database import SessionLocal
+    _use_sqlite = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
+    db = SessionLocal() if _use_sqlite else None
+
+    df_filtered    = filter_transactions_by_brand_per_toko(transaksi_df.copy(), promo, peserta_data, db=db)
     df             = df_filtered.copy()
     df["_dt"]      = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
     df_period      = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
@@ -654,10 +740,6 @@ def calculate_flat_multiplier_program(
         .to_dict("index")
     ) if not df_filtered.empty else {}
 
-    from api.database import SessionLocal
-    _use_sqlite = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
-    db = SessionLocal() if _use_sqlite else None
-
     vol_by_brand = _compute_vol_by_brand(df_period, [str(p["id_toko"]) for p in peserta_data])
 
     results: list[dict] = []
@@ -666,11 +748,14 @@ def calculate_flat_multiplier_program(
             id_toko        = str(peserta["id_toko"])
             volume         = float(agg_ton.get(id_toko, 0.0))
             brand          = peserta.get("brand_utama", "Semen Elang")
-            brand_display  = brand_program or brand
-
             wilayah        = toko_wilayah.get(id_toko, {})
             provinsi_toko  = wilayah.get("Provinsi Toko", "")
             kabupaten_toko = wilayah.get("Kabupaten Toko", "")
+            if "default" in modes:
+                _cfg = get_brand_config_for_toko(provinsi_toko, kabupaten_toko, db)
+                brand_display = ", ".join(_cfg["mb_brands"] + _cfg["cb_brands"])
+            else:
+                brand_display = brand_program or brand
 
             mult_efektif = multiplier
             keterangan   = f"{multiplier}X flat multiplier"
@@ -763,7 +848,20 @@ def calculate_flat_per_batch_program(
     selesai = pd.Timestamp(promo["periode_selesai"]).normalize()
 
     allowed_brands = resolve_brands_for_promo(promo)
-    df_filtered    = filter_transactions_by_brand(transaksi_df.copy(), allowed_brands)
+
+    _bsj_fpb = promo.get("brand_selection_json")
+    modes: list[str] = []
+    if _bsj_fpb:
+        try:
+            modes = json.loads(_bsj_fpb).get("modes") or []
+        except Exception:
+            pass
+
+    from api.database import SessionLocal
+    _use_sqlite = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
+    db = SessionLocal() if _use_sqlite else None
+
+    df_filtered    = filter_transactions_by_brand_per_toko(transaksi_df.copy(), promo, peserta_data, db=db)
     df             = df_filtered.copy()
     df["_dt"]      = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
     df_period      = df[(df["_dt"] >= mulai) & (df["_dt"] <= selesai)]
@@ -779,10 +877,6 @@ def calculate_flat_per_batch_program(
         .to_dict("index")
     ) if not df_filtered.empty else {}
 
-    from api.database import SessionLocal
-    _use_sqlite = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
-    db = SessionLocal() if _use_sqlite else None
-
     vol_by_brand = _compute_vol_by_brand(df_period, [str(p["id_toko"]) for p in peserta_data])
 
     results: list[dict] = []
@@ -791,11 +885,14 @@ def calculate_flat_per_batch_program(
             id_toko        = str(peserta["id_toko"])
             volume         = float(agg_ton.get(id_toko, 0.0))
             brand          = peserta.get("brand_utama", "Semen Elang")
-            brand_display  = brand_program or brand
-
             wilayah        = toko_wilayah.get(id_toko, {})
             provinsi_toko  = wilayah.get("Provinsi Toko", "")
             kabupaten_toko = wilayah.get("Kabupaten Toko", "")
+            if "default" in modes:
+                _cfg = get_brand_config_for_toko(provinsi_toko, kabupaten_toko, db)
+                brand_display = ", ".join(_cfg["mb_brands"] + _cfg["cb_brands"])
+            else:
+                brand_display = brand_program or brand
 
             vbb         = vol_by_brand.get(id_toko, {"mb": 0.0, "cb": 0.0, "fb": 0.0})
             poin_mb_raw = round(vbb["mb"] / ton_per_poin, 2)
@@ -887,7 +984,15 @@ def calculate_leaderboard_standings(
     selesai = pd.Timestamp(promo["periode_selesai"]).normalize()
 
     allowed_brands = resolve_brands_for_promo(promo)
-    df_filtered    = filter_transactions_by_brand(transaksi_df.copy(), allowed_brands)
+    from api.database import SessionLocal
+    _use_sqlite_lb = os.getenv("USE_SQLITE_STORAGE", "false").lower() == "true"
+    _db_lb = SessionLocal() if _use_sqlite_lb else None
+    try:
+        df_filtered = filter_transactions_by_brand_per_toko(
+            transaksi_df.copy(), promo, peserta_data, db=_db_lb)
+    finally:
+        if _db_lb is not None:
+            _db_lb.close()
     df             = df_filtered.copy()
     df["_dt"]      = pd.to_datetime(df["Tanggal Transaksi"]).dt.normalize()
 
